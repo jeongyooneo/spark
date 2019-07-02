@@ -17,16 +17,16 @@
 
 package org.apache.spark.sql.execution.joins
 
-import scala.collection.mutable.ArrayBuffer
+import org.apache.log4j.Logger
 
+import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.catalyst.plans.physical._
-import org.apache.spark.sql.execution.{BinaryExecNode, CodegenSupport,
-ExternalAppendOnlyUnsafeRowArray, RowIterator, SparkPlan}
+import org.apache.spark.sql.execution.{BinaryExecNode, CodegenSupport, ExternalAppendOnlyUnsafeRowArray, RowIterator, SparkPlan}
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.util.collection.BitSet
 
@@ -135,10 +135,13 @@ case class SortMergeJoinExec(
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
+    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
+    val start = System.currentTimeMillis()
+
     val numOutputRows = longMetric("numOutputRows")
     val spillThreshold = getSpillThreshold
     val inMemoryThreshold = getInMemoryThreshold
-    left.execute().zipPartitions(right.execute()) { (leftIter, rightIter) =>
+    val ret = left.execute().zipPartitions(right.execute()) { (leftIter, rightIter) =>
       val boundCondition: (InternalRow) => Boolean = {
         condition.map { cond =>
           newPredicate(cond, left.output ++ right.output).eval _
@@ -365,8 +368,11 @@ case class SortMergeJoinExec(
           throw new IllegalArgumentException(
             s"SortMergeJoin should not take $x as the JoinType")
       }
-
     }
+    val elapsed = System.currentTimeMillis() - start
+    log.info("SMJ elapsed time " + elapsed)
+
+    ret
   }
 
   override def supportCodegen: Boolean = {
