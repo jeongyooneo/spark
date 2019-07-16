@@ -59,22 +59,14 @@ case class BroadcastHashJoinExec(
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
-    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
-    val start = System.currentTimeMillis()
-
     val numOutputRows = longMetric("numOutputRows")
 
     val broadcastRelation = buildPlan.executeBroadcast[HashedRelation]()
-    val ret = streamedPlan.execute().mapPartitions { streamedIter =>
+    streamedPlan.execute().mapPartitions { streamedIter =>
       val hashed = broadcastRelation.value.asReadOnlyCopy()
       TaskContext.get().taskMetrics().incPeakExecutionMemory(hashed.estimatedSize)
       join(streamedIter, hashed, numOutputRows)
     }
-
-    val elapsed = System.currentTimeMillis() - start
-    log.info("BHJ elapsed time " + elapsed)
-
-    ret
   }
 
   override def inputRDDs(): Seq[RDD[InternalRow]] = {

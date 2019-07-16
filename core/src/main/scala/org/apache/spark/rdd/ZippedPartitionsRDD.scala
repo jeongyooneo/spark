@@ -85,8 +85,16 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
   extends ZippedPartitionsBaseRDD[V](sc, List(rdd1, rdd2), preservesPartitioning) {
 
   override def compute(s: Partition, context: TaskContext): Iterator[V] = {
+    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
+    val start = System.currentTimeMillis()
+
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
-    f(rdd1.iterator(partitions(0), context), rdd2.iterator(partitions(1), context))
+    val ret = f(rdd1.iterator(partitions(0), context), rdd2.iterator(partitions(1), context))
+
+    val elapsed = System.currentTimeMillis() - start
+    log.info("ZippedPartitionsRDD2 at stage " + context.stageId() + " elapsed time " + elapsed)
+
+    ret
   }
 
   override def clearDependencies() {

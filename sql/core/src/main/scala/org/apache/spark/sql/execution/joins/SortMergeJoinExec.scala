@@ -17,8 +17,6 @@
 
 package org.apache.spark.sql.execution.joins
 
-import org.apache.log4j.Logger
-
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -135,13 +133,10 @@ case class SortMergeJoinExec(
   }
 
   protected override def doExecute(): RDD[InternalRow] = {
-    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
-    val start = System.currentTimeMillis()
-
     val numOutputRows = longMetric("numOutputRows")
     val spillThreshold = getSpillThreshold
     val inMemoryThreshold = getInMemoryThreshold
-    val ret = left.execute().zipPartitions(right.execute()) { (leftIter, rightIter) =>
+    left.execute().zipPartitions(right.execute()) { (leftIter, rightIter) =>
       val boundCondition: (InternalRow) => Boolean = {
         condition.map { cond =>
           newPredicate(cond, left.output ++ right.output).eval _
@@ -369,10 +364,6 @@ case class SortMergeJoinExec(
             s"SortMergeJoin should not take $x as the JoinType")
       }
     }
-    val elapsed = System.currentTimeMillis() - start
-    log.info("SMJ elapsed time " + elapsed)
-
-    ret
   }
 
   override def supportCodegen: Boolean = {

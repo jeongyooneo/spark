@@ -45,8 +45,17 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext): Iterator[U] =
-    f(context, split.index, firstParent[T].iterator(split, context))
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
+    val start = System.currentTimeMillis()
+
+    val ret = f(context, split.index, firstParent[T].iterator(split, context))
+
+    val elapsed = System.currentTimeMillis() - start
+    log.info("MapPartitionsRDD at stage " + context.stageId() + " elapsed time " + elapsed)
+
+    ret
+  }
 
   override def clearDependencies() {
     super.clearDependencies()

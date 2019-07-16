@@ -153,6 +153,9 @@ class ShuffledRowRDD(
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[InternalRow] = {
+    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
+    val start = System.currentTimeMillis()
+
     val shuffledRowPartition = split.asInstanceOf[ShuffledRowRDDPartition]
     // The range of pre-shuffle partitions that we are fetching at here is
     // [startPreShufflePartitionIndex, endPreShufflePartitionIndex - 1].
@@ -162,7 +165,16 @@ class ShuffledRowRDD(
         shuffledRowPartition.startPreShufflePartitionIndex,
         shuffledRowPartition.endPreShufflePartitionIndex,
         context)
-    reader.read().asInstanceOf[Iterator[Product2[Int, InternalRow]]].map(_._2)
+    val ret = reader.read().asInstanceOf[Iterator[Product2[Int, InternalRow]]].map(_._2)
+
+    val startIdx = shuffledRowPartition.startPreShufflePartitionIndex
+    val endIdx = shuffledRowPartition.endPreShufflePartitionIndex
+
+    val elapsed = System.currentTimeMillis() - start
+    log.info("ShuffledRowRDD at stage " + context.stageId() + " ("
+      + startIdx + "-" + endIdx + ") elapsed time " + elapsed)
+
+    ret
   }
 
   override def clearDependencies() {
