@@ -171,8 +171,8 @@ class ShuffledRowRDD(
     val endIdx = shuffledRowPartition.endPreShufflePartitionIndex
 
     val elapsed = System.currentTimeMillis() - start
-    log.info("ShuffledRowRDD at stage " + context.stageId() + " ("
-      + startIdx + "-" + endIdx + ") elapsed time " + elapsed)
+    log.info("ShuffledRowRDD stage " + context.stageId() + " task " + context.taskAttemptId() + " ("
+      + startIdx + "-" + endIdx + ") elapsed " + elapsed)
 
     ret
   }

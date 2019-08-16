@@ -52,7 +52,8 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     val ret = f(context, split.index, firstParent[T].iterator(split, context))
 
     val elapsed = System.currentTimeMillis() - start
-    log.info("MapPartitionsRDD at stage " + context.stageId() + " elapsed time " + elapsed)
+    log.info("MapPartitionsRDD stage " + context.stageId() + " task " + context.taskAttemptId()
+      + " partitionId " + context.partitionId() + " elapsed time " + elapsed)
 
     ret
   }

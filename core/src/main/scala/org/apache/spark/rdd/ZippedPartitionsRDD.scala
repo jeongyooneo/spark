@@ -89,10 +89,13 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
     val start = System.currentTimeMillis()
 
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
+    log.info("ZippedPartitionsRDD2 partition # " + partitions.length)
+
     val ret = f(rdd1.iterator(partitions(0), context), rdd2.iterator(partitions(1), context))
 
     val elapsed = System.currentTimeMillis() - start
-    log.info("ZippedPartitionsRDD2 at stage " + context.stageId() + " elapsed time " + elapsed)
+    log.info("ZippedPartitionsRDD2 stage " + context.stageId() + " task " + context.taskAttemptId()
+      + " partitionId " + context.partitionId() + " elapsed time " + elapsed)
 
     ret
   }

@@ -120,6 +120,8 @@ private[spark] class BlockManager(
     securityManager: SecurityManager,
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
+  @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+
 
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
@@ -458,6 +460,7 @@ private[spark] class BlockManager(
           val storageLevel = StorageLevel(
             useDisk = onDisk,
             useMemory = inMem,
+            useDisagg = false,
             useOffHeap = level.useOffHeap,
             deserialized = deserialized,
             replication = replication)
@@ -583,7 +586,26 @@ private[spark] class BlockManager(
         // The block was not found on disk, so serialize an in-memory copy:
         new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
           blockId, memoryStore.getValues(blockId).get, info.classTag), true)
-      } else {
+      }
+      /* else if (level.useDisagg) {
+        // TODO Get block from remote memory
+        try {
+          val fileOutputStream = file.getBufferedOutputStream(0)
+          try {
+            import scala.collection.JavaConversions._
+            for (serializedPartition <- serializedPartitions) {
+            // Reserve a partition write and get the metadata.
+              metadata.writePartitionMetadata
+              (serializedPartition.getKey, serializedPartition.getLength)
+              import scala.collection.JavaConversions._
+              for (buffer <- serializedPartition.getDirectBufferList) {
+                fileOutputStream.write(buffer)
+              }
+            }
+          } finally if (fileOutputStream != null) fileOutputStream.close()
+        }
+      }
+      */ else {
         handleLocalReadFailure(blockId)
       }
     } else {  // storage level is serialized
@@ -598,6 +620,7 @@ private[spark] class BlockManager(
         handleLocalReadFailure(blockId)
       }
     }
+
   }
 
   /**
@@ -1026,6 +1049,8 @@ private[spark] class BlockManager(
       classTag: ClassTag[T],
       tellMaster: Boolean = true,
       keepReadLock: Boolean = false): Option[PartiallyUnrolledIterator[T]] = {
+    mylogger.info("jy: doPutIterator blockId " + blockId + " level " + level)
+
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
       val startTimeMs = System.currentTimeMillis
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
@@ -1076,6 +1101,10 @@ private[spark] class BlockManager(
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
         }
         size = diskStore.getSize(blockId)
+      } else if (level.useDisagg) {
+        // TODO Read from crail-managed remote memory
+        // crail.write()
+        // shuffleManager.getWriter().write()
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
@@ -1230,6 +1259,7 @@ private[spark] class BlockManager(
       val storageLevel = StorageLevel(
         useDisk = info.level.useDisk,
         useMemory = info.level.useMemory,
+        useDisagg = false,
         useOffHeap = info.level.useOffHeap,
         deserialized = info.level.deserialized,
         replication = maxReplicas)
@@ -1260,6 +1290,7 @@ private[spark] class BlockManager(
     val tLevel = StorageLevel(
       useDisk = level.useDisk,
       useMemory = level.useMemory,
+      useDisagg = level.useDisagg,
       useOffHeap = level.useOffHeap,
       deserialized = level.deserialized,
       replication = 1)
