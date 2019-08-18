@@ -84,6 +84,8 @@ private[spark] class MemoryStore(
     blockEvictionHandler: BlockEvictionHandler)
   extends Logging {
 
+  @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 
@@ -183,6 +185,8 @@ private[spark] class MemoryStore(
 
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
+    mylogger.info("jy: MemoryStore.putIteratorAsValues blockId " + blockId
+      + " iterator? " + values)
     // Number of elements unrolled so far
     var elementsUnrolled = 0
     // Whether there is still enough memory for us to continue unrolling this block
