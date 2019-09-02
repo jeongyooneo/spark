@@ -110,7 +110,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
       .asInstanceOf[Iterator[(K, C)]]
 
     val elapsed = System.currentTimeMillis() - start
-    log.info("ShuffledRDD stage " + context.stageId() + " task " + context.taskAttemptId()
+    log.info("ShuffledRDD.compute() stage " + context.stageId() + " task " + context.taskAttemptId()
       + " partitionId " + context.partitionId() + " elapsed time " + elapsed)
 
     ret

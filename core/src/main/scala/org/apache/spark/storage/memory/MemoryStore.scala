@@ -185,8 +185,7 @@ private[spark] class MemoryStore(
 
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
-    mylogger.info("jy: MemoryStore.putIteratorAsValues blockId " + blockId
-      + " iterator? " + values)
+    mylogger.info("jy: MemoryStore.putIteratorAsValues blockId " + blockId)
     // Number of elements unrolled so far
     var elementsUnrolled = 0
     // Whether there is still enough memory for us to continue unrolling this block
@@ -217,7 +216,9 @@ private[spark] class MemoryStore(
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (values.hasNext && keepUnrolling) {
-      vector += values.next()
+      val item = values.next()
+      mylogger.info("MemoryStore.putIteratorAsValues blockId " + blockId + " values.next " + item)
+      vector += item
       if (elementsUnrolled % memoryCheckPeriod == 0) {
         // If our vector's size has exceeded the threshold, request more memory
         val currentSize = vector.estimateSize()

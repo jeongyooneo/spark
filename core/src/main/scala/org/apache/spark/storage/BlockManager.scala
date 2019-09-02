@@ -974,7 +974,7 @@ private[spark] class BlockManager(
 
     val putBlockInfo = {
       val newInfo = new BlockInfo(level, classTag, tellMaster)
-      mylogger.info("jy: doPut generate BlockInfo " + newInfo)
+      mylogger.info("jy: doPut blockId " + blockId + " generate BlockInfo " + newInfo)
 
       if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {
         newInfo
@@ -991,7 +991,6 @@ private[spark] class BlockManager(
     val startTimeMs = System.currentTimeMillis
     var exceptionWasThrown: Boolean = true
     val result: Option[T] = try {
-      mylogger.info("jy: doPut putBody()? " + putBody)
       val res = putBody(putBlockInfo)
       exceptionWasThrown = false
       if (res.isEmpty) {

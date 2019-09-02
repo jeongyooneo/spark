@@ -50,7 +50,7 @@ object ALSExample {
     import spark.implicits._
 
     // $example on$
-    val ratings = spark.read.textFile("data/mllib/als/sample_movielens_ratings.txt")
+    val ratings = spark.read.textFile("data/mllib/als/synthetic_6gb")
       .map(parseRating)
       .toDF()
     val Array(training, test) = ratings.randomSplit(Array(0.8, 0.2))
@@ -84,7 +84,7 @@ object ALSExample {
     // userRecs.show()
     // movieRecs.show()
 
-    Thread.sleep(100000)
+    // Thread.sleep(1000000)
 
     spark.stop()
   }

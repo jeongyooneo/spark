@@ -31,6 +31,7 @@ private[spark] class SortShuffleWriter[K, V, C](
     mapId: Int,
     context: TaskContext)
   extends ShuffleWriter[K, V] with Logging {
+  logInfo(s"myLogger: Entered SortShuffleWriter")
 
   private val dep = handle.dependency
 

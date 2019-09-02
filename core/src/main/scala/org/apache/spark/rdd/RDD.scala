@@ -317,9 +317,17 @@ abstract class RDD[T: ClassTag](
    */
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
   {
+    @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
     if (isCheckpointedAndMaterialized) {
-      firstParent[T].iterator(split, context)
+       mylogger.info("computeOrReadCheckpoint at RDD "
+        + this.getClass.getCanonicalName + id
+        + " task " + context.taskAttemptId()
+        + " firstParentRDD " + firstParent[T].name + firstParent[T].id)
+       firstParent[T].iterator(split, context)
     } else {
+      mylogger.info("computeOrReadCheckpoint at RDD "
+        + this.getClass.getCanonicalName + id
+        + " task " + context.taskAttemptId() + " calling *RDD.compute() ")
       compute(split, context)
     }
   }
