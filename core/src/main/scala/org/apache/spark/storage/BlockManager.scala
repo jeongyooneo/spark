@@ -20,6 +20,7 @@ package org.apache.spark.storage
 import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
+import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
@@ -28,7 +29,8 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
+import org.apache.crail._
+import org.apache.crail.conf.CrailConfiguration
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
 import org.apache.spark.internal.Logging
@@ -122,7 +124,6 @@ private[spark] class BlockManager(
   extends BlockDataManager with BlockEvictionHandler with Logging {
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
-
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
 
@@ -200,6 +201,20 @@ private[spark] class BlockManager(
   private var lastPeerFetchTime = 0L
 
   private var blockReplicationPolicy: BlockReplicationPolicy = _
+
+  // For disaggregated memory store
+  var fs : CrailStore = _
+  val crailConf = new CrailConfiguration()
+  fs = CrailStore.newInstance(crailConf)
+  var fileCache : ConcurrentHashMap[String, CrailBlockFile] = _
+
+  val rootDir = "/spark"
+  val broadcastDir = rootDir + "/broadcast"
+  val shuffleDir = rootDir + "/shuffle"
+  val rddDir = rootDir + "/rdd"
+  val tmpDir = rootDir + "/tmp"
+  val metaDir = rootDir + "/meta"
+  val hostsDir = metaDir + "/hosts"
 
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
@@ -586,26 +601,7 @@ private[spark] class BlockManager(
         // The block was not found on disk, so serialize an in-memory copy:
         new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
           blockId, memoryStore.getValues(blockId).get, info.classTag), true)
-      }
-      /* else if (level.useDisagg) {
-        // TODO Get block from remote memory
-        try {
-          val fileOutputStream = file.getBufferedOutputStream(0)
-          try {
-            import scala.collection.JavaConversions._
-            for (serializedPartition <- serializedPartitions) {
-            // Reserve a partition write and get the metadata.
-              metadata.writePartitionMetadata
-              (serializedPartition.getKey, serializedPartition.getLength)
-              import scala.collection.JavaConversions._
-              for (buffer <- serializedPartition.getDirectBufferList) {
-                fileOutputStream.write(buffer)
-              }
-            }
-          } finally if (fileOutputStream != null) fileOutputStream.close()
-        }
-      }
-      */ else {
+      } else {
         handleLocalReadFailure(blockId)
       }
     } else {  // storage level is serialized
@@ -705,6 +701,88 @@ private[spark] class BlockManager(
     None
   }
 
+  private def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    logInfo("jy: getting Disagg Values")
+    val ct = implicitly[ClassTag[T]]
+    getDisaggBytes(blockId).map { inputStream =>
+      val values =
+        serializerManager.dataDeserializeStream(blockId, inputStream)(ct)
+      logInfo("jy: successfully got Disagg Values")
+      new BlockResult(values, DataReadMethod.Network, 1024) // arbitrary size?
+    }
+  }
+
+  def getDisaggBytes(blockId: BlockId): Option[InputStream] = {
+    logDebug(s"Getting disagg block $blockId")
+    require(blockId != null, "BlockId is null")
+
+    // Get CrailInputStream directly
+    if (blockExists(blockId)) {
+      getMultiStream(blockId)
+    }
+    None
+  }
+
+  def blockExists(blockId: BlockId): Boolean = {
+    val crailFile = getLock(blockId)
+    var ret : Boolean = false
+    crailFile.synchronized {
+      var fileInfo = crailFile.getFile()
+      if (fileInfo == null) {
+        val path = getPath(blockId)
+        fileInfo = fs.lookup(path).get().asFile()
+        crailFile.update(fileInfo)
+      }
+      if (fileInfo != null) {
+        ret = true
+      }
+    }
+    return ret
+  }
+
+  class CrailBlockFile (name: String, var file: CrailFile) {
+    def getFile() : CrailFile = {
+      return file
+    }
+
+    def update(newFile: CrailFile) : Unit = {
+      file = newFile
+    }
+  }
+
+  def getMultiStream(blockId: BlockId) : CrailBufferedInputStream = {
+    val name = rddDir + "/" + blockId + "/"
+    logInfo(s"jy: getting disagg block $name")
+    val outstanding = 1
+    val multiStream = fs.lookup(name).get().asMultiFile().getMultiStream(outstanding)
+    logInfo(s"jy: getting disagg block $name succeeded")
+    return multiStream
+  }
+
+  private def getLock(blockId: BlockId) : CrailBlockFile = {
+    var crailFile = fileCache.get(blockId.name)
+    if (crailFile == null) {
+      crailFile = new CrailBlockFile(blockId.name, null)
+      val oldFile = fileCache.putIfAbsent(blockId.name, crailFile)
+      if (oldFile != null) {
+        crailFile = oldFile
+      }
+    }
+    return crailFile
+  }
+
+  private def getPath(blockId: BlockId): String = {
+    var name = tmpDir + "/" + blockId.name
+    if (blockId.isBroadcast) {
+      name = broadcastDir + "/" + blockId.name
+    } else if (blockId.isShuffle) {
+      name = shuffleDir + "/" + blockId.name
+    } else if (blockId.isRDD) {
+      name = rddDir + "/" + blockId.name
+    }
+    return name
+  }
+
   /**
    * Get a block from the block manager (either local or remote).
    *
@@ -722,6 +800,11 @@ private[spark] class BlockManager(
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
       return remote
+    }
+    val disagg = getDisaggValues[T](blockId)
+    if (disagg.isDefined) {
+      logInfo(s"Found block $blockId in disagg memory")
+      return disagg
     }
     None
   }
@@ -974,7 +1057,7 @@ private[spark] class BlockManager(
 
     val putBlockInfo = {
       val newInfo = new BlockInfo(level, classTag, tellMaster)
-      mylogger.info("jy: doPut blockId " + blockId + " generate BlockInfo " + newInfo)
+      mylogger.info("doPut generate BlockInfo " + newInfo)
 
       if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {
         newInfo
@@ -1032,6 +1115,65 @@ private[spark] class BlockManager(
     result
   }
 
+  def putDisaggBytes(blockId: BlockId, bytes: ByteBuffer): Unit = {
+    val crailFile = getLock(blockId)
+    crailFile.synchronized {
+      var fileInfo = crailFile.getFile()
+      if (fileInfo == null) {
+        logInfo("jy: disagg: fresh file, writing " + blockId.name)
+        val path = getPath(blockId)
+        try {
+          fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
+            CrailLocationClass.DEFAULT, true).get().asFile()
+
+          if (fileInfo != null && fileInfo.getCapacity() == 0) {
+            val stream = fileInfo.getBufferedOutputStream(0)
+            val byteBuffer = bytes.duplicate()
+            byteBuffer.rewind()
+            stream.write(byteBuffer)
+            stream.close()
+            crailFile.update(fileInfo)
+          }
+        } catch {
+          case e: Exception =>
+            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            fileInfo = fs.lookup(path).get().asFile()
+            crailFile.update(fileInfo)
+        }
+      }
+    }
+  }
+
+  def putDisaggValues(blockId: BlockId, values: Iterator[_]): Unit = {
+    val crailFile = getLock(blockId)
+    crailFile.synchronized {
+      var fileInfo = crailFile.getFile()
+      if (fileInfo == null || (fileInfo != null && fileInfo.getToken() == 0)) {
+        logInfo("jy: disagg: writing " + blockId.name)
+        val path = getPath(blockId)
+        try {
+          fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
+            CrailLocationClass.DEFAULT, true).get().asFile()
+
+          if (fileInfo != null && fileInfo.getCapacity() == 0) {
+            val stream = fileInfo.getBufferedOutputStream(0)
+            val instance = SparkEnv.get.serializer.newInstance()
+            val serializationStream = instance.serializeStream(stream)
+            serializationStream.writeAll(values)
+            serializationStream.close()
+            crailFile.update(fileInfo)
+          }
+        } catch {
+          case e: Exception =>
+            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            fileInfo = fs.lookup(path).get().asFile()
+            crailFile.update(fileInfo)
+        }
+      }
+    }
+  }
+
+
   /**
    * Put the given block according to the given level in one of the block stores, replicating
    * the values if necessary.
@@ -1051,8 +1193,7 @@ private[spark] class BlockManager(
       classTag: ClassTag[T],
       tellMaster: Boolean = true,
       keepReadLock: Boolean = false): Option[PartiallyUnrolledIterator[T]] = {
-    mylogger.info("jy: doPutIterator blockId " + blockId + " level " + level
-      + " iterator? " + iterator)
+    mylogger.info("doPutIterator blockId " + blockId + " level " + level)
 
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
       val startTimeMs = System.currentTimeMillis
@@ -1097,7 +1238,6 @@ private[spark] class BlockManager(
               }
           }
         }
-
       } else if (level.useDisk) {
         diskStore.put(blockId) { channel =>
           val out = Channels.newOutputStream(channel)
@@ -1105,9 +1245,8 @@ private[spark] class BlockManager(
         }
         size = diskStore.getSize(blockId)
       } else if (level.useDisagg) {
-        // TODO Read from crail-managed remote memory
-        // crail.write()
-        // shuffleManager.getWriter().write()
+        // TODO: Write cached data to crail-managed disaggregated memory
+        putDisaggValues(blockId, iterator())
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
