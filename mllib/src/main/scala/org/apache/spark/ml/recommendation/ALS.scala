@@ -835,8 +835,8 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
       implicitPrefs: Boolean = false,
       alpha: Double = 1.0,
       nonnegative: Boolean = false,
-      intermediateRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
-      finalRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
+      intermediateRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+      finalRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
       checkpointInterval: Int = 10,
       seed: Long = 0L)(
       implicit ord: Ordering[ID]): (RDD[(ID, Array[Float])], RDD[(ID, Array[Float])]) = {
@@ -1122,10 +1122,12 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
         }
       }
     }.groupByKey().mapValues { blocks =>
+      /*
       if (printNum < 5) {
           logInfo(s"ALS mapValues $blocks")
           printNum = printNum + 1
       }
+      */
       val builder = new RatingBlockBuilder[ID]
       blocks.foreach(builder.merge)
       builder.build()

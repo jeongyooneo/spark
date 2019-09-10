@@ -549,6 +549,15 @@ private[spark] class BlockManagerInfo(
             s" (size: ${Utils.bytesToString(diskSize)})")
         }
       }
+      if (storageLevel.useDisagg) {
+        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
+        _blocks.put(blockId, blockStatus)
+        if (blockExists) {
+          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}")
+        } else {
+          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}")
+        }
+      }
       if (!blockId.isBroadcast && blockStatus.isCached) {
         _cachedBlocks += blockId
       }
