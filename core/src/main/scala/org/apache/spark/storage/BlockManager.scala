@@ -1181,9 +1181,10 @@ private[spark] class BlockManager(
           }
         } catch {
           case e: Exception =>
-            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
-            fileInfo = fs.lookup(path).get().asFile()
-            crailFile.update(fileInfo)
+            throw new Exception("Exception in putDisaggBytes", e)
+            // logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            // fileInfo = fs.lookup(path).get().asFile()
+            // crailFile.update(fileInfo)
         }
       }
     }
@@ -1211,10 +1212,10 @@ private[spark] class BlockManager(
           }
         } catch {
           case e: Exception =>
-            // throw new Exception("Exception in putDisaggValue", e)
-            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
-            fileInfo = fs.lookup(path).get().asFile()
-            crailFile.update(fileInfo)
+            throw new Exception("Exception in putDisaggValue", e)
+            // logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            // fileInfo = fs.lookup(path).get().asFile()
+            // crailFile.update(fileInfo)
         }
       }
     }
