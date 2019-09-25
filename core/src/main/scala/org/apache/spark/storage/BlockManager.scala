@@ -734,15 +734,19 @@ private[spark] class BlockManager(
     None
   }
 
-  private def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+  def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    val startDisaggFetchTime = System.nanoTime
     logInfo("jy: getting Disagg Values")
     val ct = implicitly[ClassTag[T]]
-    getDisaggBytes(blockId).map { inputStream =>
+    val ret = getDisaggBytes(blockId).map { inputStream =>
       val values =
         serializerManager.dataDeserializeStream(blockId, inputStream)(ct)
       logInfo("jy: successfully got Disagg Values")
       new BlockResult(values, DataReadMethod.Network, 1024) // arbitrary size?
     }
+    logInfo("jy: disagg overhead: fetch time $blockId" +
+      s" in ${(System.nanoTime - startDisaggFetchTime).toDouble / 1e6} ms")
+    ret
   }
 
   def getDisaggBytes(blockId: BlockId): Option[InputStream] = {
@@ -1191,6 +1195,7 @@ private[spark] class BlockManager(
   }
 
   def putDisaggValues(blockId: BlockId, values: Iterator[_]): Unit = {
+    val startDisaggStoreTime = System.nanoTime
     val crailFile = getLock(blockId)
     crailFile.synchronized {
       var fileInfo = crailFile.getFile()
@@ -1219,6 +1224,8 @@ private[spark] class BlockManager(
         }
       }
     }
+    logInfo("jy: disagg overhead: store time $blockId" +
+          s" in ${(System.nanoTime - startDisaggStoreTime).toDouble / 1e6} ms")
   }
 
 
