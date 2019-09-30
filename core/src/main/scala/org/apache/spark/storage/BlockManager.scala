@@ -123,6 +123,7 @@ private[spark] class BlockManager(
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+  myLogger.info("Blockmanager of executor " + executorId)
 
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
@@ -913,6 +914,7 @@ private[spark] class BlockManager(
           val blockResult = getDisaggValues(blockId).getOrElse {
             throw new SparkException(s"get() from disagg failed for block $blockId")
           }
+          releaseLock(blockId)
           Left(blockResult)
         } else {
           val blockResult = getLocalValues(blockId).getOrElse {
@@ -1174,7 +1176,7 @@ private[spark] class BlockManager(
         try {
           fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
             CrailLocationClass.DEFAULT, true).get().asFile()
-
+          fileInfo.syncDir()
           if (fileInfo != null && fileInfo.getCapacity() == 0) {
             val stream = fileInfo.getBufferedOutputStream(0)
             val byteBuffer = bytes.duplicate()
@@ -1206,6 +1208,7 @@ private[spark] class BlockManager(
           logInfo("jy: disagg: here 1")
           fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
             CrailLocationClass.DEFAULT, true).get().asFile()
+          fileInfo.syncDir()
           logInfo("jy: disagg: here 2")
           if (fileInfo != null && fileInfo.getCapacity() == 0) {
             val stream = fileInfo.getBufferedOutputStream(0)
@@ -1217,10 +1220,10 @@ private[spark] class BlockManager(
           }
         } catch {
           case e: Exception =>
-            throw new Exception("Exception in putDisaggValue", e)
-            // logInfo("jy: disagg: file already created, fetching update " + blockId.name)
-            // fileInfo = fs.lookup(path).get().asFile()
-            // crailFile.update(fileInfo)
+            // throw new Exception("Exception in putDisaggValue", e)
+            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            fileInfo = fs.lookup(path).get().asFile()
+            crailFile.update(fileInfo)
         }
       }
     }
