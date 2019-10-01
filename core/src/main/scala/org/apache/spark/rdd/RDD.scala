@@ -212,8 +212,10 @@ abstract class RDD[T: ClassTag](
    * @return This RDD.
    */
   def unpersist(blocking: Boolean = true): this.type = {
-    logInfo("Removing RDD " + id + " from persistence list")
-    sc.unpersistRDD(id, blocking)
+    if (storageLevel != StorageLevel.DISAGG) {
+      logInfo("Removing RDD " + id + " from persistence list")
+      sc.unpersistRDD(id, blocking)
+    }
     storageLevel = StorageLevel.NONE
     this
   }
@@ -339,10 +341,6 @@ abstract class RDD[T: ClassTag](
     @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
     val blockId = RDDBlockId(id, partition.index)
-    mylogger.info("jy: getOrCompute, fetching block at stage " + context.stageId()
-      + " task " + context.taskAttemptId()
-      + " blockId " + blockId)
-
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {

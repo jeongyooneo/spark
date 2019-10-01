@@ -735,29 +735,25 @@ private[spark] class BlockManager(
     None
   }
 
-  def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    val startDisaggFetchTime = System.nanoTime
-    logInfo("jy: getting Disagg Values")
+  private def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val ct = implicitly[ClassTag[T]]
-    val ret = getDisaggBytes(blockId).map { inputStream =>
+    getDisaggBytes(blockId).map { inputStream =>
       val values =
         serializerManager.dataDeserializeStream(blockId, inputStream)(ct)
-      logInfo("jy: successfully got Disagg Values")
-      new BlockResult(values, DataReadMethod.Network, 1024) // arbitrary size?
+        logInfo(s"jy: getDisaggValues $blockId succeeded")
+        new BlockResult(values, DataReadMethod.Network, 1) // arbitrary size?
     }
-    logInfo("jy: disagg overhead: fetch time $blockId" +
-      s" in ${(System.nanoTime - startDisaggFetchTime).toDouble / 1e6} ms")
-    ret
   }
 
   def getDisaggBytes(blockId: BlockId): Option[InputStream] = {
-    logDebug(s"Getting disagg block $blockId")
     require(blockId != null, "BlockId is null")
 
     // Get CrailInputStream directly
     if (blockExists(blockId)) {
+      logInfo(s"jy: getDisaggBytes $blockId succeeded")
       Some(getMultiStream(blockId))
     } else {
+      logInfo(s"jy: getDisaggBytes $blockId failed")
       None
     }
   }
@@ -793,15 +789,16 @@ private[spark] class BlockManager(
 
   def getMultiStream(blockId: BlockId) : CrailBufferedInputStream = {
     val name = rddDir + "/" + blockId + "/"
-    logInfo(s"jy: getting disagg block $name")
     val outstanding = 1
+    logInfo(s"jy: getMultiStream $blockId fs.lookup started")
+    val disaggFetchStart = System.nanoTime
     val multiStream = fs.lookup(name).get().asFile().getBufferedInputStream(outstanding)
-    logInfo(s"jy: getting disagg block $name succeeded")
+    val disaggFetchTime = System.nanoTime - disaggFetchStart
+    logInfo(s"jy: getMultiStream $blockId fs.lookup succeeded, $disaggFetchTime ns")
     return multiStream
   }
 
   private def getLock(blockId: BlockId) : CrailBlockFile = {
-    logInfo(s"jy: block: $blockId ${blockId.name}")
     var crailFile = fileCache.get(blockId.name)
     if (crailFile == null) {
       crailFile = new CrailBlockFile(blockId.name, null)
@@ -912,6 +909,7 @@ private[spark] class BlockManager(
         // stored. Therefore, we now hold a read lock on the block.
         if (level.useDisagg) {
           val blockResult = getDisaggValues(blockId).getOrElse {
+            releaseLock(blockId)
             throw new SparkException(s"get() from disagg failed for block $blockId")
           }
           releaseLock(blockId)
@@ -1197,19 +1195,18 @@ private[spark] class BlockManager(
   }
 
   def putDisaggValues(blockId: BlockId, values: Iterator[_]): Unit = {
-    val startDisaggStoreTime = System.nanoTime
     val crailFile = getLock(blockId)
     crailFile.synchronized {
       var fileInfo = crailFile.getFile()
       if (fileInfo == null || (fileInfo != null && fileInfo.getToken() == 0)) {
-        logInfo("jy: disagg: writing " + blockId.name)
         val path = getPath(blockId)
         try {
-          logInfo("jy: disagg: here 1")
+          logInfo(s"jy: putDisaggValues $blockId fs.create started")
+          val disaggPutStart = System.nanoTime
           fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
             CrailLocationClass.DEFAULT, true).get().asFile()
-          fileInfo.syncDir()
-          logInfo("jy: disagg: here 2")
+          val disaggPutTime = System.nanoTime - disaggPutStart
+          logInfo(s"jy: putDisaggValues $blockId fs.create succeeded, $disaggPutTime ns")
           if (fileInfo != null && fileInfo.getCapacity() == 0) {
             val stream = fileInfo.getBufferedOutputStream(0)
             val instance = SparkEnv.get.serializer.newInstance()
@@ -1220,15 +1217,14 @@ private[spark] class BlockManager(
           }
         } catch {
           case e: Exception =>
-            // throw new Exception("Exception in putDisaggValue", e)
-            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
-            fileInfo = fs.lookup(path).get().asFile()
-            crailFile.update(fileInfo)
+            e.printStackTrace()
+            throw new Exception("Exception in putDisaggValue", e)
+            // logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            // fileInfo = fs.lookup(path).get().asFile()
+            // crailFile.update(fileInfo)
         }
       }
     }
-    logInfo("jy: disagg overhead: store time $blockId" +
-          s" in ${(System.nanoTime - startDisaggStoreTime).toDouble / 1e6} ms")
   }
 
 
