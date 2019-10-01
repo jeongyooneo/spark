@@ -123,7 +123,6 @@ private[spark] class BlockManager(
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
-  myLogger.info("Blockmanager of executor " + executorId)
 
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
@@ -621,6 +620,19 @@ private[spark] class BlockManager(
   private def doGetLocalBytes(blockId: BlockId, info: BlockInfo): BlockData = {
     val level = info.level
     logDebug(s"Level for block $blockId is $level")
+
+    if (level.useDisagg) {
+      // Get disagg bytes
+      logInfo(s"jy: doGetLocalBytes $blockId from disagg")
+      getDisaggBytes(blockId).map { inputStream =>
+        val values =
+          serializerManager.dataDeserializeStream(blockId, inputStream)(info.classTag)
+        logInfo(s"jy: getDisaggBytes from doGetLocalBytes $blockId succeeded")
+        new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
+          blockId, values, info.classTag), false)
+      }
+    }
+
     // In order, try to read the serialized bytes from memory, then from disk, then fall back to
     // serializing in-memory objects, and, finally, throw an exception if the block does not exist.
     if (level.deserialized) {
@@ -819,7 +831,6 @@ private[spark] class BlockManager(
     } else if (blockId.isRDD) {
       name = rddDir + "/" + blockId.name
     }
-    mylogger.info("jy: getPath " + name)
     return name
   }
 
@@ -1174,7 +1185,6 @@ private[spark] class BlockManager(
         try {
           fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
             CrailLocationClass.DEFAULT, true).get().asFile()
-          fileInfo.syncDir()
           if (fileInfo != null && fileInfo.getCapacity() == 0) {
             val stream = fileInfo.getBufferedOutputStream(0)
             val byteBuffer = bytes.duplicate()
@@ -1217,11 +1227,12 @@ private[spark] class BlockManager(
           }
         } catch {
           case e: Exception =>
-            e.printStackTrace()
-            throw new Exception("Exception in putDisaggValue", e)
-            // logInfo("jy: disagg: file already created, fetching update " + blockId.name)
-            // fileInfo = fs.lookup(path).get().asFile()
-            // crailFile.update(fileInfo)
+            // e.printStackTrace()
+            // throw new Exception("Exception in putDisaggValue", e)
+            logInfo("jy: disagg: file already created, fetching update " + blockId.name)
+            fileInfo = fs.lookup(path).get().asFile()
+            fileInfo.syncDir()
+            crailFile.update(fileInfo)
         }
       }
     }
