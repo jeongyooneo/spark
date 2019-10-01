@@ -121,7 +121,7 @@ private[spark] class BlockManager(
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
-
+  mylogger.info("BlockManager for executor " + executorId)
 
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)

@@ -50,7 +50,7 @@ object ALSExample {
     import spark.implicits._
 
     // $example on$
-    val ratings = spark.read.textFile("data/mllib/als/synthetic_25gb")
+    val ratings = spark.read.textFile("data/mllib/als/output")
       .map(parseRating)
       .toDF()
     val Array(training, test) = ratings.randomSplit(Array(0.8, 0.2))
