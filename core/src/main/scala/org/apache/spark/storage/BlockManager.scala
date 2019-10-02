@@ -399,9 +399,13 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
+      val disaggGetBlockDataStart = System.nanoTime()
       getLocalBytes(blockId) match {
         case Some(blockData) =>
-          new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
+        val disaggGetBlockDataTime = System.nanoTime() - disaggGetBlockDataStart
+        logInfo(
+            s"jy: Disagg fetch by getBlockData $blockId succeeded, " + disaggGetBlockDataTime)
+        new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
         case None =>
           // If this block manager receives a request for a block that it doesn't have then it's
           // likely that the master has outdated block statuses for this block. Therefore, we send
