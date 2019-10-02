@@ -403,7 +403,8 @@ private[spark] class BlockManager(
       getLocalBytes(blockId) match {
         case Some(blockData) =>
         val disaggGetBlockDataTime = System.nanoTime - disaggGetBlockDataStart
-        logInfo(s"jy: disagg fetch by getBlockData $blockId succeeded, " + disaggGetBlockDataTime)
+        logInfo(s"jy: disagg fetch by getBlockData from $executorId $blockId succeeded, "
+          + disaggGetBlockDataTime)
         new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
         case None =>
           // If this block manager receives a request for a block that it doesn't have then it's
@@ -626,11 +627,11 @@ private[spark] class BlockManager(
 
     if (level.useDisagg) {
       // Get disagg bytes
-      logInfo(s"jy: doGetLocalBytes $blockId from disagg")
+      logInfo(s"jy: doGetLocalBytes from $executorId $blockId from disagg")
       getDisaggBytes(blockId).map { inputStream =>
         val values =
           serializerManager.dataDeserializeStream(blockId, inputStream)(info.classTag)
-        logInfo(s"jy: getDisaggBytes from doGetLocalBytes $blockId succeeded")
+        logInfo(s"jy: doGetLocalBytes from $executorId $blockId succeeded")
         new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
           blockId, values, info.classTag), false)
       }
@@ -755,7 +756,6 @@ private[spark] class BlockManager(
     getDisaggBytes(blockId).map { inputStream =>
       val values =
         serializerManager.dataDeserializeStream(blockId, inputStream)(ct)
-        logInfo(s"jy: getDisaggValues $blockId succeeded")
         new BlockResult(values, DataReadMethod.Network, 1) // arbitrary size?
     }
   }
@@ -765,10 +765,8 @@ private[spark] class BlockManager(
 
     // Get CrailInputStream directly
     if (blockExists(blockId)) {
-      logInfo(s"jy: getDisaggBytes $blockId succeeded")
       Some(getMultiStream(blockId))
     } else {
-      logInfo(s"jy: getDisaggBytes $blockId failed")
       None
     }
   }
@@ -805,11 +803,11 @@ private[spark] class BlockManager(
   def getMultiStream(blockId: BlockId) : CrailBufferedInputStream = {
     val name = rddDir + "/" + blockId + "/"
     val outstanding = 1
-    logInfo(s"jy: getMultiStream $blockId fs.lookup started")
+    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started")
     val disaggFetchStart = System.nanoTime
     val multiStream = fs.lookup(name).get().asFile().getBufferedInputStream(outstanding)
     val disaggFetchTime = System.nanoTime - disaggFetchStart
-    logInfo(s"jy: getMultiStream $blockId fs.lookup succeeded, $disaggFetchTime ns")
+    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup succeeded, $disaggFetchTime ns")
     return multiStream
   }
 
@@ -844,14 +842,13 @@ private[spark] class BlockManager(
    * any locks if the block was fetched from a remote block manager. The read lock will
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
-  def get[T: ClassTag](blockId: BlockId, context: TaskContext): Option[BlockResult] = {
+  def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val disaggFetchStart = System.nanoTime
     val disagg = getDisaggValues[T](blockId)
     if (disagg.isDefined) {
       logInfo(s"Found block $blockId in disagg memory")
       val disaggFetchTime = System.nanoTime - disaggFetchStart
-      logInfo(s"jy: " + executorId + " " + context.stageId() + " " + context.taskAttemptId()
-        + " disagg fetch $blockId succeeded, " + disaggFetchTime)
+      logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
       return disagg
     }
     val local = getLocalValues(blockId)
@@ -916,7 +913,12 @@ private[spark] class BlockManager(
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
     val disaggRecomputeStart = System.nanoTime
-    get[T](blockId, context)(classTag) match {
+    if (blockExists(blockId)) {
+      logInfo("jy: disagg fetch from "
+        + executorId + " " + context.stageId() + " " + context.taskAttemptId()
+        + " " + blockId + " start")
+    }
+    get[T](blockId)(classTag) match {
       case Some(block) =>
         return Left(block)
       case _ =>
@@ -933,9 +935,9 @@ private[spark] class BlockManager(
             throw new SparkException(s"get() from disagg failed for block $blockId")
           }
           val disaggRecomputeThenLocalFetch = System.nanoTime - disaggRecomputeStart
-          logInfo(s"jy: " + executorId + " " + context.stageId() + " " + context.taskAttemptId()
-            + " disagg recompute then local fetch $blockId succeeded, "
-            + disaggRecomputeThenLocalFetch)
+          logInfo("jy: disagg recompute then local fetch from "
+            + executorId + " " + context.stageId() + " " + context.taskAttemptId()
+            + " " + blockId + " succeeded, " + disaggRecomputeThenLocalFetch)
           releaseLock(blockId)
           Left(blockResult)
         } else {
