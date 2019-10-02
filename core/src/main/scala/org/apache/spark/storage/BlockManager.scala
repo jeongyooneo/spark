@@ -403,8 +403,7 @@ private[spark] class BlockManager(
       getLocalBytes(blockId) match {
         case Some(blockData) =>
         val disaggGetBlockDataTime = System.nanoTime - disaggGetBlockDataStart
-        logInfo(
-            s"jy: Disagg fetch by getBlockData $blockId succeeded, " + disaggGetBlockDataTime)
+        logInfo(s"jy: disagg fetch by getBlockData $blockId succeeded, " + disaggGetBlockDataTime)
         new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
         case None =>
           // If this block manager receives a request for a block that it doesn't have then it's
@@ -845,13 +844,14 @@ private[spark] class BlockManager(
    * any locks if the block was fetched from a remote block manager. The read lock will
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
-  def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+  def get[T: ClassTag](blockId: BlockId, context: TaskContext): Option[BlockResult] = {
     val disaggFetchStart = System.nanoTime
     val disagg = getDisaggValues[T](blockId)
     if (disagg.isDefined) {
       logInfo(s"Found block $blockId in disagg memory")
       val disaggFetchTime = System.nanoTime - disaggFetchStart
-      logInfo(s"jy: disagg fetch $blockId succeeded, " + disaggFetchTime)
+      logInfo(s"jy: " + executorId + " " + context.stageId() + " " + context.taskAttemptId()
+        + " disagg fetch $blockId succeeded, " + disaggFetchTime)
       return disagg
     }
     val local = getLocalValues(blockId)
@@ -908,19 +908,20 @@ private[spark] class BlockManager(
    *         could not be cached.
    */
   def getOrElseUpdate[T](
+      context: TaskContext,
       blockId: BlockId,
       level: StorageLevel,
       classTag: ClassTag[T],
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
-    get[T](blockId)(classTag) match {
+    val disaggRecomputeStart = System.nanoTime
+    get[T](blockId, context)(classTag) match {
       case Some(block) =>
         return Left(block)
       case _ =>
         // Need to compute the block.
     }
-    val disaggRecomputeStart = System.nanoTime
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
@@ -932,8 +933,8 @@ private[spark] class BlockManager(
             throw new SparkException(s"get() from disagg failed for block $blockId")
           }
           val disaggRecomputeThenLocalFetch = System.nanoTime - disaggRecomputeStart
-          logInfo(
-            s"jy: disagg recompute then local fetch $blockId succeeded, "
+          logInfo(s"jy: " + executorId + " " + context.stageId() + " " + context.taskAttemptId()
+            + " disagg recompute then local fetch $blockId succeeded, "
             + disaggRecomputeThenLocalFetch)
           releaseLock(blockId)
           Left(blockResult)
