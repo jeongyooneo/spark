@@ -399,12 +399,8 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
-      val disaggGetBlockDataStart = System.nanoTime
       getLocalBytes(blockId) match {
         case Some(blockData) =>
-        val disaggGetBlockDataTime = System.nanoTime - disaggGetBlockDataStart
-        logInfo(s"jy: disagg fetch by getBlockData from $executorId $blockId succeeded, "
-          + disaggGetBlockDataTime)
         new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
         case None =>
           // If this block manager receives a request for a block that it doesn't have then it's
@@ -627,19 +623,20 @@ private[spark] class BlockManager(
 
     if (level.useDisagg) {
       // Get disagg bytes
-      logInfo(s"jy: doGetLocalBytes from $executorId $blockId from disagg")
+      val disaggGetBlockDataStart = System.nanoTime
       getDisaggBytes(blockId).map { inputStream =>
         val values =
           serializerManager.dataDeserializeStream(blockId, inputStream)(info.classTag)
-        logInfo(s"jy: doGetLocalBytes from $executorId $blockId succeeded")
+        val disaggGetBlockDataTime = System.nanoTime - disaggGetBlockDataStart
+        logInfo(s"jy: disagg fetch by getBlockData from $executorId $blockId succeeded, "
+          + disaggGetBlockDataTime)
         new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
           blockId, values, info.classTag), false)
-      }
-    }
-
-    // In order, try to read the serialized bytes from memory, then from disk, then fall back to
-    // serializing in-memory objects, and, finally, throw an exception if the block does not exist.
-    if (level.deserialized) {
+      }.get
+    } else if (level.deserialized) {
+      // In order, try to read the serialized bytes from memory, then from disk, then fall back to
+      // serializing in-memory objects, and, finally, throw an exception
+      // if the block does not exist.
       // Try to avoid expensive serialization by reading a pre-serialized copy from disk:
       if (level.useDisk && diskStore.contains(blockId)) {
         // Note: we purposely do not try to put the block back into memory here. Since this branch
@@ -666,7 +663,6 @@ private[spark] class BlockManager(
         handleLocalReadFailure(blockId)
       }
     }
-
   }
 
   /**
