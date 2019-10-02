@@ -336,13 +336,7 @@ abstract class RDD[T: ClassTag](
    * Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached.
    */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
-    @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
-
     val blockId = RDDBlockId(id, partition.index)
-    mylogger.info("jy: getOrCompute, fetching block at stage " + context.stageId()
-      + " task " + context.taskAttemptId()
-      + " blockId " + blockId)
-
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {

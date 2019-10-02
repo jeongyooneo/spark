@@ -37,7 +37,6 @@ private[spark] class BlockStoreShuffleReader[K, C](
     blockManager: BlockManager = SparkEnv.get.blockManager,
     mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
   extends ShuffleReader[K, C] with Logging {
-  logInfo(s"Entered BlockStoreShuffleReader")
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */

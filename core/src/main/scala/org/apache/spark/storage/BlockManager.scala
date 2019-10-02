@@ -997,7 +997,6 @@ private[spark] class BlockManager(
 
     val putBlockInfo = {
       val newInfo = new BlockInfo(level, classTag, tellMaster)
-      mylogger.info("jy: doPut blockId " + blockId + " generate BlockInfo " + newInfo)
 
       if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {
         newInfo
@@ -1074,9 +1073,6 @@ private[spark] class BlockManager(
       classTag: ClassTag[T],
       tellMaster: Boolean = true,
       keepReadLock: Boolean = false): Option[PartiallyUnrolledIterator[T]] = {
-    mylogger.info("jy: doPutIterator blockId " + blockId + " level " + level
-      + " iterator? " + iterator)
-
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
       val startTimeMs = System.currentTimeMillis
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None

@@ -100,20 +100,11 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
-    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
-    val start = System.currentTimeMillis()
-
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    val ret = SparkEnv.get.shuffleManager
+    SparkEnv.get.shuffleManager
       .getReader(dep.shuffleHandle, split.index, split.index + 1, context)
       .read()
       .asInstanceOf[Iterator[(K, C)]]
-
-    val elapsed = System.currentTimeMillis() - start
-    log.info("ShuffledRDD.compute() stage " + context.stageId() + " task " + context.taskAttemptId()
-      + " partitionId " + context.partitionId() + " elapsed time " + elapsed)
-
-    ret
   }
 
   override def clearDependencies() {
