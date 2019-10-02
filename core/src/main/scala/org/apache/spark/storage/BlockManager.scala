@@ -399,10 +399,10 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
-      val disaggGetBlockDataStart = System.nanoTime()
+      val disaggGetBlockDataStart = System.nanoTime
       getLocalBytes(blockId) match {
         case Some(blockData) =>
-        val disaggGetBlockDataTime = System.nanoTime() - disaggGetBlockDataStart
+        val disaggGetBlockDataTime = System.nanoTime - disaggGetBlockDataStart
         logInfo(
             s"jy: Disagg fetch by getBlockData $blockId succeeded, " + disaggGetBlockDataTime)
         new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
@@ -846,9 +846,12 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    val disaggFetchStart = System.nanoTime
     val disagg = getDisaggValues[T](blockId)
     if (disagg.isDefined) {
       logInfo(s"Found block $blockId in disagg memory")
+      val disaggFetchTime = System.nanoTime - disaggFetchStart
+      logInfo(s"jy: disagg fetch $blockId succeeded, " + disaggFetchTime)
       return disagg
     }
     val local = getLocalValues(blockId)
@@ -917,6 +920,7 @@ private[spark] class BlockManager(
       case _ =>
         // Need to compute the block.
     }
+    val disaggRecomputeStart = System.nanoTime
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
@@ -927,6 +931,10 @@ private[spark] class BlockManager(
             releaseLock(blockId)
             throw new SparkException(s"get() from disagg failed for block $blockId")
           }
+          val disaggRecomputeThenLocalFetch = System.nanoTime - disaggRecomputeStart
+          logInfo(
+            s"jy: disagg recompute then local fetch $blockId succeeded, "
+            + disaggRecomputeThenLocalFetch)
           releaseLock(blockId)
           Left(blockResult)
         } else {
