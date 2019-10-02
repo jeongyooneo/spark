@@ -352,8 +352,12 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
+      val vanillaGetBlockDataStart = System.nanoTime()
       getLocalBytes(blockId) match {
         case Some(blockData) =>
+          val vanillaGetBlockDataTime = System.nanoTime() - vanillaGetBlockDataStart
+          logInfo(
+            s"jy: Local fetch by getBlockData $blockId succeeded, " + vanillaGetBlockDataTime)
           new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
         case None =>
           // If this block manager receives a request for a block that it doesn't have then it's
@@ -713,14 +717,22 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    val vanillaLocalFetchStart = System.nanoTime()
+    logInfo(s"jy: getLocalValues for local fetch $blockId start")
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
+      val vanillaLocalFetchTime = System.nanoTime() - vanillaLocalFetchStart
+      logInfo(s"jy: getLocalValues for local fetch $blockId succeeded, " + vanillaLocalFetchTime)
       return local
     }
+    val vanillaRemoteFetchStart = System.nanoTime()
+    logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
+      val vanillaRemoteFetchTime = System.nanoTime() - vanillaRemoteFetchStart
+      logInfo(s"jy: getRemoteValues for remote fetch $blockId succeeded, " + vanillaRemoteFetchTime)
       return remote
     }
     None
@@ -779,6 +791,7 @@ private[spark] class BlockManager(
       case _ =>
         // Need to compute the block.
     }
+    val vanillaRecomputeStart = System.nanoTime()
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
@@ -788,18 +801,28 @@ private[spark] class BlockManager(
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
           releaseLock(blockId)
+          val vanillaRecomputeThenLocalFetch = System.nanoTime() - vanillaRecomputeStart
+          logInfo(
+            s"jy: Recompute then local fetch $blockId failed, " + vanillaRecomputeThenLocalFetch)
           throw new SparkException(s"get() failed for block $blockId even though we held a lock")
         }
         // We already hold a read lock on the block from the doPut() call and getLocalValues()
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
+        val vanillaRecomputeThenLocalFetch = System.nanoTime() - vanillaRecomputeStart
+        logInfo(
+          s"jy: Recompute then local fetch $blockId succeeded, " + vanillaRecomputeThenLocalFetch)
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
-       Right(iter)
+        val vanillaRecomputeThenLocalFetch = System.nanoTime() - vanillaRecomputeStart
+        logInfo(
+          s"jy: Recompute then local fetch $blockId succeeded with problem, "
+            + vanillaRecomputeThenLocalFetch)
+        Right(iter)
     }
   }
 
