@@ -87,7 +87,7 @@ abstract class Graph[VD: ClassTag, ED: ClassTag] protected () extends Serializab
    *
    * @return A reference to this graph for convenience.
    */
-  def persist(newLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED]
+  def persist(newLevel: StorageLevel = StorageLevel.DISAGG): Graph[VD, ED]
 
   /**
    * Caches the vertices and edges associated with this graph at the previously-specified target
@@ -473,7 +473,7 @@ object Graph {
       rawEdges: RDD[(VertexId, VertexId)],
       defaultValue: VD,
       uniqueEdges: Option[PartitionStrategy] = None,
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
+      edgeStorageLevel: StorageLevel = StorageLevel.DISAGG,
       vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, Int] =
   {
     val edges = rawEdges.map(p => Edge(p._1, p._2, 1))
@@ -498,7 +498,7 @@ object Graph {
   def fromEdges[VD: ClassTag, ED: ClassTag](
       edges: RDD[Edge[ED]],
       defaultValue: VD,
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
+      edgeStorageLevel: StorageLevel = StorageLevel.DISAGG,
       vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED] = {
     GraphImpl(edges, defaultValue, edgeStorageLevel, vertexStorageLevel)
   }
@@ -522,7 +522,7 @@ object Graph {
       vertices: RDD[(VertexId, VD)],
       edges: RDD[Edge[ED]],
       defaultVertexAttr: VD = null.asInstanceOf[VD],
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
+      edgeStorageLevel: StorageLevel = StorageLevel.DISAGG,
       vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED] = {
     GraphImpl(vertices, edges, defaultVertexAttr, edgeStorageLevel, vertexStorageLevel)
   }
