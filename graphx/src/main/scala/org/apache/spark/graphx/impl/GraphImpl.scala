@@ -57,7 +57,7 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   }
 
   override def cache(): Graph[VD, ED] = {
-    vertices.cache()
+    vertices.persist(StorageLevel.DISAGG)
     replicatedVertexView.edges.cache()
     this
   }
