@@ -574,6 +574,9 @@ private[spark] class BlockManagerInfo(
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
       }
+      if (originalLevel.useDisagg) {
+        logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disagg")
+      }
     }
   }
 

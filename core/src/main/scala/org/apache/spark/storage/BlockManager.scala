@@ -1691,8 +1691,12 @@ private[spark] class BlockManager(
         // The block has already been removed; do nothing.
         logWarning(s"Asked to remove block $blockId, which does not exist")
       case Some(info) =>
-        removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
-        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        if (info.level.useDisagg) {
+          removeDisaggBlock(blockId)
+        } else {
+          removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
+          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        }
     }
   }
 
@@ -1717,6 +1721,12 @@ private[spark] class BlockManager(
     Option(TaskContext.get()).foreach { c =>
       c.taskMetrics().incUpdatedBlockStatuses(blockId -> status)
     }
+  }
+
+  def removeDisaggBlock(blockId: BlockId) {
+    val path = getPath(blockId)
+    fs.delete(path, true).get().syncDir()
+    logInfo(s"jy: Removed block $blockId from disagg")
   }
 
   def releaseLockAndDispose(
