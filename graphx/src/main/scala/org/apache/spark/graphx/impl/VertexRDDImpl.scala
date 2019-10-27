@@ -26,7 +26,7 @@ import org.apache.spark.storage.StorageLevel
 
 class VertexRDDImpl[VD] private[graphx] (
     @transient val partitionsRDD: RDD[ShippableVertexPartition[VD]],
-    val targetStorageLevel: StorageLevel = StorageLevel.DISAGG)
+    val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
   (implicit override protected val vdTag: ClassTag[VD])
   extends VertexRDD[VD](partitionsRDD.context, List(new OneToOneDependency(partitionsRDD))) {
 
