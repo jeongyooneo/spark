@@ -908,6 +908,13 @@ private[spark] class BlockManager(
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
+
+    var newLevel = StorageLevel.MEMORY_ONLY
+    if ((blockId.name.contains("rdd_2"))// || blockId.name.contains("rdd_17"))
+      && level.useMemory) {
+      newLevel = StorageLevel.DISAGG
+    }
+
     val disaggRecomputeStart = System.nanoTime
     if (blockExists(blockId)) {
       logInfo("jy: disagg fetch from "
@@ -921,11 +928,11 @@ private[spark] class BlockManager(
         // Need to compute the block.
     }
     // Initially we hold no locks on this block.
-    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
+    doPutIterator(blockId, makeIterator, newLevel, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
-        if (level.useDisagg) {
+        if (newLevel.useDisagg) {
           val blockResult = getDisaggValues(blockId).getOrElse {
             releaseLock(blockId)
             throw new SparkException(s"get() from disagg failed for block $blockId")
@@ -1692,7 +1699,7 @@ private[spark] class BlockManager(
         logWarning(s"Asked to remove block $blockId, which does not exist")
       case Some(info) =>
         if (info.level.useDisagg) {
-          removeDisaggBlock(blockId)
+          // removeDisaggBlock(blockId)
         } else {
           removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
           addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
@@ -1725,7 +1732,7 @@ private[spark] class BlockManager(
 
   def removeDisaggBlock(blockId: BlockId) {
     val path = getPath(blockId)
-    fs.delete(path, true).get().syncDir()
+    fs.delete(path, false).get().syncDir()
     logInfo(s"jy: Removed block $blockId from disagg")
   }
 

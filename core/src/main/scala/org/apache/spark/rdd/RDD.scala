@@ -315,6 +315,36 @@ abstract class RDD[T: ClassTag](
   }
 
   /**
+   * Return the cached ancestors of the given RDD that are related to it
+   * only through a sequence of narrow dependencies.
+   * This traverses the given RDD's dependency tree using DFS, but maintains
+   * no ordering on the RDDs returned.
+   */
+  private[spark] def printCachedAncestors: Unit = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val narrowDependencies = rdd.dependencies.filter(_.isInstanceOf[NarrowDependency[_]])
+      val narrowParents = narrowDependencies.map(_.rdd)
+      val narrowParentsNotVisited = narrowParents.filterNot(cachedAncestors.contains)
+      val cachedNarrowParentsNotVisited =
+        narrowParentsNotVisited.filter(parent => parent.storageLevel != StorageLevel.NONE)
+      cachedNarrowParentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = cachedAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor => logInfo("jy: Cached ancestors of " + name + " " + id + ": "
+      + ancestor.name + " " + ancestor.id)
+    )
+  }
+
+  /**
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
    */
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
