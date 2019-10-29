@@ -910,7 +910,9 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
 
     var newLevel = StorageLevel.MEMORY_ONLY
-    if ((blockId.name.contains("rdd_2"))// || blockId.name.contains("rdd_17"))
+    if ((blockId.name.contains("rdd_27")
+      || blockId.name.contains("rdd_55")
+      || blockId.name.contains("rdd_67") || blockId.name.contains("rdd_79"))
       && level.useMemory) {
       newLevel = StorageLevel.DISAGG
     }
@@ -1226,8 +1228,8 @@ private[spark] class BlockManager(
     val crailFile = getLock(blockId)
     crailFile.synchronized {
       var fileInfo = crailFile.getFile()
+      val path = getPath(blockId)
       if (fileInfo == null || (fileInfo != null && fileInfo.getToken() == 0)) {
-        val path = getPath(blockId)
         try {
           logInfo(s"jy: putDisaggValues $blockId fs.create started")
           val disaggPutStart = System.nanoTime
@@ -1699,7 +1701,7 @@ private[spark] class BlockManager(
         logWarning(s"Asked to remove block $blockId, which does not exist")
       case Some(info) =>
         if (info.level.useDisagg) {
-          // removeDisaggBlock(blockId)
+          removeDisaggBlock(blockId)
         } else {
           removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
           addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)

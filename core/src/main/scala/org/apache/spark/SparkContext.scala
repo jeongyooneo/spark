@@ -1797,6 +1797,7 @@ class SparkContext(config: SparkConf) extends Logging {
     env.blockManager.master.removeRdd(rddId, blocking)
     persistentRdds.remove(rddId)
     listenerBus.post(SparkListenerUnpersistRDD(rddId))
+    logInfo(s"Unpersist RDD $rddId")
   }
 
   /**
