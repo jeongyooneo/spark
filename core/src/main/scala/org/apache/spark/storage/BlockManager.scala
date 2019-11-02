@@ -761,7 +761,12 @@ private[spark] class BlockManager(
 
     // Get CrailInputStream directly
     if (blockExists(blockId)) {
-      Some(getMultiStream(blockId))
+      val res = getMultiStream(blockId)
+      if (res == null) {
+        None
+      } else {
+        Some(res)
+      }
     } else {
       None
     }
@@ -769,21 +774,21 @@ private[spark] class BlockManager(
 
   def blockExists(blockId: BlockId): Boolean = {
       val crailFile = getLock(blockId)
-      var ret: Boolean = false
       crailFile.synchronized {
         var fileInfo = crailFile.getFile()
-        /* This should not be executed - only putDisaggValues can create files
-        if (fileInfo == null) {
-          val path = getPath(blockId)
-          fileInfo = fs.lookup(path).get().asFile()
-          crailFile.update(fileInfo)
-        }
-        */
         if (fileInfo != null) {
-          ret = true
+          // Double-check the file in CrailFS
+          val path = getPath(blockId)
+          val remoteFileInfo = fs.lookup(path).get()
+          if (remoteFileInfo == null) {
+            crailFile.update(null)
+            return false
+          } else {
+            return true
+          }
         }
       }
-      return ret
+    return false
   }
 
   class CrailBlockFile (name: String, var file: CrailFile) {
@@ -801,10 +806,15 @@ private[spark] class BlockManager(
     val outstanding = 1
     logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started")
     val disaggFetchStart = System.nanoTime
-    val multiStream = fs.lookup(name).get().asFile().getBufferedInputStream(outstanding)
-    val disaggFetchTime = System.nanoTime - disaggFetchStart
-    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup succeeded, $disaggFetchTime ns")
-    return multiStream
+    val lookupRes = fs.lookup(name).get()
+    if (lookupRes == null) {
+      return null
+    } else {
+      val multiStream = lookupRes.asFile().getBufferedInputStream(outstanding)
+      val disaggFetchTime = System.nanoTime - disaggFetchStart
+      logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup succeeded, $disaggFetchTime ns")
+      return multiStream
+    }
   }
 
   private def getLock(blockId: BlockId) : CrailBlockFile = {
@@ -910,9 +920,7 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
 
     var newLevel = StorageLevel.MEMORY_ONLY
-    if ((blockId.name.contains("rdd_27")
-      || blockId.name.contains("rdd_55")
-      || blockId.name.contains("rdd_67") || blockId.name.contains("rdd_79"))
+    if (blockId.name.contains("rdd_2_")
       && level.useMemory) {
       newLevel = StorageLevel.DISAGG
     }
@@ -1700,12 +1708,8 @@ private[spark] class BlockManager(
         // The block has already been removed; do nothing.
         logWarning(s"Asked to remove block $blockId, which does not exist")
       case Some(info) =>
-        if (info.level.useDisagg) {
-          removeDisaggBlock(blockId)
-        } else {
-          removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
-          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
-        }
+        removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
+        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
     }
   }
 
@@ -1715,9 +1719,11 @@ private[spark] class BlockManager(
    */
   private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean): Unit = {
     // Removals are idempotent in disk store and memory store. At worst, we get a warning.
+    val storageLevel = blockInfoManager.get(blockId).get.level
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
-    if (!removedFromMemory && !removedFromDisk) {
+    removeDisaggBlock(blockId)
+    if (!storageLevel.useDisagg && !removedFromMemory && !removedFromDisk) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
     blockInfoManager.removeBlock(blockId)
@@ -1732,10 +1738,12 @@ private[spark] class BlockManager(
     }
   }
 
-  def removeDisaggBlock(blockId: BlockId) {
-    val path = getPath(blockId)
-    fs.delete(path, false).get().syncDir()
-    logInfo(s"jy: Removed block $blockId from disagg")
+  def removeDisaggBlock(blockId: BlockId): Unit = {
+    if (blockExists(blockId)) {
+      val path = getPath(blockId)
+      fs.delete(path, false).get().syncDir()
+      logInfo(s"jy: Removed block $blockId from disagg")
+    }
   }
 
   def releaseLockAndDispose(
