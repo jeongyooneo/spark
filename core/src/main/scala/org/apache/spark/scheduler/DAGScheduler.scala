@@ -570,6 +570,14 @@ class DAGScheduler(
     }
 
     val jobId = nextJobId.getAndIncrement()
+    sc.perJobDisaggLineage += (jobId -> rdd.createCachedAncestors)
+    sc.perJobDisaggLineage.foreach(entry => {
+      val jobId = entry._1
+      val seq = entry._2
+      seq.foreach(cachedAncestor =>
+        logInfo(s"jy: All cached ancestors of Job $jobId($rdd.name $rdd.id): "
+          + cachedAncestor.name + " " + cachedAncestor.id))
+    })
     if (partitions.size == 0) {
       // Return immediately if the job is running 0 tasks
       return new JobWaiter[U](this, jobId, 0, resultHandler)
