@@ -920,8 +920,9 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
 
     var newLevel = StorageLevel.MEMORY_ONLY
-    if (blockId.name.contains("rdd_2_")
-      && level.useMemory) {
+    if ((blockId.name.contains("rdd_2_") ||
+        blockId.name.contains("rdd_17_"))
+       && level.useMemory) {
       newLevel = StorageLevel.DISAGG
     }
 

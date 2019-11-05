@@ -527,13 +527,13 @@ private[spark] class BlockManagerInfo(
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
         if (blockExists) {
-          logInfo(s"Updated $blockId in memory on" +
+          logInfo(s"Updated $blockId in memory on " +
             s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(memSize)}," +
             s" original size: ${Utils.bytesToString(originalMemSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         } else {
-          logInfo(s"Added $blockId in memory on" +
+          logInfo(s"Added $blockId in memory on " +
             s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
