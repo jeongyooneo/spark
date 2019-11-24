@@ -35,6 +35,8 @@ object RandomForestClassifierExample {
 
     println("Arguments " + args)
 
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
     var numCategories: Int = 4
     var numTrees = 10
     var isCacheSet = false
@@ -43,13 +45,15 @@ object RandomForestClassifierExample {
       numCategories = args(0).toInt
       numTrees = args(1).toInt
       isCacheSet = args(2).toBoolean
+      path = args(3)
     }
 
-    println("Num categories " + numCategories + ", numTrees: " + numTrees + ", cache" + isCacheSet)
+    println("Num categories " + numCategories + ", numTrees: " + numTrees + ", cache"
+      + isCacheSet + ", path: " + path)
 
     // $example on$
     // Load and parse the data file, converting it to a DataFrame.
-    val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+    val data = spark.read.format("libsvm").load(prefix + path)
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
