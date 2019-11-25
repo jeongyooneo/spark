@@ -399,7 +399,6 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
-      val vanillaGetBlockDataStart = System.nanoTime()
       getLocalBytes(blockId) match {
         case Some(blockData) =>
         new BlockManagerManagedBuffer(blockInfoManager, blockId, blockData, true)
@@ -861,17 +860,12 @@ private[spark] class BlockManager(
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
-      val vanillaLocalFetchTime = System.nanoTime() - vanillaLocalFetchStart
-      logInfo(s"jy: getLocalValues for local fetch $blockId succeeded, " + vanillaLocalFetchTime)
       return local
     }
-    val vanillaRemoteFetchStart = System.nanoTime()
     logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
-      val vanillaRemoteFetchTime = System.nanoTime() - vanillaRemoteFetchStart
-      logInfo(s"jy: getRemoteValues for remote fetch $blockId succeeded, " + vanillaRemoteFetchTime)
       return remote
     }
     None
@@ -927,8 +921,7 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
 
     var newLevel = StorageLevel.MEMORY_ONLY
-    if ((blockId.name.contains("rdd_2_") ||
-        blockId.name.contains("rdd_17_"))
+    if (blockId.name.contains("rdd_35_")
        && level.useMemory) {
       newLevel = StorageLevel.DISAGG
     }
@@ -945,7 +938,6 @@ private[spark] class BlockManager(
       case _ =>
         // Need to compute the block.
     }
-    val vanillaRecomputeStart = System.nanoTime()
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, newLevel, classTag, keepReadLock = true) match {
       case None =>
@@ -979,10 +971,6 @@ private[spark] class BlockManager(
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
-        val vanillaRecomputeThenLocalFetch = System.nanoTime() - vanillaRecomputeStart
-        logInfo(
-          s"jy: Recompute then local fetch $blockId succeeded with problem, "
-            + vanillaRecomputeThenLocalFetch)
         Right(iter)
     }
   }

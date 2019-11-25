@@ -1121,15 +1121,6 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
         }
       }
     }.groupByKey().mapValues { blocks =>
-<<<<<<< HEAD
-=======
-      /*
-      if (printNum < 5) {
-          logInfo(s"ALS mapValues $blocks")
-          printNum = printNum + 1
-      }
-      */
->>>>>>> edgedisagg
       val builder = new RatingBlockBuilder[ID]
       blocks.foreach(builder.merge)
       builder.build()
