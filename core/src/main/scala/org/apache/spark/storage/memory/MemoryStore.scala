@@ -215,8 +215,6 @@ private[spark] class MemoryStore(
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (values.hasNext && keepUnrolling) {
-      // val item = values.next()
-      // mylogger.info("MemoryStore.putIteratorAsValues " + blockId + " values.next " + item)
       vector += values.next()
       if (elementsUnrolled % memoryCheckPeriod == 0) {
         // If our vector's size has exceeded the threshold, request more memory

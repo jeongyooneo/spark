@@ -46,6 +46,7 @@ import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
+import org.apache.spark.util.collection.SizeTrackingVector
 import org.apache.spark.util.io.ChunkedByteBuffer
 
 /* Class for returning a fetched block and associated metrics. */
@@ -586,8 +587,11 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
-        } else {
+        } else if (!level.useDisagg) {
           handleLocalReadFailure(blockId)
+        } else {
+          releaseLock(blockId)
+          None
         }
     }
   }
@@ -918,7 +922,6 @@ private[spark] class BlockManager(
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
-
     var newLevel = StorageLevel.MEMORY_ONLY
     if ((blockId.name.contains("rdd_2_") ||
         blockId.name.contains("rdd_17_"))
@@ -938,6 +941,7 @@ private[spark] class BlockManager(
       case _ =>
         // Need to compute the block.
     }
+
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, newLevel, classTag, keepReadLock = true) match {
       case None =>
@@ -1310,6 +1314,8 @@ private[spark] class BlockManager(
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
                 size = diskStore.getSize(blockId)
+              } else if (level.useDisagg) {
+                putDisaggValues(blockId, iter)
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1338,9 +1344,6 @@ private[spark] class BlockManager(
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
         }
         size = diskStore.getSize(blockId)
-      } else if (level.useDisagg) {
-        // TODO: Write cached data to crail-managed disaggregated memory
-        putDisaggValues(blockId, iterator())
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)

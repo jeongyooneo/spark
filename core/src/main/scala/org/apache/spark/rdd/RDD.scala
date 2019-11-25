@@ -338,6 +338,29 @@ abstract class RDD[T: ClassTag](
       })
   }
 
+  private[spark] def createCachedAncestorsWithSize: OpenHashMap[RDD[_], Int] = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]()
+    val ret = new OpenHashMap[RDD[_], Int]()
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(cachedAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    cachedAncestors.filterNot(_ == this)
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+      .foreach(cachedAncestor => ret(cachedAncestor) = 0)
+    ret
+  }
+
   private[spark] def createCachedAncestors: Seq[RDD[_]] = {
     val cachedAncestors = new mutable.HashSet[RDD[_]]
 
