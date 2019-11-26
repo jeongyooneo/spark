@@ -33,9 +33,26 @@ object GradientBoostedTreeClassifierExample {
       .appName("GradientBoostedTreeClassifierExample")
       .getOrCreate()
 
+    println("Arguments " + args)
+
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
+    var numCategories: Int = 10
+    var depth = 10
+    var iter = 10
+    var isCacheSet = false
+
     // $example on$
     // Load and parse the data file, converting it to a DataFrame.
     val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+
+    if (args.length >= 4) {
+      numCategories = args(0).toInt
+      depth = args(1).toInt
+      iter = args(2).toInt
+      isCacheSet = args(3).toBoolean
+      path = args(4)
+    }
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
@@ -48,7 +65,7 @@ object GradientBoostedTreeClassifierExample {
     val featureIndexer = new VectorIndexer()
       .setInputCol("features")
       .setOutputCol("indexedFeatures")
-      .setMaxCategories(4)
+      .setMaxCategories(numCategories)
       .fit(data)
 
     // Split the data into training and test sets (30% held out for testing).
@@ -58,7 +75,9 @@ object GradientBoostedTreeClassifierExample {
     val gbt = new GBTClassifier()
       .setLabelCol("indexedLabel")
       .setFeaturesCol("indexedFeatures")
-      .setMaxIter(10)
+      .setMaxIter(iter)
+      .setMaxDepth(depth)
+      .setCacheNodeIds(isCacheSet)
 
     // Convert indexed labels back to original labels.
     val labelConverter = new IndexToString()
