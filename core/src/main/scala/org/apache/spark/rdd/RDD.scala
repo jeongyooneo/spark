@@ -212,8 +212,10 @@ abstract class RDD[T: ClassTag](
    * @return This RDD.
    */
   def unpersist(blocking: Boolean = true): this.type = {
-    logInfo("Removing RDD " + id + " from persistence list")
-    sc.unpersistRDD(id, blocking)
+    if (storageLevel != StorageLevel.DISAGG) {
+      logInfo("Removing RDD " + id + " from persistence list")
+      sc.unpersistRDD(id, blocking)
+    }
     storageLevel = StorageLevel.NONE
     this
   }
@@ -312,6 +314,96 @@ abstract class RDD[T: ClassTag](
     ancestors.filterNot(_ == this).toSeq
   }
 
+  private[spark] def printAllAncestors: Unit = {
+    val allAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(allAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        allAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = allAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor =>
+      if (ancestor.getStorageLevel != StorageLevel.NONE) {
+        logInfo("jy: All cached ancestors of " + name + " " + id + ": "
+          + ancestor.name + " " + ancestor.id)
+      })
+  }
+
+  private[spark] def createCachedAncestors: Seq[RDD[_]] = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(cachedAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    cachedAncestors.filterNot(_ == this).toSeq
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+  }
+
+  private[spark] def printAllCachedAncestors: Unit = {
+    val allCachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(allCachedAncestors.contains)
+      val cachedAllParentsNotVisited =
+        parentsNotVisited.filter(parent => parent.getStorageLevel != StorageLevel.NONE)
+      cachedAllParentsNotVisited.foreach { parent =>
+        allCachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = allCachedAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor =>
+      logInfo("jy: All cached ancestors of " + name + " " + id + ": "
+        + ancestor.name + " " + ancestor.id))
+  }
+
+  private[spark] def printNarrowAncestors: Unit = {
+    val ancestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val narrowDependencies = rdd.dependencies.filter(_.isInstanceOf[NarrowDependency[_]])
+      val narrowParents = narrowDependencies.map(_.rdd)
+      val narrowParentsNotVisited = narrowParents.filterNot(ancestors.contains)
+      narrowParentsNotVisited.foreach { parent =>
+        ancestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = ancestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor => logInfo("jy: Narrow ancestors of " + name + " " + id + ": "
+      + ancestor.name + " " + ancestor.id)
+    )
+  }
+
   /**
    * Return the cached ancestors of the given RDD that are related to it
    * only through a sequence of narrow dependencies.
@@ -361,7 +453,8 @@ abstract class RDD[T: ClassTag](
     val blockId = RDDBlockId(id, partition.index)
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
-    SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
+    SparkEnv.get.blockManager.getOrElseUpdate(context,
+      blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
       computeOrReadCheckpoint(partition, context)
     }) match {
