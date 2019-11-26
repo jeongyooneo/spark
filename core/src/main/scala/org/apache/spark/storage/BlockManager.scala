@@ -922,12 +922,14 @@ private[spark] class BlockManager(
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
+    /*
     var newLevel = StorageLevel.MEMORY_ONLY
     if ((blockId.name.contains("rdd_2_") ||
         blockId.name.contains("rdd_17_"))
        && level.useMemory) {
       newLevel = StorageLevel.DISAGG
     }
+    */
 
     val disaggRecomputeStart = System.nanoTime
     if (blockExists(blockId)) {
@@ -943,11 +945,11 @@ private[spark] class BlockManager(
     }
 
     // Initially we hold no locks on this block.
-    doPutIterator(blockId, makeIterator, newLevel, classTag, keepReadLock = true) match {
+    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
-        if (newLevel.useDisagg) {
+        if (level.useDisagg) {
           val blockResult = getDisaggValues(blockId).getOrElse {
             releaseLock(blockId)
             throw new SparkException(s"get() from disagg failed for block $blockId")

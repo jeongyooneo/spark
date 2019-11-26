@@ -40,9 +40,9 @@ object RandomForestClassifierExample {
     var isCacheSet = false
 
     if (args.length >= 3) {
-      numCategories = Int(args(0))
-      numTrees = Int(args(1))
-      isCacheSet = Boolean(args(2))
+      numCategories = args(0).toInt
+      numTrees = args(1).toInt
+      isCacheSet = args(2).toBoolean
     }
 
     println("Num categories " + numCategories + ", numTrees: " + numTrees + ", cache" + isCacheSet)
