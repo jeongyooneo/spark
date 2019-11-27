@@ -121,6 +121,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @Override
   public void write(Iterator<Product2<K, V>> records) throws IOException {
+    logger.info("Entered BypassMergeSortShuffleWriter.write()");
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];

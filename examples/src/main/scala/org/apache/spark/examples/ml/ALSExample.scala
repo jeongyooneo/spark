@@ -43,6 +43,9 @@ object ALSExample {
   // $example off$
 
   def main(args: Array[String]) {
+    @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+    val startTime = System.nanoTime
+
     val spark = SparkSession
       .builder
       .appName("ALSExample")
@@ -50,7 +53,7 @@ object ALSExample {
     import spark.implicits._
 
     // $example on$
-    val ratings = spark.read.textFile("data/mllib/als/sample_movielens_ratings.txt")
+    val ratings = spark.read.textFile("data/mllib/als/output")
       .map(parseRating)
       .toDF()
     val Array(training, test) = ratings.randomSplit(Array(0.8, 0.2))
@@ -81,10 +84,14 @@ object ALSExample {
     // Generate top 10 user recommendations for each movie
     val movieRecs = model.recommendForAllItems(10)
     // $example off$
-    userRecs.show()
-    movieRecs.show()
+    // userRecs.show()
+    // movieRecs.show()
+
+    // Thread.sleep(1000000)
 
     spark.stop()
+    val jct = (System.nanoTime() - startTime) / 1000000
+    mylogger.info("ALS JCT: " + jct + " ms")
   }
 }
 // scalastyle:on println

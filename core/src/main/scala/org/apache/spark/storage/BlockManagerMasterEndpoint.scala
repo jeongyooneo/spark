@@ -23,8 +23,7 @@ import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
-
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
@@ -527,12 +526,14 @@ private[spark] class BlockManagerInfo(
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
         if (blockExists) {
-          logInfo(s"Updated $blockId in memory on ${blockManagerId.hostPort}" +
+          logInfo(s"Updated $blockId in memory on " +
+            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(memSize)}," +
             s" original size: ${Utils.bytesToString(originalMemSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         } else {
-          logInfo(s"Added $blockId in memory on ${blockManagerId.hostPort}" +
+          logInfo(s"Added $blockId in memory on " +
+            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
@@ -547,6 +548,15 @@ private[spark] class BlockManagerInfo(
         } else {
           logInfo(s"Added $blockId on disk on ${blockManagerId.hostPort}" +
             s" (size: ${Utils.bytesToString(diskSize)})")
+        }
+      }
+      if (storageLevel.useDisagg) {
+        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
+        _blocks.put(blockId, blockStatus)
+        if (blockExists) {
+          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}")
+        } else {
+          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}")
         }
       }
       if (!blockId.isBroadcast && blockStatus.isCached) {
@@ -564,6 +574,9 @@ private[spark] class BlockManagerInfo(
       if (originalLevel.useDisk) {
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
+      }
+      if (originalLevel.useDisagg) {
+        logInfo(s"Removed $blockId on ${blockManagerId.hostPort} from disagg")
       }
     }
   }

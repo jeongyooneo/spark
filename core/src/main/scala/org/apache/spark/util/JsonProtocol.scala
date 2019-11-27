@@ -969,7 +969,7 @@ private[spark] object JsonProtocol {
     val useMemory = (json \ "Use Memory").extract[Boolean]
     val deserialized = (json \ "Deserialized").extract[Boolean]
     val replication = (json \ "Replication").extract[Int]
-    StorageLevel(useDisk, useMemory, deserialized, replication)
+    StorageLevel(useDisk, useMemory, false, deserialized, replication)
   }
 
   def blockStatusFromJson(json: JValue): BlockStatus = {
