@@ -57,6 +57,7 @@ import org.apache.spark.storage.BlockManagerMessages.TriggerThreadDump
 import org.apache.spark.ui.{ConsoleProgressBar, SparkUI}
 import org.apache.spark.ui.jobs.JobProgressListener
 import org.apache.spark.util._
+import org.apache.spark.util.collection.OpenHashMap
 
 /**
  * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
@@ -269,6 +270,11 @@ class SparkContext(config: SparkConf) extends Logging {
 
   private[spark] val perJobDisaggLineage: HashMap[Int, Seq[RDD[_]]] =
     new mutable.HashMap[Int, Seq[RDD[_]]]()
+
+  private[spark] val perJobDisaggLineageWithSize: HashMap[Int, OpenHashMap[RDD[_], Int]] =
+    new mutable.HashMap[Int, OpenHashMap[RDD[_], Int]]()
+
+  def getDrddLineage: HashMap[Int, OpenHashMap[RDD[_], Int]] = perJobDisaggLineageWithSize
 
   private[spark] def jobProgressListener: JobProgressListener = _jobProgressListener
 
@@ -1790,6 +1796,8 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   private[spark] def persistRDD(rdd: RDD[_]) {
     persistentRdds(rdd.id) = rdd
+    val rddId = rdd.id
+    logInfo(s"persist RDD $rddId")
   }
 
   /**

@@ -213,7 +213,6 @@ abstract class RDD[T: ClassTag](
    */
   def unpersist(blocking: Boolean = true): this.type = {
     if (storageLevel != StorageLevel.DISAGG) {
-      logInfo("Removing RDD " + id + " from persistence list")
       sc.unpersistRDD(id, blocking)
     }
     storageLevel = StorageLevel.NONE
@@ -336,6 +335,29 @@ abstract class RDD[T: ClassTag](
         logInfo("jy: All cached ancestors of " + name + " " + id + ": "
           + ancestor.name + " " + ancestor.id)
       })
+  }
+
+  private[spark] def createCachedAncestorsWithSize: OpenHashMap[RDD[_], Int] = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]()
+    val ret = new OpenHashMap[RDD[_], Int]()
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(cachedAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    cachedAncestors.filterNot(_ == this)
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+      .foreach(cachedAncestor => ret(cachedAncestor) = 0)
+    ret
   }
 
   private[spark] def createCachedAncestors: Seq[RDD[_]] = {

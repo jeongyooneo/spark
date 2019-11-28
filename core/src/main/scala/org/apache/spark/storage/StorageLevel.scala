@@ -172,7 +172,7 @@ object StorageLevel {
   val MEMORY_AND_DISK_SER = new StorageLevel(true, true, false, false, false)
   val MEMORY_AND_DISK_SER_2 = new StorageLevel(true, true, false, false, false, 2)
   val OFF_HEAP = new StorageLevel(true, true, false, true, false, 1)
-  val DISAGG = new StorageLevel(false, false, true, false, false)
+  val DISAGG = new StorageLevel(false, true, true, false, true)
 
   /**
    * :: DeveloperApi ::
