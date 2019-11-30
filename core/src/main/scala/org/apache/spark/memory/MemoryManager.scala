@@ -237,3 +237,15 @@ private[spark] abstract class MemoryManager(
     }
   }
 }
+
+object MemoryManager {
+
+  def apply(conf: SparkConf, numCores: Int): MemoryManager = {
+    val memoryManagerType = conf.get("spark.memory.memoryManager", "Unified")
+    memoryManagerType match {
+      case "Unified" => UnifiedMemoryManager(conf, numCores)
+      case "Static" => new StaticMemoryManager(conf, numCores)
+      case _ => throw new RuntimeException("Invalid  memoryManagerType " + memoryManagerType)
+    }
+  }
+}
