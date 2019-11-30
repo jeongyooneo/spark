@@ -22,18 +22,11 @@ import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.util.io.ChunkedByteBuffer
 
  /**
- * This policy does not cache the read data from disagg store into memory.
+ * This policy does not cache the data into memory.
  */
 class NoCachingPolicy(memoryStore: MemoryStore)
                   extends DisaggCachingPolicy(memoryStore) {
 
-  /**
-   * Attempts to cache spilled values read from disagg into the MemoryStore in order to speed up
-   * subsequent reads. This method requires the caller to hold a read lock on the block.
-   *
-   * @return a copy of the iterator. The original iterator passed this method should no longer
-   *         be used after this method returns.
-   */
   override def maybeCacheDisaggValuesInMemory[T](
                  blockInfo: BlockInfo,
                  blockId: BlockId,
@@ -43,15 +36,6 @@ class NoCachingPolicy(memoryStore: MemoryStore)
     disaggIterator
   }
 
-  /**
-   * Attempts to cache spilled bytes read from disagg into the MemoryStore in order to speed up
-   * subsequent reads. This method requires the caller to hold a read lock on the block.
-   *
-   * @return a copy of the bytes from the memory store if the put succeeded, otherwise None.
-   *         If this returns bytes from the memory store then the original disk store bytes will
-   *         automatically be disposed and the caller should not continue to use them. Otherwise,
-   *         if this returns None then the original disk store bytes will be unaffected.
-   */
   override def maybeCacheDisaggBytesInMemory(
                  blockInfo: BlockInfo,
                  blockId: BlockId,

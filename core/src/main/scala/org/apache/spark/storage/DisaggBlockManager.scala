@@ -186,18 +186,42 @@ private[spark] class DisaggBlockManager(
 abstract class DisaggCachingPolicy(
            memoryStore: MemoryStore) {
 
+
+  /**
+   * Attempts to cache spilled values read from disagg into the MemoryStore in order to speed up
+   * subsequent reads. This method requires the caller to hold a read lock on the block.
+   *
+   * @return a copy of the iterator. The original iterator passed this method should no longer
+   *         be used after this method returns.
+   */
   def maybeCacheDisaggValuesInMemory[T](
       blockInfo: BlockInfo,
       blockId: BlockId,
       level: StorageLevel,
       disaggIterator: Iterator[T]): Iterator[T]
 
+  /**
+   * Attempts to cache spilled bytes read from disagg into the MemoryStore in order to speed up
+   * subsequent reads. This method requires the caller to hold a read lock on the block.
+   *
+   * @return a copy of the bytes from the memory store if the put succeeded, otherwise None.
+   *         If this returns bytes from the memory store then the original disk store bytes will
+   *         automatically be disposed and the caller should not continue to use them. Otherwise,
+   *         if this returns None then the original disk store bytes will be unaffected.
+   */
   def maybeCacheDisaggBytesInMemory(
       blockInfo: BlockInfo,
       blockId: BlockId,
       level: StorageLevel,
       disaggData: BlockData): Option[ChunkedByteBuffer]
 
+
+   /**
+     * This is called when storing the block.
+     * If it returns true, blockManager will store the block into disagg.
+     * @param blockId block id to be stored
+     * @return true if it should be stored in disagg
+     */
   def shouldBlockStoredToDisagg(blockId: BlockId): Boolean
 
 }
