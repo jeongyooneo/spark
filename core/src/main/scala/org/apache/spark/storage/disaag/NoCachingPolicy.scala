@@ -44,8 +44,4 @@ class NoCachingPolicy(memoryStore: MemoryStore)
     // do nothing
     None
   }
-
-   override def shouldBlockStoredToDisagg(blockId: BlockId): Boolean = {
-      true
-   }
  }

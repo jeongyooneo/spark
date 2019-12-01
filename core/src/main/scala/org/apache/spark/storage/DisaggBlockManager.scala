@@ -214,14 +214,6 @@ abstract class DisaggCachingPolicy(
       disaggData: BlockData): Option[ChunkedByteBuffer]
 
 
-  /**
-   * This is called when storing the block.
-   * If it returns true, blockManager will store the block into disagg.
-   * @param blockId block id to be stored
-   * @return true if it should be stored in disagg
-   */
-  def shouldBlockStoredToDisagg(blockId: BlockId): Boolean
-
 }
 
 object DisaggCachingPolicy {
