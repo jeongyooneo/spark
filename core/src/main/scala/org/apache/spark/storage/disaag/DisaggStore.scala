@@ -75,7 +75,7 @@ private[spark] class DisaggStore(
       file.getBufferedOutputStream(file.getCapacity)))
     var threwException: Boolean = true
     try {
-      writeFunc()
+      writeFunc(out)
       blockSizes.put(blockId.name, out.getCount)
       threwException = false
     } finally {

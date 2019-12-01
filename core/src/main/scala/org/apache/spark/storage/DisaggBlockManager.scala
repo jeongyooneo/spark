@@ -32,7 +32,7 @@ private[spark] class DisaggBlockManager(
       executorId: String) extends Logging {
 
     // For disaggregated memory store
-  val crailConf = new CrailConfiguration()
+  val crailConf = CrailConfiguration.createEmptyConfiguration()
   var fs : CrailStore = _
   fs = CrailStore.newInstance(crailConf)
   var fileCache : ConcurrentHashMap[String, CrailBlockFile] = _
@@ -81,11 +81,9 @@ private[spark] class DisaggBlockManager(
 
     logInfo("jy: disagg: fresh file, writing " + blockId.name)
     val path = getPath(blockId)
-    try {
-      val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
-        CrailLocationClass.DEFAULT, true).get().asFile()
-      fileInfo
-    }
+    val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().asFile()
+    fileInfo
 
     /*
     var crailFile = fileCache.get(blockId.name)
@@ -216,12 +214,12 @@ abstract class DisaggCachingPolicy(
       disaggData: BlockData): Option[ChunkedByteBuffer]
 
 
-   /**
-     * This is called when storing the block.
-     * If it returns true, blockManager will store the block into disagg.
-     * @param blockId block id to be stored
-     * @return true if it should be stored in disagg
-     */
+  /**
+   * This is called when storing the block.
+   * If it returns true, blockManager will store the block into disagg.
+   * @param blockId block id to be stored
+   * @return true if it should be stored in disagg
+   */
   def shouldBlockStoredToDisagg(blockId: BlockId): Boolean
 
 }

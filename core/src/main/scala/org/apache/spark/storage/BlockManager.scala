@@ -519,20 +519,12 @@ private[spark] class BlockManager(
     info.size = disaggData.size
 
     val iterToReturn: Iterator[Any] = {
-        val disaggValues = serializerManager.dataDeserializeStream(
+        serializerManager.dataDeserializeStream(
           blockId,
           disaggData.toInputStream())(info.classTag)
-        // cache or not?
-        disaggCachingPolicy
-          .maybeCacheDisaggValuesInMemory(info, blockId, info.level, disaggValues)
     }
 
-    /*
-    val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
-      releaseLockAndDispose(blockId, disaggData, taskAttemptId)
-    })
-    */
-
+    // We do not cache this value because it is retrieved from remote disagg
     Some(new BlockResult(iterToReturn, DataReadMethod.Network, disaggData.size))
   }
 
@@ -583,6 +575,34 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
+        } else if (level.useDisagg && disaggStore.contains(blockId)) {
+          val disaggFetchStart = System.nanoTime
+
+          logInfo(s"Found block $blockId in disagg memory")
+
+          val disaggData = disaggStore.getBytes(blockId)
+          val iterToReturn: Iterator[Any] = {
+            if (level.deserialized) {
+              val disaggValues = serializerManager.dataDeserializeStream(
+                blockId,
+                disaggData.toInputStream())(info.classTag)
+              disaggCachingPolicy
+                .maybeCacheDisaggValuesInMemory(info, blockId, level, disaggValues)
+            } else {
+              val stream = disaggCachingPolicy
+                .maybeCacheDisaggBytesInMemory(info, blockId, level, disaggData)
+                .map { _.toInputStream(dispose = false) }
+                .getOrElse { disaggData.toInputStream() }
+              serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
+            }
+          }
+          val disaggFetchTime = System.nanoTime - disaggFetchStart
+          logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
+
+          val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
+            releaseLockAndDispose(blockId, disaggData, taskAttemptId)
+          })
+          Some(new BlockResult(ci, DataReadMethod.Network, info.size))
         } else if (!level.useDisagg) {
           handleLocalReadFailure(blockId)
         } else {
@@ -752,6 +772,13 @@ private[spark] class BlockManager(
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
 
+    val local = getLocalValues(blockId)
+    if (local.isDefined) {
+      logInfo(s"Found block $blockId locally")
+      return local
+    }
+
+    logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
     val disaggFetchStart = System.nanoTime
     val disagg = getDisaggValues[T](blockId)
 
@@ -761,14 +788,6 @@ private[spark] class BlockManager(
       logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
       return disagg
     }
-
-    val local = getLocalValues(blockId)
-    if (local.isDefined) {
-      logInfo(s"Found block $blockId locally")
-      return local
-    }
-    logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
-
 
     val remote = getRemoteValues[T](blockId)
 
@@ -842,19 +861,6 @@ private[spark] class BlockManager(
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
-
-        // first we try to fetch data from disagg
-        if (level.useDisagg) {
-          val blockResult = getDisaggValues(blockId)
-          if (blockResult.isDefined) {
-            val disaggRecomputeThenLocalFetch = System.nanoTime - disaggRecomputeStart
-            logInfo("jy: disagg recompute then local fetch from "
-              + executorId + " " + context.stageId() + " " + context.taskAttemptId()
-              + " " + blockId + " succeeded, " + disaggRecomputeThenLocalFetch)
-            return Left(blockResult.get)
-          }
-        }
-
         val blockResult = getLocalValues(blockId).getOrElse {
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
@@ -965,19 +971,7 @@ private[spark] class BlockManager(
 
       val size = bytes.size
 
-
-      var storedInDisagg = false
-
-      // We first try to put data to disagg according to the policy
-      if (level.useDisagg) {
-        if (disaggCachingPolicy.shouldBlockStoredToDisagg(blockId)) {
-          logWarning(s"Persisting block $blockId to disagg instead.")
-          disaggStore.putBytes(blockId, bytes)
-          storedInDisagg = true
-        }
-      }
-
-      if (level.useMemory && !storedInDisagg) {
+      if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         val putSucceeded = if (level.deserialized) {
@@ -1002,6 +996,7 @@ private[spark] class BlockManager(
             }
           })
         }
+
         if (!putSucceeded && level.useDisk) {
           logWarning(s"Persisting block $blockId to disk instead.")
           diskStore.putBytes(blockId, bytes)
@@ -1014,7 +1009,7 @@ private[spark] class BlockManager(
 
       } else if (level.useDisk) {
         diskStore.putBytes(blockId, bytes)
-      } else if (level.useDisagg && !storedInDisagg) {
+      } else if (level.useDisagg) {
         disaggStore.putBytes(blockId, bytes)
       }
 
@@ -1150,26 +1145,7 @@ private[spark] class BlockManager(
       // Size of the block in bytes
       var size = 0L
 
-      var storedInDisagg = false
-      if (level.useDisagg) {
-        // we directly keep the block to disagg, instead of memory
-        if (disaggCachingPolicy.shouldBlockStoredToDisagg(blockId)) {
-          logWarning(s"tg: Persisting block $blockId to disagg instead.")
-
-          disaggStore.put(blockId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            if (level.deserialized) {
-              serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
-            } else {
-              throw new RuntimeException("data should be deserialized... haha")
-            }
-          }
-          size = disaggStore.getSize(blockId)
-          storedInDisagg = true
-        }
-      }
-
-      if (level.useMemory && !storedInDisagg) {
+      if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         if (level.deserialized) {
