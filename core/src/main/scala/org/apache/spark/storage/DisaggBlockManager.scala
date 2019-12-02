@@ -23,7 +23,7 @@ import org.apache.crail.conf.CrailConfiguration
 import org.apache.crail._
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.disaag.{CrailBlockFile, NoCachingPolicy}
+import org.apache.spark.storage.disaag.{CrailBlockFile, LocalCachingPolicy, NoCachingPolicy}
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.util.io.ChunkedByteBuffer
 
@@ -32,7 +32,7 @@ private[spark] class DisaggBlockManager(
       executorId: String) extends Logging {
 
     // For disaggregated memory store
-  val crailConf = CrailConfiguration.createEmptyConfiguration()
+  val crailConf = new CrailConfiguration()
   var fs : CrailStore = _
   fs = CrailStore.newInstance(crailConf)
   var fileCache : ConcurrentHashMap[String, CrailBlockFile] = _
@@ -182,7 +182,7 @@ private[spark] class DisaggBlockManager(
 }
 
 abstract class DisaggCachingPolicy(
-           memoryStore: MemoryStore) {
+           memoryStore: MemoryStore) extends Logging{
 
 
   /**
@@ -219,10 +219,12 @@ abstract class DisaggCachingPolicy(
 object DisaggCachingPolicy {
 
   def apply(conf: SparkConf,
-            memoryStore: MemoryStore): DisaggCachingPolicy = {
+            memoryStore: MemoryStore,
+            blockInfoManager: BlockInfoManager): DisaggCachingPolicy = {
      val cachingPolicyType = conf.get("spark.disagg.cachingpolicy", "None")
      cachingPolicyType match {
       case "None" => new NoCachingPolicy(memoryStore)
+      case "Local" => new LocalCachingPolicy(memoryStore, blockInfoManager)
       case _ => throw new RuntimeException("Invalid caching policy " + cachingPolicyType)
     }
   }

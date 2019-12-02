@@ -38,6 +38,8 @@ private[spark] class StaticMemoryManager(
     maxOnHeapStorageMemory,
     maxOnHeapExecutionMemory) {
 
+  logInfo("tg: StaticMemoryManager started")
+
   def this(conf: SparkConf, numCores: Int) {
     this(
       conf,

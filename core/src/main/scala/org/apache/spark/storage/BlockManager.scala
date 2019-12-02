@@ -155,7 +155,7 @@ private[spark] class BlockManager(
   // Disaggregation storage
   private[spark] val disaggStore = new DisaggStore(conf, disaggBlockManager, executorId)
   // Disaggregation caching policy
-  val disaggCachingPolicy = DisaggCachingPolicy(conf, memoryStore)
+  val disaggCachingPolicy = DisaggCachingPolicy(conf, memoryStore, blockInfoManager)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
   // However, since we use this only for reporting and logging, what we actually want here is
