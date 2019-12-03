@@ -587,9 +587,9 @@ private[spark] class BlockManagerInfo(
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = 0, disaggSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
-          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}")
+          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
         } else {
-          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}")
+          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
         }
       }
       if (!blockId.isBroadcast && blockStatus.isCached) {

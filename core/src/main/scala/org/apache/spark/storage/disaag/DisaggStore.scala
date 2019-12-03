@@ -46,7 +46,6 @@ private[spark] class DisaggStore(
   private val blockSizes = new ConcurrentHashMap[String, Long]()
 
   def getSize(blockId: BlockId): Long = {
-
     if (blockSizes.get(blockId.name, 0) == 0) {
       val size = blockManagerMaster.getBlockSize(blockId)
       logInfo(s"tg: Getting disagg block size of $blockId, size: $size")
@@ -66,7 +65,6 @@ private[spark] class DisaggStore(
       throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     }
 
-    logInfo(s"Attempting to put block $blockId  to disagg")
 
     val startTime = System.currentTimeMillis
     val file = disaggManager.createFile(blockId)
@@ -76,6 +74,7 @@ private[spark] class DisaggStore(
     try {
       writeFunc(out)
       blockSizes.put(blockId.name, out.getCount)
+      logInfo(s"Attempting to put block $blockId  to disagg, size: ${out.getCount}")
       threwException = false
     } finally {
       try {
