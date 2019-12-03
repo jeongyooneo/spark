@@ -20,7 +20,6 @@ package org.apache.spark.storage.disaag
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
-import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -43,19 +42,10 @@ private[spark] class DisaggStore(
   extends Logging {
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
-  private val blockSizes = new ConcurrentHashMap[String, Long]()
+  // private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
 
-  def getSize(blockId: BlockId): Long = {
-    if (!blockSizes.contains(blockId.name)) {
-      val size = blockManagerMaster.getBlockSize(blockId)
-      logInfo(s"tg: Getting disagg block size from remote $blockId, " +
-        s"size: $size, executor ${executorId}")
-      size
-    } else {
-      logInfo(s"tg: Getting disagg block size of $blockId, " +
-        s"size: ${blockSizes.get(blockId.name)}, executor ${executorId}")
-      blockSizes.get(blockId.name)
-    }
+  def getSize(blockId: BlockId): Long = synchronized {
+    disaggManager.getSize(blockId)
   }
 
   /**
@@ -63,7 +53,7 @@ private[spark] class DisaggStore(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
+  def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = synchronized {
     if (contains(blockId)) {
       throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     }
@@ -76,9 +66,10 @@ private[spark] class DisaggStore(
     var threwException: Boolean = true
     try {
       writeFunc(out)
-      blockSizes.put(blockId.name, out.getCount)
+      disaggManager.writeEnd(blockId, out.getCount)
+      // blockSizes.put(blockId, out.getCount)
       logInfo(s"Attempting to put block $blockId  " +
-        s"to disagg, size: ${out.getCount}, executor ${executorId}")
+        s"to disagg, size: ${out.getCount}, executor ${executorId}, blockSizes: ${out.getCount}")
       threwException = false
     } finally {
       try {
@@ -118,7 +109,7 @@ private[spark] class DisaggStore(
     logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started, size $blockSize")
 
     if (blockSize <= 0) {
-      throw new RuntimeException("Block size should be greater than 0 for getting bytes $blockId")
+      throw new RuntimeException("Block size should be greater than 0 for getting bytes " + blockId)
     }
 
     val disaggFetchStart = System.nanoTime
@@ -139,7 +130,6 @@ private[spark] class DisaggStore(
   }
 
   def remove(blockId: BlockId): Boolean = {
-    blockSizes.remove(blockId.name)
     disaggManager.remove(blockId)
   }
 

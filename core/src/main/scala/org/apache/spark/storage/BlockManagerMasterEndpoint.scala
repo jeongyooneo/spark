@@ -80,6 +80,7 @@ class BlockManagerMasterEndpoint(
       logInfo(s"tg: Getting disagg block  $blockId size $size in master")
       size.get
     } else {
+      logInfo(s"tg: No disagg block  $blockId size in master")
       0L
     }
   }
@@ -399,6 +400,8 @@ class BlockManagerMasterEndpoint(
       memSize: Long,
       diskSize: Long,
       disaggSize: Long): Boolean = {
+
+    logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.isDriver && !isLocal) {

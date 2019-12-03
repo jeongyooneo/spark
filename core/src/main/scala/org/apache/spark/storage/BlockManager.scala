@@ -43,7 +43,7 @@ import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
-import org.apache.spark.storage.disaag.DisaggStore
+import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggCachingPolicy, DisaggStore}
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
@@ -115,6 +115,7 @@ private[spark] class BlockManager(
     executorId: String,
     rpcEnv: RpcEnv,
     val master: BlockManagerMaster,
+    val disaggManager: DisaggBlockManager,
     val serializerManager: SerializerManager,
     val conf: SparkConf,
     memoryManager: MemoryManager,
@@ -150,10 +151,8 @@ private[spark] class BlockManager(
   private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
   memoryManager.setMemoryStore(memoryStore)
 
-  // Disaggregation storage manager
-  val disaggBlockManager = new DisaggBlockManager(conf, executorId)
   // Disaggregation storage
-  private[spark] val disaggStore = new DisaggStore(conf, master, disaggBlockManager, executorId)
+  private[spark] val disaggStore = new DisaggStore(conf, master, disaggManager, executorId)
   // Disaggregation caching policy
   val disaggCachingPolicy = DisaggCachingPolicy(conf, memoryStore, blockInfoManager)
 

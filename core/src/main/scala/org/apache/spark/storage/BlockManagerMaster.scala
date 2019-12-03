@@ -74,6 +74,10 @@ class BlockManagerMaster(
       memSize: Long,
       diskSize: Long,
       disaggSize: Long): Boolean = {
+
+    if (disaggSize > 0) {
+      logInfo(s"Update disagg block info $blockId, size $disaggSize")
+    }
     val res = driverEndpoint.askSync[Boolean](
       UpdateBlockInfo(blockManagerId, blockId, storageLevel, memSize, diskSize, disaggSize))
     logDebug(s"Updated info of block $blockId")
@@ -252,4 +256,8 @@ class BlockManagerMaster(
 
 private[spark] object BlockManagerMaster {
   val DRIVER_ENDPOINT_NAME = "BlockManagerMaster"
+}
+
+private[spark] object DisaggBlockManager {
+  val DRIVER_ENDPOINT_NAME = "DisaggBlockManager"
 }

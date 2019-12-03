@@ -37,6 +37,7 @@ import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
+import org.apache.spark.storage.disaag.DisaggBlockManager
 import org.apache.spark.util.{RpcUtils, Utils}
 
 import scala.collection.mutable
@@ -349,9 +350,14 @@ object SparkEnv extends Logging {
       new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
       conf, isDriver)
 
+    val disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+      DisaggBlockManager.DRIVER_ENDPOINT_NAME,
+      new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus)),
+      conf)
+
     // NB: blockManager is not valid until initialize() is called later.
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
-      serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
+      disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
       blockTransferService, securityManager, numUsableCores)
 
     val metricsSystem = if (isDriver) {
