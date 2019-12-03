@@ -105,7 +105,7 @@ class DisaggBlockManagerEndpoint(
       logWarning(s"No disagg block for writing $blockId")
       false
     } else {
-      info.synchronized {
+      info.get.synchronized {
         info.get.size = size
         info.get.writeDone = true
         info.get.notifyAll()
@@ -123,7 +123,7 @@ class DisaggBlockManagerEndpoint(
       logInfo(s"disagg not containing $blockId")
       false
     } else {
-      info.synchronized {
+      info.get.synchronized {
         while (!info.get.writeDone) {
           logInfo(s"Waiting for disagg block writing $blockId")
           info.get.wait()
