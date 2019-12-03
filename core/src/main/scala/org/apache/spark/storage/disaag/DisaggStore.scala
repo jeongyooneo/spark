@@ -46,11 +46,14 @@ private[spark] class DisaggStore(
   private val blockSizes = new ConcurrentHashMap[String, Long]()
 
   def getSize(blockId: BlockId): Long = {
-    if (blockSizes.get(blockId.name, 0) == 0) {
+    if (!blockSizes.contains(blockId.name)) {
       val size = blockManagerMaster.getBlockSize(blockId)
-      logInfo(s"tg: Getting disagg block size of $blockId, size: $size")
+      logInfo(s"tg: Getting disagg block size from remote $blockId, " +
+        s"size: $size, executor ${executorId}")
       size
     } else {
+      logInfo(s"tg: Getting disagg block size of $blockId, " +
+        s"size: ${blockSizes.get(blockId.name)}, executor ${executorId}")
       blockSizes.get(blockId.name)
     }
   }
@@ -74,7 +77,8 @@ private[spark] class DisaggStore(
     try {
       writeFunc(out)
       blockSizes.put(blockId.name, out.getCount)
-      logInfo(s"Attempting to put block $blockId  to disagg, size: ${out.getCount}")
+      logInfo(s"Attempting to put block $blockId  " +
+        s"to disagg, size: ${out.getCount}, executor ${executorId}")
       threwException = false
     } finally {
       try {
