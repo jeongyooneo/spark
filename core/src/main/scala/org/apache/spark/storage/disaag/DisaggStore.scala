@@ -44,7 +44,7 @@ private[spark] class DisaggStore(
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
   // private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
 
-  def getSize(blockId: BlockId): Long = synchronized {
+  def getSize(blockId: BlockId): Long = {
     disaggManager.getSize(blockId)
   }
 
@@ -53,7 +53,7 @@ private[spark] class DisaggStore(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = synchronized {
+  def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
     if (contains(blockId)) {
       throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     }
