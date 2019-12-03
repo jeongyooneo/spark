@@ -22,7 +22,6 @@ import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
 import java.util.concurrent.ConcurrentHashMap
 
-import org.apache.crail._
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.JavaUtils
@@ -32,22 +31,13 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 import scala.reflect.ClassTag
 
-class CrailBlockFile (name: String, var file: CrailFile) {
-  def getFile() : CrailFile = {
-    return file
-  }
-
-  def update(newFile: CrailFile) : Unit = {
-    file = newFile
-  }
-}
-
 /**
  * Stores blocks in memory, either as Arrays of deserialized Java objects or as
  * serialized ByteBuffers.
  */
 private[spark] class DisaggStore(
     conf: SparkConf,
+    blockManagerMaster: BlockManagerMaster,
     disaggManager: DisaggBlockManager,
     executorId: String)
   extends Logging {
@@ -55,7 +45,22 @@ private[spark] class DisaggStore(
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
   private val blockSizes = new ConcurrentHashMap[String, Long]()
 
-  def getSize(blockId: BlockId): Long = blockSizes.get(blockId.name)
+  var blockManagerId: BlockManagerId = _
+
+  def getSize(blockId: BlockId): Long = {
+
+    if (blockSizes.get(blockId.name, 0) == 0) {
+      val size = blockManagerMaster.getBlockSize(blockManagerId, blockId)
+      logInfo("tg: Getting disagg block size of $blockManagerId: $blockId, size: $size")
+      size
+    } else {
+      blockSizes.get(blockId.name)
+    }
+  }
+
+  def setBlockManagerId(_blockManagerId: BlockManagerId): Unit = {
+    blockManagerId = _blockManagerId
+  }
 
   /**
    * Invokes the provided callback function to write the specific block.
@@ -67,7 +72,7 @@ private[spark] class DisaggStore(
       throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     }
 
-    logDebug(s"Attempting to put block $blockId")
+    logInfo(s"Attempting to put block $blockId  to disagg")
 
     val startTime = System.currentTimeMillis
     val file = disaggManager.createFile(blockId)
@@ -113,11 +118,14 @@ private[spark] class DisaggStore(
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)
 
-    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started")
+    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started, size $blockSize")
+
+    if (blockSize <= 0) {
+      throw new RuntimeException("Block size should be greater than 0 for getting bytes $blockId")
+    }
+
     val disaggFetchStart = System.nanoTime
-
     val channel = Channels.newChannel(file.getBufferedInputStream(blockSize))
-
     Utils.tryWithSafeFinally {
 
       val buf = ByteBuffer.allocate(blockSize.toInt)
@@ -131,7 +139,6 @@ private[spark] class DisaggStore(
     } {
       channel.close()
     }
-
   }
 
   def remove(blockId: BlockId): Boolean = {

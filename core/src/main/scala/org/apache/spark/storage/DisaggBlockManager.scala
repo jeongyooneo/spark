@@ -17,13 +17,11 @@
 
 package org.apache.spark.storage
 
-import java.util.concurrent.ConcurrentHashMap
-
-import org.apache.crail.conf.CrailConfiguration
 import org.apache.crail._
+import org.apache.crail.conf.CrailConfiguration
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.disaag.{CrailBlockFile, LocalCachingPolicy, NoCachingPolicy}
+import org.apache.spark.storage.disaag.{LocalCachingPolicy, NoCachingPolicy}
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.util.io.ChunkedByteBuffer
 
@@ -35,8 +33,6 @@ private[spark] class DisaggBlockManager(
   val crailConf = new CrailConfiguration()
   var fs : CrailStore = _
   fs = CrailStore.newInstance(crailConf)
-  var fileCache : ConcurrentHashMap[String, CrailBlockFile] = _
-  fileCache = new ConcurrentHashMap[String, CrailBlockFile]()
 
   val rootDir = "/spark"
   val broadcastDir = rootDir + "/broadcast"

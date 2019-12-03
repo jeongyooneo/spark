@@ -43,7 +43,7 @@ import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
-import org.apache.spark.storage.disaag.{CrailBlockFile, DisaggStore}
+import org.apache.spark.storage.disaag.DisaggStore
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
@@ -153,7 +153,7 @@ private[spark] class BlockManager(
   // Disaggregation storage manager
   val disaggBlockManager = new DisaggBlockManager(conf, executorId)
   // Disaggregation storage
-  private[spark] val disaggStore = new DisaggStore(conf, disaggBlockManager, executorId)
+  private[spark] val disaggStore = new DisaggStore(conf, master, disaggBlockManager, executorId)
   // Disaggregation caching policy
   val disaggCachingPolicy = DisaggCachingPolicy(conf, memoryStore, blockInfoManager)
 
@@ -237,6 +237,8 @@ private[spark] class BlockManager(
 
     val id =
       BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
+
+    disaggStore.setBlockManagerId(id)
 
     val idFromMaster = master.registerBlockManager(
       id,
@@ -399,7 +401,8 @@ private[spark] class BlockManager(
     blockInfoManager.get(blockId).map { info =>
       val memSize = if (memoryStore.contains(blockId)) memoryStore.getSize(blockId) else 0L
       val diskSize = if (diskStore.contains(blockId)) diskStore.getSize(blockId) else 0L
-      BlockStatus(info.level, memSize = memSize, diskSize = diskSize)
+      val disaggSize = if (disaggStore.contains(blockId)) disaggStore.getSize(blockId) else 0L
+      BlockStatus(info.level, memSize = memSize, diskSize = diskSize, disaggSize)
     }
   }
 
@@ -451,7 +454,9 @@ private[spark] class BlockManager(
     val storageLevel = status.storageLevel
     val inMemSize = Math.max(status.memSize, droppedMemorySize)
     val onDiskSize = status.diskSize
-    master.updateBlockInfo(blockManagerId, blockId, storageLevel, inMemSize, onDiskSize)
+    val overDisaggSize = status.disaggSize
+    master.updateBlockInfo(blockManagerId, blockId, storageLevel,
+      inMemSize, onDiskSize, overDisaggSize)
   }
 
   /**
@@ -467,7 +472,7 @@ private[spark] class BlockManager(
         case level =>
           val inMem = level.useMemory && memoryStore.contains(blockId)
           val onDisk = level.useDisk && diskStore.contains(blockId)
-          val overDisagg = level.useDisagg
+          val overDisagg = level.useDisagg && disaggStore.contains(blockId)
           val deserialized = if (inMem) level.deserialized else false
           val replication = if (inMem  || onDisk) level.replication else 1
           val storageLevel = StorageLevel(
@@ -479,7 +484,8 @@ private[spark] class BlockManager(
             replication = replication)
           val memSize = if (inMem) memoryStore.getSize(blockId) else 0L
           val diskSize = if (onDisk) diskStore.getSize(blockId) else 0L
-          BlockStatus(storageLevel, memSize, diskSize)
+          val disaggSize = if (overDisagg) disaggStore.getSize(blockId) else 0L
+          BlockStatus(storageLevel, memSize, diskSize, disaggSize)
       }
     }
   }

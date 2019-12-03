@@ -105,7 +105,8 @@ class StorageStatusListener(conf: SparkConf) extends SparkListener {
     val storageLevel = blockUpdated.blockUpdatedInfo.storageLevel
     val memSize = blockUpdated.blockUpdatedInfo.memSize
     val diskSize = blockUpdated.blockUpdatedInfo.diskSize
-    val blockStatus = BlockStatus(storageLevel, memSize, diskSize)
+    val disaggSize = blockUpdated.blockUpdatedInfo.disaggSize
+    val blockStatus = BlockStatus(storageLevel, memSize, diskSize, disaggSize)
     updateStorageStatus(executorId, Seq((blockId, blockStatus)))
   }
 }
