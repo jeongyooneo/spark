@@ -62,7 +62,9 @@ private[spark] class DisaggBlockManager(
   }
 
   def getSize(blockId: BlockId): Long = {
-    driverEndpoint.askSync[Long](GetSize(blockId))
+    val size = driverEndpoint.askSync[Long](GetSize(blockId))
+    logInfo(s"Disagg get block size $blockId, size $size")
+    size
   }
 
   def writeEnd(blockId: BlockId, size: Long): Boolean = {

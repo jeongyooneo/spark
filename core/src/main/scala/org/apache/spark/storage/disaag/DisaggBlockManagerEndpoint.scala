@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage
+package org.apache.spark.storage.disaag
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
-import org.apache.spark.storage.disaag.CrailManager
+import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
 import org.apache.spark.util.ThreadUtils
 

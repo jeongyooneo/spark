@@ -37,7 +37,7 @@ import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
-import org.apache.spark.storage.disaag.DisaggBlockManager
+import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggBlockManagerEndpoint}
 import org.apache.spark.util.{RpcUtils, Utils}
 
 import scala.collection.mutable
