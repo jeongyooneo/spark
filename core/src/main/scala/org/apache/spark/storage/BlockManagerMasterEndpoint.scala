@@ -416,8 +416,10 @@ class BlockManagerMasterEndpoint(
     }
 
     // update disagg info
-    logInfo(s"Update disagg block info $blockId size $disaggSize")
-    disaggBlockSizeInfo(blockId) = disaggSize
+    if (storageLevel.useDisagg && disaggSize > 0) {
+      logInfo(s"Update disagg block info $blockId size $disaggSize")
+      disaggBlockSizeInfo(blockId) = disaggSize
+    }
 
     blockManagerInfo(blockManagerId).updateBlockInfo(
       blockId, storageLevel, memSize, diskSize, disaggSize)
