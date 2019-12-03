@@ -238,8 +238,6 @@ private[spark] class BlockManager(
     val id =
       BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
 
-    disaggStore.setBlockManagerId(id)
-
     val idFromMaster = master.registerBlockManager(
       id,
       maxOnHeapMemory,

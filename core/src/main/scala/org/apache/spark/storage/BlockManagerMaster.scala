@@ -80,8 +80,8 @@ class BlockManagerMaster(
     res
   }
 
-  def getBlockSize(blockManagerId: BlockManagerId, blockId: BlockId): Long = {
-    driverEndpoint.askSync[Long](GetBlockSize(blockManagerId, blockId))
+  def getBlockSize(blockId: BlockId): Long = {
+    driverEndpoint.askSync[Long](GetBlockSize(blockId))
   }
 
   /** Get locations of the blockId from the driver */

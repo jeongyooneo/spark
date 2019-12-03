@@ -92,8 +92,7 @@ private[spark] object BlockManagerMessages {
     }
   }
 
-  case class GetBlockSize(blockManagerId: BlockManagerId,
-                          blockId: BlockId) extends ToBlockManagerMaster
+  case class GetBlockSize(blockId: BlockId) extends ToBlockManagerMaster
 
   case class GetLocations(blockId: BlockId) extends ToBlockManagerMaster
 

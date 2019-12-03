@@ -45,21 +45,15 @@ private[spark] class DisaggStore(
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
   private val blockSizes = new ConcurrentHashMap[String, Long]()
 
-  var blockManagerId: BlockManagerId = _
-
   def getSize(blockId: BlockId): Long = {
 
     if (blockSizes.get(blockId.name, 0) == 0) {
-      val size = blockManagerMaster.getBlockSize(blockManagerId, blockId)
-      logInfo("tg: Getting disagg block size of $blockManagerId: $blockId, size: $size")
+      val size = blockManagerMaster.getBlockSize(blockId)
+      logInfo(s"tg: Getting disagg block size of $blockId, size: $size")
       size
     } else {
       blockSizes.get(blockId.name)
     }
-  }
-
-  def setBlockManagerId(_blockManagerId: BlockManagerId): Unit = {
-    blockManagerId = _blockManagerId
   }
 
   /**

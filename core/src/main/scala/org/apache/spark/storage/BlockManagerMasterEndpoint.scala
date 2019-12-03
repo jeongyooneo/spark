@@ -47,6 +47,9 @@ class BlockManagerMasterEndpoint(
   // Mapping from block manager id to the block manager's information.
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
 
+  // disagg block size info
+  private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]
+
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
@@ -68,27 +71,17 @@ class BlockManagerMasterEndpoint(
 
   val proactivelyReplicate = conf.get("spark.storage.replication.proactive", "false").toBoolean
 
-
-  val blockSizesForDisagg = new mutable.HashMap[String, Int]
-
   logInfo("BlockManagerMasterEndpoint up")
 
-  def getBlockSize(blockManagerId: BlockManagerId,
-                   blockId: BlockId): Long = {
+  def getBlockSize(blockId: BlockId): Long = {
+    val size = disaggBlockSizeInfo.get(blockId)
 
-    val info = blockManagerInfo.get(blockManagerId)
-
-    if (info.isDefined) {
-      val status = info.get.getStatus(blockId)
-
-      if (status.isDefined) {
-        logInfo("tg: Getting disagg block  $blockId size in master: " + status.get.disaggSize)
-        return status.get.disaggSize
-      }
+    if (size.isDefined) {
+      logInfo(s"tg: Getting disagg block  $blockId size $size in master")
+      size.get
+    } else {
+      0L
     }
-
-    logInfo("tg: No disagg block $blockId size in master")
-    0
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
@@ -102,8 +95,8 @@ class BlockManagerMasterEndpoint(
         deserializedSize, size, disaggSize))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
 
-    case GetBlockSize(blockManagerId, blockId) =>
-      context.reply(getBlockSize(blockManagerId, blockId))
+    case GetBlockSize(blockId) =>
+      context.reply(getBlockSize(blockId))
 
     case GetLocations(blockId) =>
       context.reply(getLocations(blockId))
@@ -421,6 +414,10 @@ class BlockManagerMasterEndpoint(
       blockManagerInfo(blockManagerId).updateLastSeenMs()
       return true
     }
+
+    // update disagg info
+    logInfo(s"Update disagg block info $blockId size $disaggSize")
+    disaggBlockSizeInfo(blockId) = disaggSize
 
     blockManagerInfo(blockManagerId).updateBlockInfo(
       blockId, storageLevel, memSize, diskSize, disaggSize)
