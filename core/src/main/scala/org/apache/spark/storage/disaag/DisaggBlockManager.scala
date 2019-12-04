@@ -26,7 +26,7 @@ import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.util.io.ChunkedByteBuffer
 
-private[spark] class DisaggBlockManager(
+class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging with CrailManager {
 
