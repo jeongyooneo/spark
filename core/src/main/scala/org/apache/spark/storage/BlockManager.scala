@@ -20,6 +20,7 @@ package org.apache.spark.storage
 import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
+import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.mutable
@@ -40,6 +41,7 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle.ExternalShuffleClient
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
+import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
@@ -79,6 +81,55 @@ private[spark] trait BlockData {
 
   def dispose(): Unit
 
+}
+
+private[spark] class CrailBlockData(
+    val inputStream: CrailBufferedInputStream,
+    val blockSize: Long) extends BlockData {
+
+  var buffer: ChunkedByteBuffer = _
+
+  override def toInputStream(): InputStream = {
+    inputStream
+  }
+
+  override def size: Long = {
+    blockSize
+  }
+
+  override def toNetty(): AnyRef = {
+    throw new UnsupportedOperationException("Converting to netty is not supported")
+  }
+
+  override def toChunkedByteBuffer(allocator: Int => ByteBuffer): ChunkedByteBuffer = {
+    throw new UnsupportedOperationException("Converting to chunked byte")
+  }
+
+  override def toByteBuffer(): ByteBuffer = {
+    throw new UnsupportedOperationException("Converting to byte array")
+    /*
+    val channel = Channels.newChannel(inputStream)
+    Utils.tryWithSafeFinally {
+
+      val buf = ByteBuffer.allocate(blockSize.toInt)
+      JavaUtils.readFully(channel, buf)
+      buf.flip()
+      buffer = new ChunkedByteBuffer(buf)
+      buf
+    } {
+      channel.close()
+    }
+    */
+  }
+
+  override def dispose(): Unit = {
+    inputStream.close()
+    /*
+    if (buffer != null) {
+      buffer.dispose()
+    }
+    */
+  }
 }
 
 private[spark] class ByteBufferBlockData(
@@ -517,7 +568,8 @@ private[spark] class BlockManager(
     logInfo(s"Getting disagg block $blockId")
 
     // disaggregation
-    val disaggData = disaggStore.getBytes(blockId)
+    // for optimization, we use getStream rather than getByte
+    val disaggData = disaggStore.getStream(blockId)
     val info = new BlockInfo(StorageLevel.DISAGG, implicitly[ClassTag[T]], true)
     info.size = disaggData.size
 
@@ -583,15 +635,18 @@ private[spark] class BlockManager(
 
           logInfo(s"Found block $blockId in disagg memory")
 
-          val disaggData = disaggStore.getBytes(blockId)
+          var disaggData: BlockData = null.asInstanceOf
+
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
+              disaggData = disaggStore.getStream(blockId)
               val disaggValues = serializerManager.dataDeserializeStream(
                 blockId,
                 disaggData.toInputStream())(info.classTag)
               disaggCachingPolicy
                 .maybeCacheDisaggValuesInMemory(info, blockId, level, disaggValues)
             } else {
+              disaggData = disaggStore.getBytes(blockId)
               val stream = disaggCachingPolicy
                 .maybeCacheDisaggBytesInMemory(info, blockId, level, disaggData)
                 .map { _.toInputStream(dispose = false) }
@@ -599,12 +654,14 @@ private[spark] class BlockManager(
               serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
             }
           }
+
           val disaggFetchTime = System.nanoTime - disaggFetchStart
           logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
 
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
             releaseLockAndDispose(blockId, disaggData, taskAttemptId)
           })
+
           Some(new BlockResult(ci, DataReadMethod.Network, info.size))
         } else if (!level.useDisagg) {
           handleLocalReadFailure(blockId)

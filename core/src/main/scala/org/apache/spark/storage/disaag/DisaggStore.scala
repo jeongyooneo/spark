@@ -102,6 +102,19 @@ private[spark] class DisaggStore(
     }
   }
 
+  def getStream(blockId: BlockId): CrailBlockData = {
+    val file = disaggManager.getFile(blockId)
+    val blockSize = getSize(blockId)
+
+    logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup started, size $blockSize")
+
+    if (blockSize <= 0) {
+      throw new RuntimeException("Block size should be greater than 0 for getting bytes " + blockId)
+    }
+
+    new CrailBlockData(file.getBufferedInputStream(blockSize), blockSize)
+  }
+
   def getBytes(blockId: BlockId): BlockData = {
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)

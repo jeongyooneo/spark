@@ -127,6 +127,7 @@ class DisaggBlockManagerEndpoint(
         while (!info.get.writeDone) {
           logInfo(s"Waiting for disagg block writing $blockId")
           info.get.wait()
+          logInfo(s"end of Waiting for disagg block writing $blockId")
         }
       }
       true
