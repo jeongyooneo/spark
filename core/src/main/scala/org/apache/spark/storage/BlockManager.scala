@@ -635,7 +635,7 @@ private[spark] class BlockManager(
 
           logInfo(s"Found block $blockId in disagg memory")
 
-          var disaggData: BlockData = null.asInstanceOf
+          var disaggData: BlockData = null
 
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
