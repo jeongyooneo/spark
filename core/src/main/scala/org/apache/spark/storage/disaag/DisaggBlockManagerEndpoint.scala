@@ -123,6 +123,8 @@ class DisaggBlockManagerEndpoint(
       logInfo(s"disagg not containing $blockId")
       false
     } else {
+      info.writeDone
+      /*
       info.synchronized {
         while (!info.writeDone) {
           logInfo(s"Waiting for disagg block writing $blockId")
@@ -131,8 +133,8 @@ class DisaggBlockManagerEndpoint(
         }
       }
       true
+      */
     }
-
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
