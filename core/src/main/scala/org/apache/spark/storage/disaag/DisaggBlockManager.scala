@@ -24,7 +24,10 @@ import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
 import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
 import org.apache.spark.storage.memory.MemoryStore
+import org.apache.spark.util.ThreadUtils
 import org.apache.spark.util.io.ChunkedByteBuffer
+
+import scala.concurrent.duration.Duration
 
 class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
@@ -33,11 +36,17 @@ class DisaggBlockManager(
   def createFile(blockId: BlockId) : CrailFile = {
     logInfo("jy: disagg: fresh file, writing " + blockId.name)
     val path = getPath(blockId)
-    val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
-      CrailLocationClass.DEFAULT, true).get().asFile()
 
-    driverEndpoint.ask[Boolean](FileCreated(blockId))
-    fileInfo
+    val result = ThreadUtils.awaitResult(
+      driverEndpoint.ask[Boolean](FileCreated(blockId)), Duration(10000, "millis"))
+
+    if (result) {
+      val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
+        CrailLocationClass.DEFAULT, true).get().asFile()
+      fileInfo
+    } else {
+      null
+    }
   }
 
   def getFile(blockId: BlockId): CrailFile = {
@@ -68,7 +77,24 @@ class DisaggBlockManager(
   }
 
   def writeEnd(blockId: BlockId, size: Long): Boolean = {
+    logInfo(s"jy: Writing end $blockId from disagg")
     driverEndpoint.askSync[Boolean](FileWriteEnd(blockId, size))
+  }
+}
+
+abstract class DisaggStoringPolicy() extends Logging {
+
+  def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean
+
+}
+
+object DisaggStoringPolicy {
+  def apply(conf: SparkConf): DisaggStoringPolicy = {
+    val storingPolicy = conf.get("spark.disagg.storingpolicy", "Default")
+    storingPolicy match {
+      case "Default" => new DefaultDisaggStoringPolicy()
+      case _ => throw new RuntimeException("Invalid storing policy " + storingPolicy)
+    }
   }
 }
 

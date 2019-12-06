@@ -45,7 +45,7 @@ import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
-import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggCachingPolicy, DisaggStore}
+import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggCachingPolicy, DisaggStore, DisaggStoringPolicy}
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
@@ -206,6 +206,7 @@ private[spark] class BlockManager(
   private[spark] val disaggStore = new DisaggStore(conf, master, disaggManager, executorId)
   // Disaggregation caching policy
   val disaggCachingPolicy = DisaggCachingPolicy(conf, memoryStore, blockInfoManager)
+  val disaggStoringPolicy = DisaggStoringPolicy(conf)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
   // However, since we use this only for reporting and logging, what we actually want here is
@@ -1581,18 +1582,22 @@ private[spark] class BlockManager(
       }
       blockIsUpdated = true
     } else if (level.useDisagg && !disaggStore.contains(blockId)) {
-      logInfo(s"tg: Writing block $blockId to disagg")
-      data() match {
-        case Left(elements) =>
-          disaggStore.put(blockId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            serializerManager.dataSerializeStream(
-              blockId,
-              out,
-              elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
-          }
-        case Right(bytes) =>
-          disaggStore.putBytes(blockId, bytes)
+      if (disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
+        logInfo(s"tg: Writing block $blockId to disagg")
+        data() match {
+          case Left(elements) =>
+            disaggStore.put(blockId) { channel =>
+              val out = Channels.newOutputStream(channel)
+              serializerManager.dataSerializeStream(
+                blockId,
+                out,
+                elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
+            }
+          case Right(bytes) =>
+            disaggStore.putBytes(blockId, bytes)
+        }
+      } else {
+        logInfo(s"tg: Just evicting block $blockId from memory and disagg.. no caching")
       }
       blockIsUpdated = true
     }

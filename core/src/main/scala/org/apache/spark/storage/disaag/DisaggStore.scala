@@ -61,37 +61,42 @@ private[spark] class DisaggStore(
 
     val startTime = System.currentTimeMillis
     val file = disaggManager.createFile(blockId)
-    val out = new CountingWritableChannel(Channels.newChannel(
-      file.getBufferedOutputStream(file.getCapacity)))
-    var threwException: Boolean = true
-    try {
-      writeFunc(out)
-      disaggManager.writeEnd(blockId, out.getCount)
-      // blockSizes.put(blockId, out.getCount)
-      logInfo(s"Attempting to put block $blockId  " +
-        s"to disagg, size: ${out.getCount}, executor ${executorId}, blockSizes: ${out.getCount}")
-      threwException = false
-    } finally {
+
+    if (file != null) {
+      val out = new CountingWritableChannel(Channels.newChannel(
+        file.getBufferedOutputStream(file.getCapacity)))
+      var threwException: Boolean = true
       try {
-        out.close()
-      } catch {
-        case ioe: IOException =>
-          if (!threwException) {
-            threwException = true
-            throw ioe
-          }
+        writeFunc(out)
+        disaggManager.writeEnd(blockId, out.getCount)
+        // blockSizes.put(blockId, out.getCount)
+        logInfo(s"Attempting to put block $blockId  " +
+          s"to disagg, size: ${out.getCount}, executor ${executorId}, blockSizes: ${out.getCount}")
+        threwException = false
       } finally {
-         if (threwException) {
-          remove(blockId)
+        try {
+          out.close()
+        } catch {
+          case ioe: IOException =>
+            if (!threwException) {
+              threwException = true
+              throw ioe
+            }
+        } finally {
+          if (threwException) {
+            remove(blockId)
+          }
         }
       }
-    }
 
-    val finishTime = System.currentTimeMillis
-    logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
-      blockId,
-      file.getPath,
-      finishTime - startTime))
+      val finishTime = System.currentTimeMillis
+      logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
+        blockId,
+        file.getPath,
+        finishTime - startTime))
+    } else {
+      logInfo(s"File $blockId is already created ... so skip creating the file")
+    }
   }
 
   def putBytes[T: ClassTag](
