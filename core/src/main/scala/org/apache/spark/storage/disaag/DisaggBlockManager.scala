@@ -67,7 +67,13 @@ class DisaggBlockManager(
   }
 
   def blockExists(blockId: BlockId): Boolean = {
-    driverEndpoint.askSync[Boolean](Contains(blockId))
+    var result = driverEndpoint.askSync[Int](Contains(blockId))
+    while (result == 2) {
+      logInfo(s"blockExist check again $blockId")
+      Thread.sleep(1000)
+      result = driverEndpoint.askSync[Int](Contains(blockId))
+    }
+    result == 1
   }
 
   def getSize(blockId: BlockId): Long = {

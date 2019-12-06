@@ -115,24 +115,30 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
-  def contains(blockId: BlockId): Boolean = {
+  def contains(blockId: BlockId): Int = {
     val info = disaggBlockInfo.get(blockId)
-    logInfo(s"Disagg endpoint: contains: $blockId")
 
     if (info == null) {
       logInfo(s"disagg not containing $blockId")
-      false
+      0
     } else {
-      info.writeDone
+      if (!info.writeDone) {
+        logInfo(s"Waiting for disagg block writing $blockId")
+        2
+      } else {
+        logInfo(s"Disagg endpoint: contains: $blockId")
+        1
+      }
       /*
       info.synchronized {
         while (!info.writeDone) {
           logInfo(s"Waiting for disagg block writing $blockId")
-          info.wait()
-          logInfo(s"end of Waiting for disagg block writing $blockId")
+          return Waiting
+          // info.wait()
+          // logInfo(s"end of Waiting for disagg block writing $blockId")
         }
       }
-      true
+      True
       */
     }
   }
