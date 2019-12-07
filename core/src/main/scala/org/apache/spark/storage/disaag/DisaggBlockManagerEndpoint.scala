@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
+import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
@@ -27,6 +27,7 @@ import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
 import org.apache.spark.util.ThreadUtils
+
 import scala.collection._
 import scala.collection.convert.decorateAsScala._
 import scala.concurrent.ExecutionContext

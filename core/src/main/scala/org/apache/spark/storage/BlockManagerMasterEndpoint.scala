@@ -106,14 +106,14 @@ class BlockManagerMasterEndpoint(
         var memSizeForManager = 0L
         var diskSizeForManager = 0L
 
-        v.blocks.forEach((b: BlockId, v: BlockStatus) => {
-          memSizeForManager += v.memSize
-          diskSizeForManager += v.diskSize
+        for ((b: BlockId, stat: BlockStatus) <- v.blocks) {
+          memSizeForManager += stat.memSize
+          diskSizeForManager += stat.diskSize
 
-          memSize += v.memSize
-          diskSize += v.diskSize
-          disaggSize += v.disaggSize
-        })
+          memSize += stat.memSize
+          diskSize += stat.diskSize
+          disaggSize += stat.disaggSize
+        }
 
         builder.append(s"BlockManager $k: memory ${memSizeForManager/unit}, " +
           s"disk ${diskSizeForManager/unit}\n")
