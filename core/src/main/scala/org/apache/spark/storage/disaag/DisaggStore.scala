@@ -54,9 +54,9 @@ private[spark] class DisaggStore(
    * @throws IllegalStateException if the block already exists in the disk store.
    */
   def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
-    if (contains(blockId)) {
-      throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
-    }
+    // if (contains(blockId)) {
+    //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
+    // }
 
     val startTime = System.currentTimeMillis
     val file = disaggManager.createFile(blockId)

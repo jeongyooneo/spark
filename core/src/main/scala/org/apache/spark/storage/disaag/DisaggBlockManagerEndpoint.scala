@@ -121,7 +121,7 @@ class DisaggBlockManagerEndpoint(
 
     if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")
-      false
+      throw new RuntimeException(s"no disagg block for writing $blockId")
     } else {
       info.synchronized {
         val v = info.get
