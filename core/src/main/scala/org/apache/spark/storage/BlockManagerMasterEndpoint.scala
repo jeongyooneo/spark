@@ -18,6 +18,7 @@
 package org.apache.spark.storage
 
 import java.util.concurrent.{Executors, TimeUnit}
+import java.util.function.BiConsumer
 import java.util.{HashMap => JHashMap}
 
 import org.apache.spark.SparkConf
@@ -101,23 +102,28 @@ class BlockManagerMasterEndpoint(
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
       builder.append("------- stat logging start ------\n")
 
-      for ((k: BlockManagerId, v: BlockManagerInfo) <- blockManagerInfo) {
+      blockManagerInfo.foreach {
+        case (k: BlockManagerId, v: BlockManagerInfo) =>
 
-        var memSizeForManager = 0L
-        var diskSizeForManager = 0L
+          var memSizeForManager = 0L
+          var diskSizeForManager = 0L
 
-        for ((b: BlockId, stat: BlockStatus) <- v.blocks) {
-          memSizeForManager += stat.memSize
-          diskSizeForManager += stat.diskSize
+          v.blocks.forEach(new BiConsumer[BlockId, BlockStatus] {
+            def accept(b: BlockId, stat: BlockStatus): Unit = {
+              memSizeForManager += stat.memSize
+              diskSizeForManager += stat.diskSize
 
-          memSize += stat.memSize
-          diskSize += stat.diskSize
-          disaggSize += stat.disaggSize
-        }
+              memSize += stat.memSize
+              diskSize += stat.diskSize
+              disaggSize += stat.disaggSize
+            }
 
-        builder.append(s"BlockManager $k: memory ${memSizeForManager/unit}, " +
-          s"disk ${diskSizeForManager/unit}\n")
+          })
+
+          builder.append(s"BlockManager $k: memory ${memSizeForManager/unit}, " +
+            s"disk ${diskSizeForManager/unit}\n")
       }
+
 
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}")

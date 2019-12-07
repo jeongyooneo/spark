@@ -29,7 +29,7 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 import scala.concurrent.duration.Duration
 
-private[spark] class DisaggBlockManager(
+class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging with CrailManager {
 
