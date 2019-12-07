@@ -205,9 +205,9 @@ object OnlyDisaggMemoryManager {
   // the memory used for execution and storage will be (1024 - 300) * 0.6 = 434MB by default.
   private val RESERVED_SYSTEM_MEMORY_BYTES = 300 * 1024 * 1024
 
-  def apply(conf: SparkConf, numCores: Int): UnifiedMemoryManager = {
+  def apply(conf: SparkConf, numCores: Int): OnlyDisaggMemoryManager = {
     val maxMemory = getMaxMemory(conf)
-    new UnifiedMemoryManager(
+    new OnlyDisaggMemoryManager(
       conf,
       maxHeapMemory = maxMemory,
       onHeapStorageRegionSize =
