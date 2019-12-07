@@ -126,7 +126,7 @@ class BlockManagerMasterEndpoint(
 
 
       builder.append(s"Total size memory: ${memSize/unit}, " +
-        s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}")
+        s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")
 
       builder.append("------- stat logging end ------\n")
 
