@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
@@ -27,7 +27,8 @@ import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
 import org.apache.spark.util.ThreadUtils
-
+import scala.collection._
+import scala.collection.convert.decorateAsScala._
 import scala.concurrent.ExecutionContext
 
 /**
@@ -74,11 +75,28 @@ class DisaggBlockManagerEndpoint(
 
   // Mapping from block manager id to the block manager's information.
 
+
   // disagg block size info
-  private val disaggBlockInfo = new ConcurrentHashMap[BlockId, CrailBlockInfo]
+  private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
+    new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+      // MB
+      var totalSize = 0L
+      for ((k: BlockId, v: CrailBlockInfo) <- disaggBlockInfo)
+        totalSize += v.size
+
+      totalSize = totalSize / 1000000
+      logInfo(s"Disagg total size: $totalSize (MB)")
+    }
+  }
+
+  scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
 
   logInfo("DisaggBlockManagerEndpoint up")
 
@@ -101,14 +119,15 @@ class DisaggBlockManagerEndpoint(
     logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
-    if (info == null) {
+    if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")
       false
     } else {
       info.synchronized {
-        info.size = size
-        info.writeDone = true
-        info.notifyAll()
+        val v = info.get
+        v.size = size
+        v.writeDone = true
+        v.notifyAll()
         logInfo(s"End of disagg file writing $blockId")
       }
       true
@@ -118,11 +137,12 @@ class DisaggBlockManagerEndpoint(
   def contains(blockId: BlockId): Int = {
     val info = disaggBlockInfo.get(blockId)
 
-    if (info == null) {
+    if (info.isEmpty) {
       logInfo(s"disagg not containing $blockId")
       0
     } else {
-      if (!info.writeDone) {
+      val v = info.get
+      if (!v.writeDone) {
         logInfo(s"Waiting for disagg block writing $blockId")
         2
       } else {
