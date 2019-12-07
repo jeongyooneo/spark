@@ -106,13 +106,13 @@ class DisaggBlockManagerEndpoint(
       logInfo(s"tg: Disagg block is already created $blockId")
       false
     } else {
-      disaggBlockInfo.putIfAbsent(blockId, new CrailBlockInfo(getPath(blockId))) == null
+      disaggBlockInfo.putIfAbsent(blockId, new CrailBlockInfo(getPath(blockId))).isEmpty
     }
   }
 
   def fileRemoved(blockId: BlockId): Boolean = {
     logInfo(s"Disagg endpoint: file removed: $blockId")
-    disaggBlockInfo.remove(blockId) != null
+    disaggBlockInfo.remove(blockId).isDefined
   }
 
   def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
