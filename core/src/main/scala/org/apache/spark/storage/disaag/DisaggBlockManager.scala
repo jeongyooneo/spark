@@ -106,6 +106,7 @@ object DisaggStoringPolicy {
     val storingPolicy = conf.get("spark.disagg.storingpolicy", "Default")
     storingPolicy match {
       case "Default" => new DefaultDisaggStoringPolicy()
+      case "No" => new NoStoringEvictBlockDPolicy()
       case _ => throw new RuntimeException("Invalid storing policy " + storingPolicy)
     }
   }
