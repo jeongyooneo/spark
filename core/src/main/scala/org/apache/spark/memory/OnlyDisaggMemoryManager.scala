@@ -164,6 +164,7 @@ private[spark] class OnlyDisaggMemoryManager private[memory] (
     }
 
     if (blockId.isRDD) {
+      logInfo(s"RDD cannot be stored in memory $blockId")
       return false
     }
 
