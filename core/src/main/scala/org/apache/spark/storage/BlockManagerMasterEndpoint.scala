@@ -17,6 +17,7 @@
 
 package org.apache.spark.storage
 
+import java.util.concurrent.{Executors, TimeUnit}
 import java.util.{HashMap => JHashMap}
 
 import org.apache.spark.SparkConf
@@ -84,6 +85,50 @@ class BlockManagerMasterEndpoint(
       0L
     }
   }
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+
+      // MB
+      var memSize = 0L
+      var diskSize = 0L
+      var disaggSize = 0L
+
+      // MB
+      val unit = 1000000
+
+      val builder: mutable.StringBuilder = new mutable.StringBuilder()
+      builder.append("------- stat logging start ------\n")
+
+      for ((k: BlockManagerId, v: BlockManagerInfo) <- blockManagerInfo) {
+
+        var memSizeForManager = 0L
+        var diskSizeForManager = 0L
+
+        v.blocks.forEach((b: BlockId, v: BlockStatus) => {
+          memSizeForManager += v.memSize
+          diskSizeForManager += v.diskSize
+
+          memSize += v.memSize
+          diskSize += v.diskSize
+          disaggSize += v.disaggSize
+        })
+
+        builder.append(s"BlockManager $k: memory ${memSizeForManager/unit}, " +
+          s"disk ${diskSizeForManager/unit}\n")
+      }
+
+      builder.append(s"Total size memory: ${memSize/unit}, " +
+        s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}")
+
+      builder.append("------- stat logging end ------\n")
+
+      logInfo(builder.toString())
+    }
+  }
+  scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
+
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
@@ -481,6 +526,7 @@ class BlockManagerMasterEndpoint(
 
   override def onStop(): Unit = {
     askThreadPool.shutdownNow()
+    scheduler.shutdownNow()
   }
 }
 

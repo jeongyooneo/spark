@@ -83,21 +83,6 @@ class DisaggBlockManagerEndpoint(
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
-  val scheduler = Executors.newSingleThreadScheduledExecutor()
-  val task = new Runnable {
-    def run(): Unit = {
-      // MB
-      var totalSize = 0L
-      for ((k: BlockId, v: CrailBlockInfo) <- disaggBlockInfo)
-        totalSize += v.size
-
-      totalSize = totalSize / 1000000
-      logInfo(s"Disagg total size: $totalSize (MB)")
-    }
-  }
-
-  scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
-
   logInfo("DisaggBlockManagerEndpoint up")
 
   def fileCreated(blockId: BlockId): Boolean = {
