@@ -34,8 +34,9 @@ private[spark] class DisaggBlockManager(
       conf: SparkConf) extends Logging with CrailManager {
 
   def createFile(blockId: BlockId) : CrailFile = {
-    logInfo("jy: disagg: fresh file, writing " + blockId.name)
     val path = getPath(blockId)
+
+    logInfo("jy: disagg: getting result for create file " + blockId.name)
 
     val result = ThreadUtils.awaitResult(
       driverEndpoint.ask[Boolean](FileCreated(blockId)), Duration(10000, "millis"))
@@ -43,8 +44,10 @@ private[spark] class DisaggBlockManager(
     if (result) {
       val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
         CrailLocationClass.DEFAULT, true).get().asFile()
+      logInfo("jy: disagg: fresh file, writing " + blockId.name)
       fileInfo
     } else {
+      logInfo("jy: disagg: file exists, return null " + blockId.name)
       null
     }
   }

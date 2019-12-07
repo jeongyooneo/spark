@@ -58,47 +58,55 @@ private[spark] class DisaggStore(
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
 
-    val startTime = System.currentTimeMillis
-    val file = disaggManager.createFile(blockId)
+    try {
+      val startTime = System.currentTimeMillis
+      val file = disaggManager.createFile(blockId)
 
-    if (file != null) {
-      val out = new CountingWritableChannel(Channels.newChannel(
-        file.getBufferedOutputStream(file.getCapacity)))
-      var threwException: Boolean = true
-      try {
-        writeFunc(out)
-        disaggManager.writeEnd(blockId, out.getCount)
-        // blockSizes.put(blockId, out.getCount)
-        logInfo(s"Attempting to put block $blockId  " +
-          s"to disagg, size: ${out.getCount}, executor ${executorId}, blockSizes: ${out.getCount}")
-        threwException = false
-      } catch {
-        case e: Exception =>
-          e.printStackTrace()
-          throw e
-      } finally {
+      if (file != null) {
+        val out = new CountingWritableChannel(Channels.newChannel(
+          file.getBufferedOutputStream(file.getCapacity)))
+        var threwException: Boolean = true
         try {
-          out.close()
+          writeFunc(out)
+          disaggManager.writeEnd(blockId, out.getCount)
+          // blockSizes.put(blockId, out.getCount)
+          logInfo(s"Attempting to put block $blockId  " +
+            s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
+            s"blockSizes: ${out.getCount}")
+          threwException = false
         } catch {
-          case ioe: IOException =>
-            if (!threwException) {
-              threwException = true
-              throw ioe
-            }
+          case e: Exception =>
+            e.printStackTrace()
+            throw e
         } finally {
-          if (threwException) {
-            remove(blockId)
+          try {
+            out.close()
+          } catch {
+            case ioe: IOException =>
+              if (!threwException) {
+                threwException = true
+                throw ioe
+              }
+          } finally {
+            if (threwException) {
+              remove(blockId)
+            }
           }
         }
-      }
 
-      val finishTime = System.currentTimeMillis
-      logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
-        blockId,
-        file.getPath,
-        finishTime - startTime))
-    } else {
-      logInfo(s"File $blockId is already created ... so skip creating the file")
+        val finishTime = System.currentTimeMillis
+        logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
+          blockId,
+          file.getPath,
+          finishTime - startTime))
+      } else {
+        logInfo(s"File $blockId is already created ... so skip creating the file")
+      }
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning("Exception thrown when putting block " + blockId + ", " + e)
+        throw e
     }
   }
 
