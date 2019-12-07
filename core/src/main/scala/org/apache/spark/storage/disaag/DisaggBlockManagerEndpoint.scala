@@ -123,13 +123,10 @@ class DisaggBlockManagerEndpoint(
       logWarning(s"No disagg block for writing $blockId")
       throw new RuntimeException(s"no disagg block for writing $blockId")
     } else {
-      info.synchronized {
-        val v = info.get
-        v.size = size
-        v.writeDone = true
-        v.notifyAll()
-        logInfo(s"End of disagg file writing $blockId")
-      }
+      val v = info.get
+      v.size = size
+      v.writeDone = true
+      logInfo(s"End of disagg file writing $blockId")
       true
     }
   }
