@@ -58,7 +58,6 @@ private[spark] class DisaggStore(
       throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     }
 
-
     val startTime = System.currentTimeMillis
     val file = disaggManager.createFile(blockId)
 
@@ -73,6 +72,10 @@ private[spark] class DisaggStore(
         logInfo(s"Attempting to put block $blockId  " +
           s"to disagg, size: ${out.getCount}, executor ${executorId}, blockSizes: ${out.getCount}")
         threwException = false
+      } catch {
+        case e: Exception =>
+          e.printStackTrace()
+          throw e
       } finally {
         try {
           out.close()
