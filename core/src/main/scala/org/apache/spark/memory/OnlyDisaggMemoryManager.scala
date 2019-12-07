@@ -44,7 +44,7 @@ import org.apache.spark.storage.BlockId
  *                          it if necessary. Cached blocks can be evicted only if actual
  *                          storage memory usage exceeds this region.
  */
-private[spark] class UnifiedMemoryManager private[memory] (
+private[spark] class OnlyDisaggMemoryManager private[memory] (
     conf: SparkConf,
     val maxHeapMemory: Long,
     onHeapStorageRegionSize: Long,
@@ -163,6 +163,10 @@ private[spark] class UnifiedMemoryManager private[memory] (
         maxOffHeapStorageMemory)
     }
 
+    if (blockId.isRDD) {
+      return false
+    }
+
     if (numBytes > maxMemory) {
       // Fail fast if the block simply won't fit
       logInfo(s"Will not store $blockId as the required space ($numBytes bytes) exceeds our " +
@@ -188,7 +192,9 @@ private[spark] class UnifiedMemoryManager private[memory] (
   }
 }
 
-object UnifiedMemoryManager {
+
+
+object OnlyDisaggMemoryManager {
 
   // Set aside a fixed amount of memory for non-storage, non-execution purposes.
   // This serves a function similar to `spark.memory.fraction`, but guarantees that we reserve
@@ -207,8 +213,8 @@ object UnifiedMemoryManager {
   }
 
   /**
-   * Return the total amount of memory shared between execution and storage, in bytes.
-   */
+    * Return the total amount of memory shared between execution and storage, in bytes.
+    */
   private def getMaxMemory(conf: SparkConf): Long = {
     val systemMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)
     val reservedMemory = conf.getLong("spark.testing.reservedMemory",

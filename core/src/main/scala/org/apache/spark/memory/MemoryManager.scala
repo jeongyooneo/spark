@@ -245,6 +245,7 @@ object MemoryManager {
     memoryManagerType match {
       case "Unified" => UnifiedMemoryManager(conf, numCores)
       case "Static" => new StaticMemoryManager(conf, numCores)
+      case "Disagg" => OnlyDisaggMemoryManager(conf, numCores)
       case _ => throw new RuntimeException("Invalid  memoryManagerType " + memoryManagerType)
     }
   }

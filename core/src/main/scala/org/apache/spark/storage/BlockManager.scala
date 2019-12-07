@@ -1063,14 +1063,15 @@ private[spark] class BlockManager(
           diskStore.putBytes(blockId, bytes)
         }
 
-        if (!putSucceeded && level.useDisagg) {
+        if (!putSucceeded && level.useDisagg &&
+          disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
           logWarning(s"Persisting block $blockId to disagg instead.")
           disaggStore.putBytes(blockId, bytes)
         }
 
       } else if (level.useDisk) {
         diskStore.putBytes(blockId, bytes)
-      } else if (level.useDisagg) {
+      } else if (level.useDisagg && disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         disaggStore.putBytes(blockId, bytes)
       }
 
@@ -1222,7 +1223,8 @@ private[spark] class BlockManager(
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
                 size = diskStore.getSize(blockId)
-              } else if (level.useDisagg) {
+              } else if (level.useDisagg &&
+                disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
                 disaggStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
@@ -1246,7 +1248,8 @@ private[spark] class BlockManager(
                   partiallySerializedValues.finishWritingToStream(out)
                 }
                 size = diskStore.getSize(blockId)
-              } else if (level.useDisagg) {
+              } else if (level.useDisagg &&
+                disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
                 disaggStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
@@ -1264,7 +1267,8 @@ private[spark] class BlockManager(
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
         }
         size = diskStore.getSize(blockId)
-      } else if (level.useDisagg) {
+      } else if (level.useDisagg &&
+        disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         disaggStore.put(blockId) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
