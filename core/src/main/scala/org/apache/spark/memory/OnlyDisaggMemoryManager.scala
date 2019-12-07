@@ -213,8 +213,8 @@ object OnlyDisaggMemoryManager {
   }
 
   /**
-    * Return the total amount of memory shared between execution and storage, in bytes.
-    */
+   * Return the total amount of memory shared between execution and storage, in bytes.
+   */
   private def getMaxMemory(conf: SparkConf): Long = {
     val systemMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)
     val reservedMemory = conf.getLong("spark.testing.reservedMemory",
