@@ -1659,7 +1659,15 @@ private[spark] class BlockManager(
     blockInfoManager.lockForWriting(blockId) match {
       case None =>
         // The block has already been removed; do nothing.
-        logWarning(s"Asked to remove block $blockId, which does not exist")
+        // remove from disagg
+        val removedFromDisagg = disaggStore.remove(blockId)
+
+        if (removedFromDisagg) {
+          logInfo(s"Removed block $blockId from disagg !! remote !!")
+        } else {
+          logWarning(s"Asked to remove block $blockId, which does not exist")
+        }
+
       case Some(info) =>
         removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
         addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
