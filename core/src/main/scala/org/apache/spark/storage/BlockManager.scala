@@ -1681,6 +1681,7 @@ private[spark] class BlockManager(
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
 
+    logInfo(s"Remove block $blockId from mem $removedFromMemory or disagg $removedFromDisagg")
     blockInfoManager.removeBlock(blockId)
     if (tellMaster) {
       reportBlockStatus(blockId, BlockStatus.empty)
