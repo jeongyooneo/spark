@@ -74,7 +74,9 @@ class LocalCachingPolicy(memoryStore: MemoryStore,
      // put values read from disagg into the MemoryStore.
      blockInfo.synchronized {
        if (memoryStore.contains(blockId)) {
+         logInfo(s"Removing disagg after caching value $blockId")
          disaggData.dispose()
+         disaggStore.remove(blockId)
          Some(memoryStore.getBytes(blockId).get)
        } else {
          val allocator = level.memoryMode match {
