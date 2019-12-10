@@ -31,7 +31,8 @@ import scala.reflect.ClassTag
 * This policy does not cache the data into memory.
 */
 class LocalCachingPolicy(memoryStore: MemoryStore,
-                         blockInfoManager: BlockInfoManager)
+                         blockInfoManager: BlockInfoManager,
+                         disaggStore: DisaggStore)
                  extends DisaggCachingPolicy(memoryStore) {
 
   override def maybeCacheDisaggValuesInMemory[T](
@@ -54,6 +55,9 @@ class LocalCachingPolicy(memoryStore: MemoryStore,
           case Right(_) =>
             // The put() succeeded, so we can read the values back:
             memoryStore.getValues(blockId).get
+            logInfo(s"Removing disagg after caching value $blockId")
+            disaggStore.remove(blockId)
+            // remove the value after storing it in memory
         }
       }
     }.asInstanceOf[Iterator[T]]
@@ -86,6 +90,8 @@ class LocalCachingPolicy(memoryStore: MemoryStore,
          })
          if (putSucceeded) {
            disaggData.dispose()
+           logInfo(s"Removing disagg after caching value $blockId")
+           disaggStore.remove(blockId)
            Some(memoryStore.getBytes(blockId).get)
          } else {
            None
