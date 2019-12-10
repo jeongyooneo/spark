@@ -78,7 +78,7 @@ class DisaggBlockManagerEndpoint(
 
 
   // disagg block size info
-  val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
+  private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")

@@ -44,8 +44,7 @@ class BlockManagerMasterEndpoint(
     override val rpcEnv: RpcEnv,
     val isLocal: Boolean,
     conf: SparkConf,
-    listenerBus: LiveListenerBus,
-    val disaggManagerEndpoint: DisaggBlockManagerEndpoint)
+    listenerBus: LiveListenerBus)
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
