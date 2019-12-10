@@ -154,11 +154,12 @@ object DisaggCachingPolicy {
 
   def apply(conf: SparkConf,
             memoryStore: MemoryStore,
-            blockInfoManager: BlockInfoManager): DisaggCachingPolicy = {
+            blockInfoManager: BlockInfoManager,
+            disaggStore: DisaggStore): DisaggCachingPolicy = {
      val cachingPolicyType = conf.get("spark.disagg.cachingpolicy", "None")
      cachingPolicyType match {
       case "None" => new NoCachingPolicy(memoryStore)
-      case "Local" => new LocalCachingPolicy(memoryStore, blockInfoManager)
+      case "Local" => new LocalCachingPolicy(memoryStore, blockInfoManager, disaggStore)
       case _ => throw new RuntimeException("Invalid caching policy " + cachingPolicyType)
     }
   }

@@ -27,7 +27,6 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disaag.DisaggBlockManagerEndpoint
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
