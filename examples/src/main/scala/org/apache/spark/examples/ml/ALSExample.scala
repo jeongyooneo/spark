@@ -19,7 +19,6 @@
 package org.apache.spark.examples.ml
 
 // $example on$
-import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.recommendation.ALS
 // $example off$
 import org.apache.spark.sql.SparkSession
@@ -58,37 +57,46 @@ object ALSExample {
       .toDF()
     val Array(training, test) = ratings.randomSplit(Array(0.8, 0.2))
 
+    training.cache()
+
     // Build the recommendation model using ALS on the training data
-    val als = new ALS()
-      .setMaxIter(4)
-      .setRegParam(0.01)
-      .setRank(20)
-      .setUserCol("userId")
-      .setItemCol("movieId")
-      .setRatingCol("rating")
-    val model = als.fit(training)
+    for (i <- 0 to 3) {
+      val als = new ALS()
+        .setMaxIter(3)
+        .setRegParam(0.01)
+        .setRank(10)
+        .setUserCol("userId")
+        .setItemCol("movieId")
+        .setRatingCol("rating")
+        .setImplicitPrefs(true)
+      val model = als.fit(training)
 
-    // Evaluate the model by computing the RMSE on the test data
-    // Note we set cold start strategy to 'drop' to ensure we don't get NaN evaluation metrics
-    model.setColdStartStrategy("drop")
-    val predictions = model.transform(test)
+      // Evaluate the model by computing the RMSE on the test data
+      // Note we set cold start strategy to 'drop' to ensure we don't get NaN evaluation metrics
+      model.setColdStartStrategy("drop")
+      val predictions = model.transform(test)
 
+      /*
     val evaluator = new RegressionEvaluator()
       .setMetricName("rmse")
       .setLabelCol("rating")
       .setPredictionCol("prediction")
     val rmse = evaluator.evaluate(predictions)
     println(s"Root-mean-square error = $rmse")
+    */
 
-    // Generate top 10 movie recommendations for each user
-    val userRecs = model.recommendForAllUsers(10)
-    // Generate top 10 user recommendations for each movie
-    val movieRecs = model.recommendForAllItems(10)
-    // $example off$
-    // userRecs.show()
-    // movieRecs.show()
+      // Generate top 10 movie recommendations for each user
+      val userRecs = model.recommendForAllUsers(10)
+      // Generate top 10 user recommendations for each movie
+      val movieRecs = model.recommendForAllItems(10)
+      // $example off$
+      // userRecs.show()
+      // movieRecs.show()
 
-    // Thread.sleep(1000000)
+      // Thread.sleep(1000000)
+      val jct = (System.nanoTime() - startTime) / 1000000
+      mylogger.info(s"Iteration ${i + 1} finished  $jct ms")
+    }
 
     spark.stop()
     val jct = (System.nanoTime() - startTime) / 1000000
