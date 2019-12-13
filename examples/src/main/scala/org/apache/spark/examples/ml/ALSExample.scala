@@ -60,7 +60,7 @@ object ALSExample {
     training.cache()
 
     // Build the recommendation model using ALS on the training data
-    for (i <- 0 to 3) {
+    for (i <- 0 to 2) {
       val als = new ALS()
         .setMaxIter(3)
         .setRegParam(0.01)
