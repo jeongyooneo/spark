@@ -347,42 +347,39 @@ object SparkEnv extends Logging {
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
         blockManagerPort, numUsableCores)
 
+    var blockManagerMaster: BlockManagerMaster = null
+    var disaggBlockManager: DisaggBlockManager = null
 
     if (isDriver) {
       val blockManagerMasterEndpoint =
         new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)
 
-      val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
+      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
         BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
         conf, isDriver)
 
-      val disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
         new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           blockManagerMasterEndpoint, thresholdGB)), conf)
 
 
-      // NB: blockManager is not valid until initialize() is called later.
-      val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
-        disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker,
-        shuffleManager, blockTransferService, securityManager, numUsableCores)
-
     } else {
-      val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
+      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
        BlockManagerMaster.DRIVER_ENDPOINT_NAME,
         new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
        conf, isDriver)
 
-      val disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
         new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus), thresholdGB)), conf)
-
-      // NB: blockManager is not valid until initialize() is called later.
-      val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
-        disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker,
-        shuffleManager, blockTransferService, securityManager, numUsableCores)
     }
+
+    // NB: blockManager is not valid until initialize() is called later.
+    val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
+      disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker,
+      shuffleManager, blockTransferService, securityManager, numUsableCores)
 
     val metricsSystem = if (isDriver) {
       // Don't start metrics system right now for Driver.
