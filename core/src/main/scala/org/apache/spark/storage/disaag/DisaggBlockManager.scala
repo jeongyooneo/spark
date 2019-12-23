@@ -38,7 +38,7 @@ class DisaggBlockManager(
   }
 
   def read(blockId: BlockId) : Unit = {
-    driverEndpoint.askSync[Boolean](FileRead(blockId))
+    driverEndpoint.askSync[Unit](FileRead(blockId))
   }
 
   def createFile(blockId: BlockId) : CrailFile = {
