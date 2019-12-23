@@ -240,10 +240,10 @@ class DisaggBlockManagerEndpoint(
       context.reply(fileRead(blockId))
 
     case DiscardBlocksIfNecessary(estimateSize) =>
-      context.reply(discardBlocksIfNecessary(estimateSize))
+      discardBlocksIfNecessary(estimateSize)
 
     case FileWriteEnd(blockId, size) =>
-      context.reply(fileWriteEnd(blockId, size))
+      fileWriteEnd(blockId, size)
 
     case Contains(blockId) =>
       context.reply(contains(blockId))
