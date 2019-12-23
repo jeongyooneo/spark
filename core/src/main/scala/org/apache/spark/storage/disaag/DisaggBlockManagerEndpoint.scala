@@ -184,9 +184,8 @@ class DisaggBlockManagerEndpoint(
       val v = info.get
       v.size = size
       v.writeDone = true
-      logInfo(s"End of disagg file writing $blockId")
-
       totalSize.addAndGet(v.size)
+      logInfo(s"End of disagg file writing $blockId, total: $totalSize")
       true
     }
   }
