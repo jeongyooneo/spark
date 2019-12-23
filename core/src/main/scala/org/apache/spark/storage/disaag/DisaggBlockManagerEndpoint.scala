@@ -256,4 +256,8 @@ class CrailBlockInfo(blockId: BlockId,
   var writeDone: Boolean = false
   var size: Long = 0L
   var read: Boolean = false
+
+  override def toString: String = {
+    s"<$bid/read:$read>"
+  }
 }
