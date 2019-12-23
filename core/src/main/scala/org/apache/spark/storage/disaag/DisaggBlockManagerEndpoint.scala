@@ -126,6 +126,9 @@ class DisaggBlockManagerEndpoint(
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
       s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
 
+
+    val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+
     lruQueue.synchronized {
 
       if (totalSize.get() + estimateSize > threshold) {
@@ -145,18 +148,21 @@ class DisaggBlockManagerEndpoint(
             totalDiscardSize += candidateBlock.size
             logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
               s"size $totalDiscardSize / $targetDiscardSize")
-
-            blockManagerMaster.removeBlockFromWorkers(candidateBlock.bid)
+            removeBlocks += candidateBlock.bid
             lruQueue.remove(lruPointer)
             // do not move pointer !!
           } else {
             candidateBlock.read = false
             nextLruPointer
+            logInfo(s"Skipping block removal... $lruPointer / ${lruQueue.size}," +
+              s" $totalDiscardSize / $targetDiscardSize")
           }
 
         }
       }
     }
+
+    removeBlocks.foreach { blockManagerMaster.removeBlockFromWorkers }
   }
 
   def nextLruPointer: Int = {
