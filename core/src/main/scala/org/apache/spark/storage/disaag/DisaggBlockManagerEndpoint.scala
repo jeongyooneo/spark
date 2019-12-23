@@ -115,12 +115,15 @@ class DisaggBlockManagerEndpoint(
 
   def fileRead(blockId: BlockId): Unit = {
     // TODO: file read
+    logInfo(s"file read disagg block $blockId")
     if (disaggBlockInfo.get(blockId).isDefined) {
       disaggBlockInfo.get(blockId).get.read = true
     }
   }
 
   def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
+
+    logInfo(s"discard block if necessary $estimateSize")
 
     if (totalSize.get() + estimateSize > threshold) {
       // discard!!
