@@ -212,6 +212,11 @@ package object config {
     .intConf
     .createWithDefault(0)
 
+  private[spark] val DISAGG_THRESHOLD_GB = ConfigBuilder("spark.disagg.threshold")
+    .doc("Port to use for the block manager when a more specific setting is not provided.")
+    .intConf
+    .createWithDefault(0)
+
   private[spark] val DRIVER_BLOCK_MANAGER_PORT = ConfigBuilder("spark.driver.blockManager.port")
     .doc("Port to use for the block manager on the driver.")
     .fallbackConf(BLOCK_MANAGER_PORT)

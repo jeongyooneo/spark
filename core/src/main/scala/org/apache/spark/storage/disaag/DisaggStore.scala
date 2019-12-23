@@ -53,10 +53,14 @@ private[spark] class DisaggStore(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
+  def put(blockId: BlockId, estimateSize: Long)(writeFunc: WritableByteChannel => Unit): Unit = {
     // if (contains(blockId)) {
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
+
+    // first discard blocks from disagg memory
+    // if the memory is full
+    disaggManager.discardBlocksIfNecessary(estimateSize)
 
     try {
       val startTime = System.currentTimeMillis
@@ -113,12 +117,15 @@ private[spark] class DisaggStore(
   def putBytes[T: ClassTag](
       blockId: BlockId,
       bytes: ChunkedByteBuffer): Unit = {
-    put(blockId) { channel =>
+    put(blockId, bytes.size) { channel =>
       bytes.writeFully(channel)
     }
   }
 
   def getStream(blockId: BlockId): CrailBlockData = {
+
+    disaggManager.read(blockId)
+
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)
 
@@ -132,6 +139,9 @@ private[spark] class DisaggStore(
   }
 
   def getBytes(blockId: BlockId): BlockData = {
+
+    disaggManager.read(blockId)
+
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)
 

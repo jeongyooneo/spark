@@ -783,7 +783,7 @@ private[storage] class PartiallySerializedBlock[T](
     rest: Iterator[T],
     classTag: ClassTag[T]) {
 
-  private lazy val unrolledBuffer: ChunkedByteBuffer = {
+  lazy val unrolledBuffer: ChunkedByteBuffer = {
     bbos.close()
     bbos.toChunkedByteBuffer
   }

@@ -33,6 +33,11 @@ private[spark] object DisaggBlockManagerMessages {
   case class FileRemoved(blockId: BlockId)
     extends ToBlockManagerMaster
 
+  case class FileRead(blockId: BlockId) extends ToBlockManagerMaster
+
+  case class DiscardBlocksIfNecessary(estimateSize: Long)
+    extends ToBlockManagerMaster
+
   case class FileWriteEnd(blockId: BlockId, size: Long)
     extends ToBlockManagerMaster
 

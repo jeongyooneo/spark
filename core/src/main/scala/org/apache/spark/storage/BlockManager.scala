@@ -1180,6 +1180,18 @@ private[spark] class BlockManager(
     result
   }
 
+  private def estimateIteratorSize[T](iter: Iterator[T],
+                                      classTag: ClassTag[T]): Long = {
+
+    var vector = new SizeTrackingVector[T]()(classTag)
+
+    while (iter.hasNext) {
+      vector += iter.next()
+    }
+
+    vector.estimateSize()
+  }
+
   /**
    * Put the given block according to the given level in one of the block stores, replicating
    * the values if necessary.
@@ -1226,7 +1238,7 @@ private[spark] class BlockManager(
               } else if (level.useDisagg &&
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
-                disaggStore.put(blockId) { channel =>
+                disaggStore.put(blockId, estimateIteratorSize(iter, classTag)) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
@@ -1251,7 +1263,8 @@ private[spark] class BlockManager(
               } else if (level.useDisagg &&
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
-                disaggStore.put(blockId) { channel =>
+                disaggStore.put(blockId,
+                  partiallySerializedValues.unrolledBuffer.size) { channel =>
                   val out = Channels.newOutputStream(channel)
                   partiallySerializedValues.finishWritingToStream(out)
                 }
@@ -1269,9 +1282,10 @@ private[spark] class BlockManager(
         size = diskStore.getSize(blockId)
       } else if (level.useDisagg &&
         disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
-        disaggStore.put(blockId) { channel =>
+        val it = iterator()
+        disaggStore.put(blockId, estimateIteratorSize(it, classTag)) { channel =>
           val out = Channels.newOutputStream(channel)
-          serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
+          serializerManager.dataSerializeStream(blockId, out, it)(classTag)
         }
         size = disaggStore.getSize(blockId)
       }
@@ -1590,7 +1604,9 @@ private[spark] class BlockManager(
         logInfo(s"tg: Writing block $blockId to disagg")
         data() match {
           case Left(elements) =>
-            disaggStore.put(blockId) { channel =>
+            val it = elements.toIterator
+            disaggStore.put(blockId,
+              estimateIteratorSize(it, info.classTag.asInstanceOf[ClassTag[T]])) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
                 blockId,

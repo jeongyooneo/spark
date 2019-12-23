@@ -33,6 +33,14 @@ class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging with CrailManager {
 
+  def discardBlocksIfNecessary(estimateSize: Long) : Unit = {
+    driverEndpoint.askSync[Unit](DiscardBlocksIfNecessary(estimateSize))
+  }
+
+  def read(blockId: BlockId) : Unit = {
+    driverEndpoint.askSync[Boolean](FileRead(blockId))
+  }
+
   def createFile(blockId: BlockId) : CrailFile = {
     val path = getPath(blockId)
 
@@ -65,6 +73,7 @@ class DisaggBlockManager(
 
       driverEndpoint.askSync[Boolean](FileRemoved(blockId))
     } else {
+      logInfo(s"Block $blockId is already removed from disagg")
       false
     }
   }

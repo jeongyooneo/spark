@@ -18,18 +18,19 @@
 package org.apache.spark.storage.disaag
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
-import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
+import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 import org.apache.spark.util.ThreadUtils
 
-import scala.collection._
 import scala.collection.convert.decorateAsScala._
+import scala.collection.{mutable, _}
 import scala.concurrent.ExecutionContext
 
 /**
@@ -41,8 +42,12 @@ class DisaggBlockManagerEndpoint(
     override val rpcEnv: RpcEnv,
     val isLocal: Boolean,
     conf: SparkConf,
-    listenerBus: LiveListenerBus)
+    listenerBus: LiveListenerBus,
+    blockManagerMaster: BlockManagerMasterEndpoint,
+    thresholdGB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
+
+  val threshold = thresholdGB * (1000 * 1000 * 1000)
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
@@ -74,15 +79,19 @@ class DisaggBlockManagerEndpoint(
     CrailLocationClass.DEFAULT, true).get().syncDir()
   logInfo("creating main dir done " + rootDir)
 
-  // Mapping from block manager id to the block manager's information.
-
-
   // disagg block size info
   private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
+
+  private val totalSize: AtomicLong = new AtomicLong(0)
+
+  private val lruQueue: mutable.ListBuffer[CrailBlockInfo] =
+    new mutable.ListBuffer[CrailBlockInfo]()
+
+  private var lruPointer: Int = 0
 
   logInfo("DisaggBlockManagerEndpoint up")
 
@@ -92,13 +101,76 @@ class DisaggBlockManagerEndpoint(
       logInfo(s"tg: Disagg block is already created $blockId")
       false
     } else {
-      disaggBlockInfo.putIfAbsent(blockId, new CrailBlockInfo(getPath(blockId))).isEmpty
+      val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+      if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
+        lruQueue.synchronized {
+          lruQueue += blockInfo
+        }
+        true
+      } else {
+        false
+      }
     }
+  }
+
+  def fileRead(blockId: BlockId): Unit = {
+    // TODO: file read
+    if (disaggBlockInfo.get(blockId).isDefined) {
+      disaggBlockInfo.get(blockId).get.read = true
+    }
+  }
+
+  def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
+
+    if (totalSize.get() + estimateSize > threshold) {
+      // discard!!
+      logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
+      val targetDiscardSize: Long = totalSize.get() + estimateSize - threshold
+      var totalDiscardSize: Long = 0
+
+      lruQueue.synchronized {
+
+        logInfo(s"lruQueue: $lruQueue")
+
+        while (totalDiscardSize >= targetDiscardSize) {
+
+          val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
+          if (candidateBlock.writeDone && !candidateBlock.read) {
+            // discard!
+            totalDiscardSize += candidateBlock.size
+            blockManagerMaster.removeBlockFromWorkers(candidateBlock.bid)
+            logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
+              s"size $totalDiscardSize / $targetDiscardSize")
+
+          } else {
+            candidateBlock.read = false
+          }
+
+          nextLruPointer
+        }
+      }
+    }
+  }
+
+  def nextLruPointer: Int = {
+    lruPointer += 1
+    if (lruPointer >= lruQueue.size) {
+      lruPointer = lruPointer % lruQueue.size
+    }
+    lruPointer
   }
 
   def fileRemoved(blockId: BlockId): Boolean = {
     logInfo(s"Disagg endpoint: file removed: $blockId")
-    disaggBlockInfo.remove(blockId).isDefined
+    val blockInfo = disaggBlockInfo.remove(blockId).get
+
+    lruQueue.synchronized {
+      lruQueue -= blockInfo
+    }
+
+    totalSize.addAndGet(-blockInfo.size)
+
+    true
   }
 
   def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
@@ -113,6 +185,8 @@ class DisaggBlockManagerEndpoint(
       v.size = size
       v.writeDone = true
       logInfo(s"End of disagg file writing $blockId")
+
+      totalSize.addAndGet(v.size)
       true
     }
   }
@@ -153,6 +227,12 @@ class DisaggBlockManagerEndpoint(
     case FileRemoved(blockId) =>
       context.reply(fileRemoved(blockId))
 
+    case FileRead(blockId) =>
+      context.reply(fileRead(blockId))
+
+    case DiscardBlocksIfNecessary(estimateSize) =>
+      context.reply(discardBlocksIfNecessary(estimateSize))
+
     case FileWriteEnd(blockId, size) =>
       context.reply(fileWriteEnd(blockId, size))
 
@@ -168,7 +248,10 @@ class DisaggBlockManagerEndpoint(
   }
 }
 
-private class CrailBlockInfo(path: String) {
+class CrailBlockInfo(blockId: BlockId,
+                     path: String) {
+  val bid = blockId
   var writeDone: Boolean = false
   var size: Long = 0L
+  var read: Boolean = false
 }

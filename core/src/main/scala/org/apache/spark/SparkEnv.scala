@@ -341,19 +341,23 @@ object SparkEnv extends Logging {
       conf.get(BLOCK_MANAGER_PORT)
     }
 
+    val thresholdGB = conf.get(DISAGG_THRESHOLD_GB)
+
     val blockTransferService =
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
         blockManagerPort, numUsableCores)
 
+    val blockManagerMasterEndpoint =
+      new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)
+
     val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
-      BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-      new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
+      BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
       conf, isDriver)
 
     val disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
       DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-      new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus)),
-      conf)
+      new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+        blockManagerMasterEndpoint, thresholdGB)), conf)
 
     // NB: blockManager is not valid until initialize() is called later.
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,

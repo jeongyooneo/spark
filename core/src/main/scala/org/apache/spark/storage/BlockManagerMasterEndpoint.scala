@@ -323,7 +323,7 @@ class BlockManagerMasterEndpoint(
 
   // Remove a block from the slaves that have it. This can only be used to remove
   // blocks that the master knows about.
-  private def removeBlockFromWorkers(blockId: BlockId) {
+  def removeBlockFromWorkers(blockId: BlockId) {
     val locations = blockLocations.get(blockId)
     if (locations != null) {
       locations.foreach { blockManagerId: BlockManagerId =>
