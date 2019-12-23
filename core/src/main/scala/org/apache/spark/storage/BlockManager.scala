@@ -1235,8 +1235,9 @@ private[spark] class BlockManager(
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
 
+                val newIter: Iterator[T] = iter.toArray.toIterator
                 disaggStore.put(blockId,
-                  estimateIteratorSize(iter.toArray.toIterator, classTag)) { channel =>
+                  estimateIteratorSize(newIter, classTag)) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
@@ -1281,7 +1282,8 @@ private[spark] class BlockManager(
       } else if (level.useDisagg &&
         disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         val it = iterator()
-        disaggStore.put(blockId, estimateIteratorSize(it.toArray.toIterator, classTag)) { channel =>
+        val newIter: Iterator[T] = it.toArray.toIterator
+        disaggStore.put(blockId, estimateIteratorSize(newIter, classTag)) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, it)(classTag)
         }
@@ -1603,8 +1605,8 @@ private[spark] class BlockManager(
         data() match {
           case Left(elements) =>
             val it = elements.toIterator
-            disaggStore.put(blockId,
-              estimateIteratorSize(it.toArray.toIterator,
+            val newIter: Iterator[T] = it.toArray.toIterator
+            disaggStore.put(blockId, estimateIteratorSize(newIter,
                 info.classTag.asInstanceOf[ClassTag[T]])) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
