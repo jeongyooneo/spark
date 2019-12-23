@@ -142,15 +142,17 @@ class DisaggBlockManagerEndpoint(
           if (candidateBlock.writeDone && !candidateBlock.read) {
             // discard!
             totalDiscardSize += candidateBlock.size
-            blockManagerMaster.removeBlockFromWorkers(candidateBlock.bid)
             logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
               s"size $totalDiscardSize / $targetDiscardSize")
 
+            blockManagerMaster.removeBlockFromWorkers(candidateBlock.bid)
+            lruQueue.remove(lruPointer)
+            // do not move pointer !!
           } else {
             candidateBlock.read = false
+            nextLruPointer
           }
 
-          nextLruPointer
         }
       }
     }
@@ -169,7 +171,11 @@ class DisaggBlockManagerEndpoint(
     val blockInfo = disaggBlockInfo.remove(blockId).get
 
     lruQueue.synchronized {
-      lruQueue -= blockInfo
+
+      if (lruQueue.contains(blockInfo)) {
+        lruQueue -= blockInfo
+        lruPointer %= lruQueue.size
+      }
     }
 
     totalSize.addAndGet(-blockInfo.size)
