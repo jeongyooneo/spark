@@ -121,18 +121,19 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
-  def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
+  def discardBlocksIfNecessary(estimateSize: Long): Unit = {
 
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
       s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
 
-    if (totalSize.get() + estimateSize > threshold) {
-      // discard!!
-      logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
-      val targetDiscardSize: Long = totalSize.get() + estimateSize - threshold
-      var totalDiscardSize: Long = 0
+    lruQueue.synchronized {
 
-      lruQueue.synchronized {
+      if (totalSize.get() + estimateSize > threshold) {
+        // discard!!
+        logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
+        val targetDiscardSize: Long = totalSize.get() + estimateSize - threshold
+        var totalDiscardSize: Long = 0
+
 
         logInfo(s"lruQueue: $lruQueue")
 
