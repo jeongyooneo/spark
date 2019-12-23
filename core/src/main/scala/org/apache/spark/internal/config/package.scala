@@ -212,7 +212,7 @@ package object config {
     .intConf
     .createWithDefault(0)
 
-  private[spark] val DISAGG_THRESHOLD_GB = ConfigBuilder("spark.disagg.threshold")
+  private[spark] val DISAGG_THRESHOLD_MB = ConfigBuilder("spark.disagg.threshold")
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("0g")
 

@@ -44,10 +44,10 @@ class DisaggBlockManagerEndpoint(
     conf: SparkConf,
     listenerBus: LiveListenerBus,
     blockManagerMaster: BlockManagerMasterEndpoint,
-    thresholdGB: Long)
+    thresholdMB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
-  val threshold = thresholdGB * (1000 * 1000 * 1000)
+  val threshold = thresholdMB * (1000 * 1000)
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
@@ -123,7 +123,7 @@ class DisaggBlockManagerEndpoint(
 
   def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
 
-    logInfo(s"discard block if necessary $estimateSize, totalSize: $totalSize")
+    logInfo(s"discard block if necessary $estimateSize, totalSize: $totalSize / $threshold")
 
     if (totalSize.get() + estimateSize > threshold) {
       // discard!!
