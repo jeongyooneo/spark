@@ -71,7 +71,8 @@ class DisaggBlockManager(
       fs.delete(path, false).get().syncDir()
       logInfo(s"jy: Removed block $blockId from disagg")
 
-      driverEndpoint.askSync[Boolean](FileRemoved(blockId))
+      driverEndpoint.ask(FileRemoved(blockId))
+      true
     } else {
       logInfo(s"Block $blockId is already removed from disagg")
       false

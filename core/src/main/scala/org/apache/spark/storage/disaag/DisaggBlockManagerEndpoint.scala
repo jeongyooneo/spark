@@ -234,7 +234,7 @@ class DisaggBlockManagerEndpoint(
       context.reply(fileCreated(blockId))
 
     case FileRemoved(blockId) =>
-      context.reply(fileRemoved(blockId))
+      fileRemoved(blockId)
 
     case FileRead(blockId) =>
       context.reply(fileRead(blockId))
