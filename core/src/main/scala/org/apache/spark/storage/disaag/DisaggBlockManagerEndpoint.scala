@@ -123,7 +123,8 @@ class DisaggBlockManagerEndpoint(
 
   def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
 
-    logInfo(s"discard block if necessary $estimateSize, totalSize: $totalSize / $threshold")
+    logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
+      s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
 
     if (totalSize.get() + estimateSize > threshold) {
       // discard!!
@@ -135,7 +136,7 @@ class DisaggBlockManagerEndpoint(
 
         logInfo(s"lruQueue: $lruQueue")
 
-        while (totalDiscardSize >= targetDiscardSize) {
+        while (totalDiscardSize < targetDiscardSize) {
 
           val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
           if (candidateBlock.writeDone && !candidateBlock.read) {
