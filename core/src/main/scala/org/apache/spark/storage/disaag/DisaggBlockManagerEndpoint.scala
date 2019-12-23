@@ -123,7 +123,7 @@ class DisaggBlockManagerEndpoint(
 
   def discardBlocksIfNecessary(estimateSize: Long): Unit = synchronized {
 
-    logInfo(s"discard block if necessary $estimateSize")
+    logInfo(s"discard block if necessary $estimateSize, totalSize: $totalSize")
 
     if (totalSize.get() + estimateSize > threshold) {
       // discard!!

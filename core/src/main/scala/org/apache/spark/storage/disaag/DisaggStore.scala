@@ -60,7 +60,7 @@ private[spark] class DisaggStore(
 
     // first discard blocks from disagg memory
     // if the memory is full
-    logInfo(s"discard block if necessary in worker $estimateSize")
+    logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
     disaggManager.discardBlocksIfNecessary(estimateSize)
 
     try {

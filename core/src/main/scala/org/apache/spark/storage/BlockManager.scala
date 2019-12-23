@@ -1184,11 +1184,7 @@ private[spark] class BlockManager(
                                       classTag: ClassTag[T]): Long = {
 
     var vector = new SizeTrackingVector[T]()(classTag)
-
-    while (iter.hasNext) {
-      vector += iter.next()
-    }
-
+    iter.foreach(vector += _)
     vector.estimateSize()
   }
 
