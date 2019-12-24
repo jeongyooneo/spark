@@ -103,9 +103,7 @@ class DisaggBlockManagerEndpoint(
     } else {
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-        lruQueue.synchronized {
-          lruQueue += blockInfo
-        }
+
         true
       } else {
         false
@@ -156,7 +154,9 @@ class DisaggBlockManagerEndpoint(
           } else {
             candidateBlock.read = false
             nextLruPointer
-            logInfo(s"Skipping block removal... $lruPointer / ${lruQueue.size}," +
+            logInfo(s"Skipping block removal... $lruPointer / ${lruQueue.size}, " +
+              s"block ${candidateBlock.bid}, wd: ${candidateBlock.writeDone}, " +
+              s"r: ${candidateBlock.read} " +
               s" $totalDiscardSize / $targetDiscardSize")
           }
 
@@ -204,6 +204,11 @@ class DisaggBlockManagerEndpoint(
       v.size = size
       v.writeDone = true
       totalSize.addAndGet(v.size)
+
+      lruQueue.synchronized {
+        lruQueue += v
+      }
+
       logInfo(s"End of disagg file writing $blockId, total: $totalSize")
       true
     }
