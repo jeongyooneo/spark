@@ -115,7 +115,13 @@ class DisaggBlockManagerEndpoint(
     // TODO: file read
     logInfo(s"file read disagg block $blockId")
     if (disaggBlockInfo.get(blockId).isDefined) {
-      disaggBlockInfo.get(blockId).get.read = true
+      val info = disaggBlockInfo.get(blockId).get
+      info.read = true
+
+      lruQueue.synchronized {
+        lruQueue -= info
+        lruQueue += info
+      }
     }
   }
 
@@ -142,30 +148,41 @@ class DisaggBlockManagerEndpoint(
 
         logInfo(s"lruQueue: $lruQueue")
 
-        while (totalDiscardSize < targetDiscardSize) {
-
-          val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
-          if (candidateBlock.writeDone && !candidateBlock.read) {
-            // discard!
-            totalDiscardSize += candidateBlock.size
-            logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
-              s"size $totalDiscardSize / $targetDiscardSize")
-            removeBlocks += candidateBlock.bid
-            lruQueue.remove(lruPointer)
-            // do not move pointer !!
-          } else {
-            candidateBlock.read = false
-            nextLruPointer
-            logInfo(s"Skipping block removal... $lruPointer / ${lruQueue.size}, " +
-              s"block ${candidateBlock.bid}, wd: ${candidateBlock.writeDone}, " +
-              s"r: ${candidateBlock.read} " +
-              s" $totalDiscardSize / $targetDiscardSize")
-          }
-
+        var i = 0
+        while (totalDiscardSize < targetDiscardSize && i < lruQueue.size) {
+          val candidateBlock: CrailBlockInfo = lruQueue(i)
+          totalDiscardSize += candidateBlock.size
+          logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
+            s"size $totalDiscardSize / $targetDiscardSize")
+          removeBlocks += candidateBlock.bid
+          i += 1
         }
-      }
 
+        lruQueue.drop(i)
+
+        /*
+        val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
+        if (candidateBlock.writeDone && !candidateBlock.read) {
+          // discard!
+          totalDiscardSize += candidateBlock.size
+          logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
+            s"size $totalDiscardSize / $targetDiscardSize")
+          removeBlocks += candidateBlock.bid
+          lruQueue.remove(lruPointer)
+          // do not move pointer !!
+        } else {
+          candidateBlock.read = false
+          nextLruPointer
+          logInfo(s"Skipping block removal... $lruPointer / ${lruQueue.size}, " +
+            s"block ${candidateBlock.bid}, wd: ${candidateBlock.writeDone}, " +
+            s"r: ${candidateBlock.read} " +
+            s" $totalDiscardSize / $targetDiscardSize")
+        }
+        */
+
+      }
     }
+
 
     removeBlocks.foreach { bid =>
       executor.submit(new Runnable {
