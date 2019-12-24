@@ -141,8 +141,10 @@ class DisaggBlockManagerEndpoint(
 
       if (totalSize.get() + estimateSize > threshold) {
         // discard!!
+        // rm 1/3
+
         logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
-        val targetDiscardSize: Long = totalSize.get() + estimateSize - threshold
+        val targetDiscardSize: Long = 1 * (totalSize.get() + estimateSize) / 3
         var totalDiscardSize: Long = 0
 
 
