@@ -121,6 +121,8 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
+
+  // TODO: which blocks to remove ?
   def discardBlocksIfNecessary(estimateSize: Long): Unit = {
 
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
@@ -269,7 +271,7 @@ class CrailBlockInfo(blockId: BlockId,
   val bid = blockId
   var writeDone: Boolean = false
   var size: Long = 0L
-  var read: Boolean = false
+  var read: Boolean = true
 
   override def toString: String = {
     s"<$bid/read:$read>"
