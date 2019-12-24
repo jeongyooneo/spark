@@ -34,7 +34,7 @@ class DisaggBlockManager(
       conf: SparkConf) extends Logging with CrailManager {
 
   def discardBlocksIfNecessary(estimateSize: Long) : Unit = {
-    driverEndpoint.ask(DiscardBlocksIfNecessary(estimateSize))
+    driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
   }
 
   def read(blockId: BlockId) : Unit = {

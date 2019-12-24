@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
@@ -119,9 +119,11 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
+  val executor: ExecutorService = Executors.newCachedThreadPool()
+
 
   // TODO: which blocks to remove ?
-  def discardBlocksIfNecessary(estimateSize: Long): Unit = {
+  def discardBlocksIfNecessary(estimateSize: Long): Boolean = {
 
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
       s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
@@ -162,9 +164,19 @@ class DisaggBlockManagerEndpoint(
 
         }
       }
+
     }
 
-    removeBlocks.foreach { blockManagerMaster.removeBlockFromWorkers }
+    removeBlocks.foreach { bid =>
+      executor.submit(new Runnable {
+        override def run(): Unit = {
+          logInfo(s"Remove block from worker $bid")
+          blockManagerMaster.removeBlockFromWorkers(bid)
+        }
+      })
+    }
+
+    true
   }
 
   def nextLruPointer: Int = {
@@ -243,6 +255,8 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
+
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case FileCreated(blockId) =>
       context.reply(fileCreated(blockId))
@@ -254,7 +268,7 @@ class DisaggBlockManagerEndpoint(
       context.reply(fileRead(blockId))
 
     case DiscardBlocksIfNecessary(estimateSize) =>
-      discardBlocksIfNecessary(estimateSize)
+      context.reply(discardBlocksIfNecessary(estimateSize))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
