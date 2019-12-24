@@ -129,6 +129,9 @@ class DisaggBlockManagerEndpoint(
 
 
   // TODO: which blocks to remove ?
+
+  var prevDiscardTime = System.currentTimeMillis()
+
   def discardBlocksIfNecessary(estimateSize: Long): Boolean = {
 
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
@@ -139,9 +142,12 @@ class DisaggBlockManagerEndpoint(
 
     lruQueue.synchronized {
 
-      if (totalSize.get() + estimateSize > threshold) {
+      val elapsed = System.currentTimeMillis() - prevDiscardTime
+
+      if (totalSize.get() + estimateSize > threshold && elapsed > 10000) {
         // discard!!
-        // rm 1/3
+        // rm 1/3 after 10 seconds
+        prevDiscardTime = System.currentTimeMillis()
 
         logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
         val targetDiscardSize: Long = 1 * (totalSize.get() + estimateSize) / 3
