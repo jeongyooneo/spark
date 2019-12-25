@@ -120,7 +120,7 @@ class DisaggBlockManagerEndpoint(
 
       lruQueue.synchronized {
         lruQueue -= info
-        lruQueue += info
+        lruQueue.append(info)
       }
     }
   }
