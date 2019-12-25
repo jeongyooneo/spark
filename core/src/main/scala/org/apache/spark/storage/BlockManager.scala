@@ -1681,7 +1681,10 @@ private[spark] class BlockManager(
 
         if (removedFromDisagg) {
           logInfo(s"Removed block $blockId from disagg !! remote !!")
-          reportBlockStatus(blockId, BlockStatus.empty)
+
+          if (tellMaster) {
+            reportBlockStatus(blockId, BlockStatus.empty)
+          }
           addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
         } else {
           logWarning(s"Asked to remove block $blockId, which does not exist")
