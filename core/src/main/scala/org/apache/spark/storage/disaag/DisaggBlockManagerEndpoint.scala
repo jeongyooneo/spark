@@ -151,7 +151,7 @@ class DisaggBlockManagerEndpoint(
         prevDiscardTime = System.currentTimeMillis()
 
         logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
-        //val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
+        // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
 
         val targetDiscardSize: Long = Math.max(disaggTotalSize + estimateSize - threshold,
           5 * 1000 * 1000 * 1000) // 5GB
@@ -161,17 +161,16 @@ class DisaggBlockManagerEndpoint(
 
         logInfo(s"lruQueue: $lruQueue")
 
-        var i = 0
-        while (totalDiscardSize < targetDiscardSize && i < lruQueue.size) {
-          val candidateBlock: CrailBlockInfo = lruQueue(i)
+
+        while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty) {
+          val candidateBlock: CrailBlockInfo = lruQueue(0)
           totalDiscardSize += candidateBlock.size
           logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
             s"size $totalDiscardSize / $targetDiscardSize")
           removeBlocks += candidateBlock.bid
-          i += 1
-        }
 
-        lruQueue.drop(i)
+          lruQueue -= candidateBlock
+        }
 
         /*
         val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
