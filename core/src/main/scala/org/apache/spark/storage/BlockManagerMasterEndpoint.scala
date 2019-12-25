@@ -17,6 +17,7 @@
 
 package org.apache.spark.storage
 
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 import java.util.{HashMap => JHashMap}
 
@@ -86,6 +87,8 @@ class BlockManagerMasterEndpoint(
     }
   }
 
+  val totalDisaggSize: AtomicLong = new AtomicLong(0)
+
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
     def run(): Unit = {
@@ -134,23 +137,6 @@ class BlockManagerMasterEndpoint(
   }
   scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
 
-  def getDisaggTotalSize: Long = {
-    var disaggSize = 0L
-
-    blockManagerInfo.values.foreach {
-      v: BlockManagerInfo =>
-
-        v.blocks.values.foreach {
-          stat: BlockStatus =>
-            disaggSize += stat.disaggSize
-        }
-
-    }
-
-    disaggSize
-  }
-
-
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
       context.reply(register(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint))
@@ -159,7 +145,7 @@ class BlockManagerMasterEndpoint(
         UpdateBlockInfo(blockManagerId, blockId, storageLevel,
         deserializedSize, size, disaggSize) =>
       context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel,
-        deserializedSize, size, disaggSize))
+        deserializedSize, size, disaggSize, totalDisaggSize))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
 
     case GetBlockSize(blockId) =>
@@ -465,7 +451,8 @@ class BlockManagerMasterEndpoint(
       storageLevel: StorageLevel,
       memSize: Long,
       diskSize: Long,
-      disaggSize: Long): Boolean = {
+      disaggSize: Long,
+      totalDisaggSize: AtomicLong): Boolean = {
 
     logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
 
@@ -491,7 +478,7 @@ class BlockManagerMasterEndpoint(
     }
 
     blockManagerInfo(blockManagerId).updateBlockInfo(
-      blockId, storageLevel, memSize, diskSize, disaggSize)
+      blockId, storageLevel, memSize, diskSize, disaggSize, totalDisaggSize)
 
     var locations: mutable.HashSet[BlockManagerId] = null
     if (blockLocations.containsKey(blockId)) {
@@ -596,13 +583,15 @@ private[spark] class BlockManagerInfo(
       storageLevel: StorageLevel,
       memSize: Long,
       diskSize: Long,
-      disaggSize: Long) {
+      disaggSize: Long,
+      totalDisaggSize: AtomicLong) {
 
     updateLastSeenMs()
 
     val blockExists = _blocks.contains(blockId)
     var originalMemSize: Long = 0
     var originalDiskSize: Long = 0
+    var originalDisaggSize: Long = 0
     var originalLevel: StorageLevel = StorageLevel.NONE
 
     if (blockExists) {
@@ -611,11 +600,16 @@ private[spark] class BlockManagerInfo(
       originalLevel = blockStatus.storageLevel
       originalMemSize = blockStatus.memSize
       originalDiskSize = blockStatus.diskSize
+      originalDisaggSize = blockStatus.disaggSize
+
 
       if (originalLevel.useMemory) {
         _remainingMem += originalMemSize
       }
     }
+
+
+    totalDisaggSize.addAndGet(disaggSize - originalDisaggSize)
 
     if (storageLevel.isValid) {
       /* isValid means it is either stored in-memory or on-disk.
@@ -641,6 +635,7 @@ private[spark] class BlockManagerInfo(
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
+
       }
       if (storageLevel.useDisk) {
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize, disaggSize)
