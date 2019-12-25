@@ -221,7 +221,7 @@ class BlockManagerMasterEndpoint(
     val blocks = blockLocations.asScala.keys.flatMap(_.asRDDId).filter(_.rddId == rddId)
     blocks.foreach { blockId =>
       val bms: mutable.HashSet[BlockManagerId] = blockLocations.get(blockId)
-      bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId)))
+      bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId, totalDisaggSize)))
       blockLocations.remove(blockId)
     }
 
@@ -680,10 +680,13 @@ private[spark] class BlockManagerInfo(
     }
   }
 
-  def removeBlock(blockId: BlockId) {
+  def removeBlock(blockId: BlockId,
+                  totalDisaggSize: AtomicLong) {
     if (_blocks.contains(blockId)) {
-      _remainingMem += _blocks.get(blockId).get.memSize
+      val status: BlockStatus = _blocks.get(blockId).get
+      _remainingMem += status.memSize
       _blocks.remove(blockId)
+      totalDisaggSize.addAndGet(-status.disaggSize)
     }
     _cachedBlocks -= blockId
   }
