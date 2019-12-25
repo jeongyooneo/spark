@@ -144,13 +144,15 @@ class DisaggBlockManagerEndpoint(
 
       val elapsed = System.currentTimeMillis() - prevDiscardTime
 
-      if (totalSize.get() + estimateSize > threshold && elapsed > 10000) {
+      val disaggTotalSize = blockManagerMaster.getDisaggTotalSize
+
+      if (disaggTotalSize + estimateSize > threshold && elapsed > 5000) {
         // discard!!
         // rm 1/3 after 10 seconds
         prevDiscardTime = System.currentTimeMillis()
 
         logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
-        val targetDiscardSize: Long = 1 * (totalSize.get() + estimateSize) / 3
+        val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
         var totalDiscardSize: Long = 0
 
 

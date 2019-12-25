@@ -135,6 +135,23 @@ class BlockManagerMasterEndpoint(
   }
   scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
 
+  def getDisaggTotalSize: Long = {
+    var disaggSize = 0L
+
+    blockManagerInfo.foreach {
+      case (k: BlockManagerId, v: BlockManagerInfo) =>
+
+        v.blocks.forEach(new BiConsumer[BlockId, BlockStatus] {
+          def accept(b: BlockId, stat: BlockStatus): Unit = {
+            disaggSize += stat.disaggSize
+          }
+
+        })
+    }
+
+    disaggSize
+  }
+
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>

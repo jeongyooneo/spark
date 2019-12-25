@@ -73,7 +73,6 @@ private[spark] class DisaggStore(
         var threwException: Boolean = true
         try {
           writeFunc(out)
-          disaggManager.writeEnd(blockId, out.getCount)
           // blockSizes.put(blockId, out.getCount)
           logInfo(s"Attempting to put block $blockId  " +
             s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
@@ -86,6 +85,7 @@ private[spark] class DisaggStore(
         } finally {
           try {
             out.close()
+            disaggManager.writeEnd(blockId, out.getCount)
           } catch {
             case ioe: IOException =>
               if (!threwException) {
