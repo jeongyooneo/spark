@@ -247,7 +247,7 @@ class DisaggBlockManagerEndpoint(
       totalSize.addAndGet(v.size)
 
       lruQueue.synchronized {
-        lruQueue += v
+        lruQueue.append(v)
       }
 
       logInfo(s"End of disagg file writing $blockId, total: $totalSize")
