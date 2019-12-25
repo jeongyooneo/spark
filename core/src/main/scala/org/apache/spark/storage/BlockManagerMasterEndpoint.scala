@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage
 
-import java.util.concurrent.{Executors, TimeUnit}
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 import java.util.function.BiConsumer
 import java.util.{HashMap => JHashMap}
 
@@ -47,7 +47,7 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
-  private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
+  private val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
 
   // disagg block size info
   private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]

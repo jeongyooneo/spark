@@ -145,7 +145,7 @@ class DisaggBlockManagerEndpoint(
 
       val elapsed = System.currentTimeMillis() - prevDiscardTime
 
-      if (disaggTotalSize + estimateSize > threshold && elapsed > 2000) {
+      if (disaggTotalSize + estimateSize > threshold && elapsed > 1000) {
         // discard!!
         // rm 1/3 after 10 seconds
         prevDiscardTime = System.currentTimeMillis()
