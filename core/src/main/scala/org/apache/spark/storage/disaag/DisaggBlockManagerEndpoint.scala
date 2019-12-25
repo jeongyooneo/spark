@@ -154,7 +154,7 @@ class DisaggBlockManagerEndpoint(
         // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
 
         val targetDiscardSize: Long = Math.max(disaggTotalSize + estimateSize - threshold,
-          5L * 1000L * 1000L * 1000L) // 5GB
+          2L * 1000L * 1000L * 1000L) // 5GB
 
         var totalDiscardSize: Long = 0
 
