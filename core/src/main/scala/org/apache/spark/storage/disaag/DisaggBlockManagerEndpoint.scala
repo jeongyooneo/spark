@@ -47,7 +47,7 @@ class DisaggBlockManagerEndpoint(
     thresholdMB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
-  val threshold = thresholdMB * (1000 * 1000)
+  val threshold: Long = thresholdMB * (1000 * 1000)
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
@@ -154,7 +154,7 @@ class DisaggBlockManagerEndpoint(
         // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
 
         val targetDiscardSize: Long = Math.max(disaggTotalSize + estimateSize - threshold,
-          5 * 1000 * 1000 * 1000) // 5GB
+          5L * 1000L * 1000L * 1000L) // 5GB
 
         var totalDiscardSize: Long = 0
 
