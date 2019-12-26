@@ -68,7 +68,7 @@ class DisaggBlockManager(
   def remove(blockId: BlockId): Boolean = {
     if (blockExists(blockId)) {
       val path = getPath(blockId)
-      fs.delete(path, false).get().syncDir()
+      fs.delete(path, false)
       logInfo(s"jy: Removed block $blockId from disagg")
 
       logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
