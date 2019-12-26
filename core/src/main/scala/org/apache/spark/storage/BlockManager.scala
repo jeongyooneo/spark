@@ -1149,7 +1149,7 @@ private[spark] class BlockManager(
           blockInfoManager.unlock(blockId)
         }
       } else {
-        removeBlockInternal(blockId, tellMaster = false)
+        removeBlockInternal(blockId, tellMaster = false, isLocal = true)
         logWarning(s"Putting block $blockId failed")
       }
       res
@@ -1161,7 +1161,7 @@ private[spark] class BlockManager(
         // If an exception was thrown then it's possible that the code in `putBody` has already
         // notified the master about the availability of this block, so we need to send an update
         // to remove this block location.
-        removeBlockInternal(blockId, tellMaster = tellMaster)
+        removeBlockInternal(blockId, tellMaster = tellMaster, isLocal = true)
         // The `putBody` code may have also added a new block status to TaskMetrics, so we need
         // to cancel that out by overwriting it with an empty block status. We only do this if
         // the finally block was entered via an exception because doing this unconditionally would
@@ -1214,6 +1214,8 @@ private[spark] class BlockManager(
       // Size of the block in bytes
       var size = 0L
 
+      var disaggSuccess = true
+
       if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
@@ -1236,12 +1238,17 @@ private[spark] class BlockManager(
 
                 val (iter1, iter2) = iter.duplicate
 
-                disaggStore.put(blockId,
+                disaggSuccess = disaggStore.put(blockId,
                   estimateIteratorSize(iter2, classTag)) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter1)(classTag)
                 }
                 size = disaggStore.getSize(blockId)
+
+                if (!disaggSuccess) {
+                  iteratorFromFailedMemoryStorePut = Some(iter)
+                }
+
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1262,12 +1269,17 @@ private[spark] class BlockManager(
               } else if (level.useDisagg &&
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead.")
-                disaggStore.put(blockId,
+                disaggSuccess = disaggStore.put(blockId,
                   partiallySerializedValues.unrolledBuffer.size) { channel =>
                   val out = Channels.newOutputStream(channel)
                   partiallySerializedValues.finishWritingToStream(out)
                 }
                 size = disaggStore.getSize(blockId)
+
+                if (!disaggSuccess) {
+                  iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
+                }
+
               } else {
                 iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
               }
@@ -1283,7 +1295,7 @@ private[spark] class BlockManager(
         disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         val it = iterator()
         val (iter1, iter2) = it.duplicate
-        disaggStore.put(blockId, estimateIteratorSize(iter2, classTag)) { channel =>
+        disaggSuccess = disaggStore.put(blockId, estimateIteratorSize(iter2, classTag)) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, iter1)(classTag)
         }
@@ -1291,7 +1303,7 @@ private[spark] class BlockManager(
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
-      val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
+      val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid && disaggSuccess
       if (blockWasSuccessfullyStored) {
         // Now that the block is in either the memory or disk store, tell the master about it.
         info.size = size
@@ -1691,7 +1703,7 @@ private[spark] class BlockManager(
         }
 
       case Some(info) =>
-        removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
+        removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster, isLocal = false)
         addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
     }
   }
@@ -1700,12 +1712,17 @@ private[spark] class BlockManager(
    * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
    * lock on the block.
    */
-  private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean): Unit = {
+  private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean, isLocal: Boolean): Unit = {
     // Removals are idempotent in disk store and memory store. At worst, we get a warning.
     val storageLevel = blockInfoManager.get(blockId).get.level
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
-    val removedFromDisagg = disaggStore.remove(blockId)
+
+    var removedFromDisagg = false
+
+    if (!isLocal) {
+      val removedFromDisagg = disaggStore.remove(blockId)
+    }
 
     if (!storageLevel.useDisagg && !removedFromMemory && !removedFromDisk) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")

@@ -53,7 +53,7 @@ private[spark] class DisaggStore(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def put(blockId: BlockId, estimateSize: Long)(writeFunc: WritableByteChannel => Unit): Unit = {
+  def put(blockId: BlockId, estimateSize: Long)(writeFunc: WritableByteChannel => Unit): Boolean = {
     // if (contains(blockId)) {
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
@@ -104,8 +104,11 @@ private[spark] class DisaggStore(
           blockId,
           file.getPath,
           finishTime - startTime))
+
+        true
       } else {
         logInfo(s"File $blockId is already created ... so skip creating the file")
+        false
       }
     } catch {
       case e: Exception =>
