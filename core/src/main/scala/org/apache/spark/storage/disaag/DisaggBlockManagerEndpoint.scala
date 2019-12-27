@@ -168,12 +168,20 @@ class DisaggBlockManagerEndpoint(
         lruQueue.synchronized {
           while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty) {
             val candidateBlock: CrailBlockInfo = lruQueue.head
-            totalDiscardSize += candidateBlock.size
-            logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
-              s"size $totalDiscardSize / $targetDiscardSize")
-            removeBlocks += candidateBlock.bid
 
-            lruQueue -= candidateBlock
+            if (candidateBlock.bid.name.startsWith("rdd_2_")) {
+              // skip..
+              lruQueue -= candidateBlock
+              lruQueue.append(candidateBlock)
+            } else {
+              totalDiscardSize += candidateBlock.size
+              logInfo(s"Discarding ${candidateBlock.bid}.." +
+                s"pointer ${lruPointer} / ${lruQueue.size}" +
+                s"size $totalDiscardSize / $targetDiscardSize")
+              removeBlocks += candidateBlock.bid
+
+              lruQueue -= candidateBlock
+            }
           }
         }
 
