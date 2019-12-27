@@ -141,7 +141,7 @@ class DisaggBlockManagerEndpoint(
 
     val disaggTotalSize = blockManagerMaster.totalDisaggSize.get()
     logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
-      s"queueSize: ${lruQueue.size} totalSize: $disaggTotalSize / $threshold")
+      s"queueSize: ${lruQueue.size} totalSize: $disaggTotalSize / $totalSize / $threshold")
 
 
     val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
@@ -149,7 +149,7 @@ class DisaggBlockManagerEndpoint(
 
     val elapsed = System.currentTimeMillis() - prevTime
 
-    if (disaggTotalSize + estimateSize > threshold && elapsed > 1000) {
+    if (totalSize.get() + estimateSize > threshold && elapsed > 1000) {
       // discard!!
       // rm 1/3 after 10 seconds
       if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
@@ -159,7 +159,7 @@ class DisaggBlockManagerEndpoint(
 
         logInfo(s"lruQueue: $lruQueue")
 
-        val targetDiscardSize: Long = Math.max(disaggTotalSize
+        val targetDiscardSize: Long = Math.max(totalSize.get()
           + estimateSize - threshold,
           2L * 1000L * 1000L * 1000L) // 5GB
 
