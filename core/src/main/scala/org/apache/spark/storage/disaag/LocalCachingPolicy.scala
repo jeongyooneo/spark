@@ -54,8 +54,10 @@ class LocalCachingPolicy(memoryStore: MemoryStore,
             iter
           case Right(_) =>
             // The put() succeeded, so we can read the values back:
-            logInfo(s"Removing disagg after caching value $blockId")
-            disaggStore.remove(blockId)
+
+            // logInfo(s"Removing disagg after caching value $blockId")
+            // disaggStore.remove(blockId)
+
             memoryStore.getValues(blockId).get
             // remove the value after storing it in memory
         }
@@ -92,8 +94,10 @@ class LocalCachingPolicy(memoryStore: MemoryStore,
          })
          if (putSucceeded) {
            disaggData.dispose()
-           logInfo(s"Removing disagg after caching value $blockId")
-           disaggStore.remove(blockId)
+
+           // logInfo(s"Removing disagg after caching value $blockId")
+           // disaggStore.remove(blockId)
+
            Some(memoryStore.getBytes(blockId).get)
          } else {
            None

@@ -166,6 +166,8 @@ class DisaggBlockManagerEndpoint(
         var totalDiscardSize: Long = 0
 
         lruQueue.synchronized {
+          var cnt = 0
+
           while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty) {
             val candidateBlock: CrailBlockInfo = lruQueue.head
 
@@ -181,6 +183,16 @@ class DisaggBlockManagerEndpoint(
               removeBlocks += candidateBlock.bid
 
               lruQueue -= candidateBlock
+            }
+
+            cnt += 1
+
+            if (cnt >= lruQueue.size) {
+              logWarning(s"Cannot shrink cache size... total $totalSize")
+              lruQueue.foreach { block =>
+                logWarning(s"Cannot evict ${block.bid} / ${block.size}")
+              }
+              throw new RuntimeException("Cannot shrink size")
             }
           }
         }
