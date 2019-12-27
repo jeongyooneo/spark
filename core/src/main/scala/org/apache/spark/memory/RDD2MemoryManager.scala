@@ -167,7 +167,7 @@ private[spark] class RDD2MemoryManager private[memory] (
     }
 
 
-    if (!(blockId.name.startsWith("rdd_2_") && !blockId.isRDD)) {
+    if (!(blockId.name.startsWith("rdd_2_") || !blockId.isRDD)) {
       return false
     }
 
