@@ -120,7 +120,12 @@ class DisaggBlockManagerEndpoint(
 
       lruQueue.synchronized {
         lruQueue -= info
-        lruQueue.append(info)
+
+        // mru
+        lruQueue.prepend(info)
+
+        // lru
+        // lruQueue.append(info)
       }
     }
   }
@@ -130,7 +135,7 @@ class DisaggBlockManagerEndpoint(
 
   // TODO: which blocks to remove ?
 
-  var prevDiscardTime = System.currentTimeMillis()
+  val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
 
   def discardBlocksIfNecessary(estimateSize: Long): Boolean = {
 
@@ -140,38 +145,39 @@ class DisaggBlockManagerEndpoint(
 
 
     val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+    val prevTime = prevDiscardTime.get()
 
-    lruQueue.synchronized {
+    val elapsed = System.currentTimeMillis() - prevTime
 
-      val elapsed = System.currentTimeMillis() - prevDiscardTime
+    if (disaggTotalSize + estimateSize > threshold && elapsed > 1000) {
+      // discard!!
+      // rm 1/3 after 10 seconds
+      if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
 
-      if (disaggTotalSize + estimateSize > threshold && elapsed > 1000) {
-        // discard!!
-        // rm 1/3 after 10 seconds
-        prevDiscardTime = System.currentTimeMillis()
-
-        logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
+        // logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
         // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
 
-        val targetDiscardSize: Long = Math.max(disaggTotalSize + estimateSize - threshold,
+        logInfo(s"lruQueue: $lruQueue")
+
+        val targetDiscardSize: Long = Math.max(disaggTotalSize
+          + estimateSize - threshold,
           2L * 1000L * 1000L * 1000L) // 5GB
 
         var totalDiscardSize: Long = 0
 
+        lruQueue.synchronized {
+          while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty) {
+            val candidateBlock: CrailBlockInfo = lruQueue.head
+            totalDiscardSize += candidateBlock.size
+            logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
+              s"size $totalDiscardSize / $targetDiscardSize")
+            removeBlocks += candidateBlock.bid
 
-        logInfo(s"lruQueue: $lruQueue")
-
-        while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty) {
-          val candidateBlock: CrailBlockInfo = lruQueue.head
-          totalDiscardSize += candidateBlock.size
-          logInfo(s"Discarding ${candidateBlock.bid}..pointer ${lruPointer} / ${lruQueue.size}" +
-            s"size $totalDiscardSize / $targetDiscardSize")
-          removeBlocks += candidateBlock.bid
-
-          lruQueue -= candidateBlock
+            lruQueue -= candidateBlock
+          }
         }
 
-        /*
+          /*
         val candidateBlock: CrailBlockInfo = lruQueue(lruPointer)
         if (candidateBlock.writeDone && !candidateBlock.read) {
           // discard!
@@ -190,7 +196,6 @@ class DisaggBlockManagerEndpoint(
             s" $totalDiscardSize / $targetDiscardSize")
         }
         */
-
       }
     }
 
