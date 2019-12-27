@@ -247,6 +247,7 @@ object MemoryManager extends Logging {
       case "Unified" => UnifiedMemoryManager(conf, numCores)
       case "Static" => new StaticMemoryManager(conf, numCores)
       case "Disagg" => OnlyDisaggMemoryManager(conf, numCores)
+      case "RDD2" => RDD2MemoryManager(conf, numCores)
       case _ => throw new RuntimeException("Invalid  memoryManagerType " + memoryManagerType)
     }
   }
