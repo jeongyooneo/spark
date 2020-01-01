@@ -37,6 +37,10 @@ class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
   }
 
+  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
+    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize))
+  }
+
   def read(blockId: BlockId) : Unit = {
     driverEndpoint.askSync[Unit](FileRead(blockId))
   }

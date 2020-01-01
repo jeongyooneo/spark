@@ -216,6 +216,10 @@ package object config {
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("0g")
 
+  private[spark] val JOB_DAG_PATH = ConfigBuilder("spark.disagg.dagpath")
+    .stringConf
+    .createWithDefault("??")
+
   private[spark] val DRIVER_BLOCK_MANAGER_PORT = ConfigBuilder("spark.driver.blockManager.port")
     .doc("Port to use for the block manager on the driver.")
     .fallbackConf(BLOCK_MANAGER_PORT)

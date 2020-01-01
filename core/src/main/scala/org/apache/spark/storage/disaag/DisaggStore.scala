@@ -61,7 +61,10 @@ private[spark] class DisaggStore(
     // first discard blocks from disagg memory
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
-    disaggManager.discardBlocksIfNecessary(estimateSize)
+
+    if (!disaggManager.storeBlockOrNot(blockId, estimateSize)) {
+      return false
+    }
 
     try {
       val startTime = System.currentTimeMillis

@@ -17,8 +17,8 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
@@ -33,6 +33,7 @@ import scala.collection.convert.decorateAsScala._
 import scala.collection.{mutable, _}
 import scala.concurrent.ExecutionContext
 
+
 /**
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
  * of all slaves' block managers.
@@ -44,7 +45,8 @@ class DisaggBlockManagerEndpoint(
     conf: SparkConf,
     listenerBus: LiveListenerBus,
     blockManagerMaster: BlockManagerMasterEndpoint,
-    thresholdMB: Long)
+    thresholdMB: Long,
+    dagPath: String)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
   val threshold: Long = thresholdMB * (1000 * 1000)
@@ -56,6 +58,21 @@ class DisaggBlockManagerEndpoint(
   if (baseDirExists) {
     fs.delete(rootDir, true).get().syncDir()
   }
+
+  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath)
+
+  /*
+  private val fileSystem = Utils.getHadoopFileSystem("/",
+    SparkHadoopUtil.get.newConfiguration(conf))
+
+  val dest = new File("/", dagPath)
+  val destPath = new Path(new URI(dest))
+
+  val inputStream = fileSystem.open(destPath)
+
+  inputStream.readFully()
+  */
+
 
   fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
     CrailLocationClass.DEFAULT, true).get().syncDir()
@@ -136,6 +153,79 @@ class DisaggBlockManagerEndpoint(
   // TODO: which blocks to remove ?
 
   val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
+
+  def calculateBlockCost(blockId: BlockId): Long = {
+    0L
+  }
+
+  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
+
+    logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
+      s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
+
+    val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+    val prevTime = prevDiscardTime.get()
+
+    val elapsed = System.currentTimeMillis() - prevTime
+
+    if (totalSize.get() + estimateSize < threshold || elapsed < 1000) {
+      return true
+    }
+
+    // discard!!
+    if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
+
+      // logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
+      // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
+
+      logInfo(s"lruQueue: $lruQueue")
+
+      val targetDiscardSize: Long = Math.max(totalSize.get()
+        + estimateSize - threshold,
+        2L * 1000L * 1000L * 1000L) // 5GB
+
+      var totalDiscardSize: Long = 0
+
+      lruQueue.synchronized {
+        var cnt = 0
+
+        val lruSize = lruQueue.size
+
+        while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty && cnt < lruSize) {
+          val candidateBlock: CrailBlockInfo = lruQueue.head
+
+          if (candidateBlock.bid.name.startsWith("rdd_2_")) {
+            // skip..
+            lruQueue -= candidateBlock
+            lruQueue.append(candidateBlock)
+          } else {
+            totalDiscardSize += candidateBlock.size
+            logInfo(s"Discarding ${candidateBlock.bid}.." +
+              s"pointer ${lruPointer} / ${lruQueue.size}" +
+              s"size $totalDiscardSize / $targetDiscardSize")
+            removeBlocks += candidateBlock.bid
+
+            lruQueue -= candidateBlock
+          }
+
+          cnt += 1
+        }
+      }
+
+    }
+
+
+    removeBlocks.foreach { bid =>
+      executor.submit(new Runnable {
+        override def run(): Unit = {
+          logInfo(s"Remove block from worker $bid")
+          blockManagerMaster.removeBlockFromWorkers(bid)
+        }
+      })
+    }
+
+    true
+  }
 
   def discardBlocksIfNecessary(estimateSize: Long): Boolean = {
 
@@ -316,6 +406,9 @@ class DisaggBlockManagerEndpoint(
 
     case DiscardBlocksIfNecessary(estimateSize) =>
       context.reply(discardBlocksIfNecessary(estimateSize))
+
+    case StoreBlockOrNot(blockId, estimateSize) =>
+      context.reply(storeBlockOrNot(blockId, estimateSize))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
