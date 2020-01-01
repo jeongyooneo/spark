@@ -17,6 +17,7 @@
 
 package org.apache.spark.storage.disaag
 
+import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
@@ -104,6 +105,12 @@ class DisaggBlockManagerEndpoint(
   private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
+  private val sizePriorityQueue: PriorityQueue[(BlockId, CrailBlockInfo)] =
+    new PriorityQueue[(BlockId, CrailBlockInfo)](new Comparator[(BlockId, CrailBlockInfo)] {
+      override def compare(o1: (BlockId, CrailBlockInfo), o2: (BlockId, CrailBlockInfo)): Int =
+        o2._2.size.compare(o1._2.size)
+    })
+
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
@@ -158,74 +165,52 @@ class DisaggBlockManagerEndpoint(
 
   val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
 
-  def calculateBlockCost(blockId: BlockId): Long = {
-    0L
-  }
-
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
-    logInfo(s"discard block if necessary $estimateSize, pointer: $lruPointer, " +
-      s"queueSize: ${lruQueue.size} totalSize: $totalSize / $threshold")
-
-    val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
     val prevTime = prevDiscardTime.get()
 
-    val elapsed = System.currentTimeMillis() - prevTime
-
-    if (totalSize.get() + estimateSize < threshold || elapsed < 1000) {
+    if (totalSize.get() + estimateSize < threshold
+      || System.currentTimeMillis() - prevTime < 1000) {
+      logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
       return true
     }
 
     // discard!!
+    var totalCost = 0L
+    var totalDiscardSize = 0L
+    val putCost = rddJobDag.get.calculateCost(blockId, System.currentTimeMillis())
+
+    val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+
     if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
+      sizePriorityQueue.synchronized {
+        val iterator = sizePriorityQueue.iterator
+        while (iterator.hasNext && totalDiscardSize < estimateSize) {
+          val (bid, blockInfo) = iterator.next()
 
-      // logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
-      // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
+          val discardCost = rddJobDag.get.calculateCost(bid)
 
-      logInfo(s"lruQueue: $lruQueue")
-
-      val targetDiscardSize: Long = Math.max(totalSize.get()
-        + estimateSize - threshold,
-        2L * 1000L * 1000L * 1000L) // 5GB
-
-      var totalDiscardSize: Long = 0
-
-      lruQueue.synchronized {
-        var cnt = 0
-
-        val lruSize = lruQueue.size
-
-        while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty && cnt < lruSize) {
-          val candidateBlock: CrailBlockInfo = lruQueue.head
-
-          if (candidateBlock.bid.name.startsWith("rdd_2_")) {
-            // skip..
-            lruQueue -= candidateBlock
-            lruQueue.append(candidateBlock)
-          } else {
-            totalDiscardSize += candidateBlock.size
-            logInfo(s"Discarding ${candidateBlock.bid}.." +
-              s"pointer ${lruPointer} / ${lruQueue.size}" +
-              s"size $totalDiscardSize / $targetDiscardSize")
-            removeBlocks += candidateBlock.bid
-
-            lruQueue -= candidateBlock
+          if (totalCost + discardCost < putCost) {
+            totalCost += discardCost
+            totalDiscardSize += blockInfo.size
+            removeBlocks.append(bid)
+            iterator.remove()
+            logInfo(s"Remove: Cost: $totalCost/$putCost, " +
+              s"size: $totalDiscardSize/$estimateSize, remove block: $bid")
           }
-
-          cnt += 1
         }
       }
-
     }
 
-
-    removeBlocks.foreach { bid =>
-      executor.submit(new Runnable {
-        override def run(): Unit = {
-          logInfo(s"Remove block from worker $bid")
-          blockManagerMaster.removeBlockFromWorkers(bid)
-        }
-      })
+    if (totalDiscardSize >= estimateSize && totalCost < putCost) {
+      removeBlocks.foreach { bid =>
+        executor.submit(new Runnable {
+          override def run(): Unit = {
+            logInfo(s"Remove block from worker $bid")
+            blockManagerMaster.removeBlockFromWorkers(bid)
+          }
+        })
+      }
     }
 
     true
@@ -340,8 +325,19 @@ class DisaggBlockManagerEndpoint(
       }
     }
 
-    totalSize.addAndGet(-blockInfo.size)
+    sizePriorityQueue.synchronized {
+      val iterator = sizePriorityQueue.iterator()
+      var done = false
+      while (iterator.hasNext && !done) {
+        val (bid, info) = iterator.next()
+        if (bid.equals(blockId)) {
+          iterator.remove()
+          done = true
+        }
+      }
+    }
 
+    totalSize.addAndGet(-blockInfo.size)
     true
   }
 
@@ -349,10 +345,15 @@ class DisaggBlockManagerEndpoint(
     logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
+    rddJobDag.get.setCreatedTimeForRDD(blockId)
+
+
     if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")
       throw new RuntimeException(s"no disagg block for writing $blockId")
     } else {
+
+
       val v = info.get
       v.size = size
       v.writeDone = true
@@ -360,6 +361,10 @@ class DisaggBlockManagerEndpoint(
 
       lruQueue.synchronized {
         lruQueue.append(v)
+      }
+
+      sizePriorityQueue.synchronized {
+        sizePriorityQueue.add((blockId, v))
       }
 
       logInfo(s"End of disagg file writing $blockId, total: $totalSize")

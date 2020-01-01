@@ -18,7 +18,10 @@
 package org.apache.spark.storage.disaag
 
 
+import java.util.concurrent.atomic.AtomicLong
+
 import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -40,12 +43,58 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     sb.append("--------------------------------------------\n")
     sb.toString()
   }
+
+  private def blockIdToRDDId(blockId: BlockId): Int = {
+    blockId.asRDDId.get.rddId
+  }
+
+  def setCreatedTimeForRDD(blockId: BlockId): Unit = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+    rddNode.synchronized {
+      if (rddNode.createdTime.get() < System.currentTimeMillis()) {
+        rddNode.createdTime.set(System.currentTimeMillis())
+      }
+    }
+  }
+
+  def calculateCost(blockId: BlockId, nodeCreatedTime: Long): Long = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    var parentCreatedTime = Long.MaxValue
+    for (parent <- rddNode.parents) {
+      if (parent.createdTime.get() < parentCreatedTime) {
+        parentCreatedTime = parent.createdTime.get()
+      }
+    }
+
+    nodeCreatedTime - parentCreatedTime
+  }
+
+  def calculateCost(blockId: BlockId): Long = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    val nodeCreatedTime = rddNode.createdTime.get()
+
+    var parentCreatedTime = Long.MaxValue
+    for (parent <- rddNode.parents) {
+      if (parent.createdTime.get() < parentCreatedTime) {
+        parentCreatedTime = parent.createdTime.get()
+      }
+    }
+
+    nodeCreatedTime - parentCreatedTime
+  }
 }
 
 class RDDNode(val rddId: Int,
               val cached: Boolean) {
 
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
+
+  var createdTime: AtomicLong = new AtomicLong(0)
 
   override def equals(that: Any): Boolean =
     that match
