@@ -81,17 +81,18 @@ object RDDJobDag extends Logging {
 
           // add vertices
           for (rdd <- rdds) {
-            val rdd_id = rdd("RDD ID").asInstanceOf[Int]
-            val numCachedPartitions = rdd("Number of Cached Partitions").asInstanceOf[Int]
+            val rdd_id = rdd("RDD ID").asInstanceOf[Double].toInt
+            val numCachedPartitions = rdd("Number of Cached Partitions")
+              .asInstanceOf[Double].toInt
             val cached = numCachedPartitions > 0
-            val parents = rdd("Parent IDs").asInstanceOf[List[Int]]
+            val parents = rdd("Parent IDs").asInstanceOf[List[Double]]
             val rdd_object = new RDDNode(rdd_id, cached)
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
               dag(rdd_object) = new mutable.HashSet()
-              for (parent_id: Int <- parents) {
-                edges.append((parent_id, rdd_id))
+              for (parent_id: Double <- parents) {
+                edges.append((parent_id.toInt, rdd_id))
               }
             }
           }
@@ -99,10 +100,11 @@ object RDDJobDag extends Logging {
       }
 
       // add edges
-      for ((child_id, parent_id) <- edges) {
+      for ((parent_id, child_id) <- edges) {
         val child_rdd_object = vertices(child_id)
         val parent_rdd_object = vertices(parent_id)
-        dag(child_rdd_object).add(parent_rdd_object)
+        dag(parent_rdd_object).add(child_rdd_object)
+        child_rdd_object.parents.append(parent_rdd_object)
       }
 
       logInfo(s"dag: ${dag}")
