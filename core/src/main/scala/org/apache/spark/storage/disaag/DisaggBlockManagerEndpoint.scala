@@ -193,7 +193,11 @@ class DisaggBlockManagerEndpoint(
     if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
       sizePriorityQueue.synchronized {
         val iterator = sizePriorityQueue.iterator
-        while (iterator.hasNext && totalDiscardSize < estimateSize) {
+
+        val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
+          totalSize.get() + estimateSize - threshold)
+
+        while (iterator.hasNext && totalDiscardSize < removalSize) {
           val (bid, blockInfo) = iterator.next()
 
           val discardCost = rddJobDag.get.calculateCost(bid)
@@ -204,13 +208,26 @@ class DisaggBlockManagerEndpoint(
             removeBlocks.append((bid, blockInfo))
             iterator.remove()
             logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
-              s"size: $totalDiscardSize/$estimateSize, remove block: $bid")
+              s"size: $totalDiscardSize/$removalSize, remove block: $bid")
           }
         }
       }
     }
 
-    if (totalCost < putCost) {
+    if (totalDiscardSize < estimateSize) {
+      // it means that the discarding cost is greater than putting block
+      // so, we do not store the block
+      logInfo(s"Re-add blocks instead of storing $blockId, discardingCost: $totalCost, " +
+        s"discardingSize: $totalDiscardSize/$estimateSize")
+
+      sizePriorityQueue.synchronized {
+        removeBlocks.foreach { t =>
+          sizePriorityQueue.add(t)
+        }
+      }
+
+      false
+    } else {
       removeBlocks.foreach { t =>
 
         prevDiscardedBlocks.put(t._1, true)
@@ -224,17 +241,6 @@ class DisaggBlockManagerEndpoint(
       }
 
       true
-    } else {
-      // it means that the discarding cost is greater than putting block
-      // so, we do not store the block
-      logInfo(s"Re-add blocks instead of storing $blockId")
-      sizePriorityQueue.synchronized {
-        removeBlocks.foreach { t =>
-          sizePriorityQueue.add(t)
-        }
-      }
-
-      false
     }
   }
 
