@@ -30,6 +30,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val edges: ListBuffer[(Int, Int)],
                 val vertices: mutable.Map[Int, RDDNode]) {
 
+
+  override def toString: String = {
+    val sb = new StringBuilder()
+    sb.append("--------------------------------------------\n")
+    for ((key, v) <- dag) {
+      sb.append(s"[$key -> $v]\n")
+    }
+    sb.append("--------------------------------------------\n")
+    sb.toString()
+  }
 }
 
 class RDDNode(val rddId: Int,
