@@ -117,8 +117,6 @@ object RDDJobDag extends Logging {
         child_rdd_object.parents.append(parent_rdd_object)
       }
 
-      logInfo(s"dag: ${dag}")
-
       Option(new RDDJobDag(dag, edges, vertices))
     }
   }

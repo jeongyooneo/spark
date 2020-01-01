@@ -61,6 +61,10 @@ class DisaggBlockManagerEndpoint(
 
   val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath)
 
+  if (rddJobDag.isDefined) {
+    logInfo(rddJobDag.get.toString)
+  }
+
   /*
   private val fileSystem = Utils.getHadoopFileSystem("/",
     SparkHadoopUtil.get.newConfiguration(conf))
