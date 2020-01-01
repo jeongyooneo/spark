@@ -164,8 +164,8 @@ class DisaggBlockManagerEndpoint(
   // TODO: which blocks to remove ?
 
   val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
-  val prevDiscardedBlocks: Map[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]().asScala
+  val prevDiscardedBlocks: ConcurrentHashMap[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]()
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
@@ -213,7 +213,8 @@ class DisaggBlockManagerEndpoint(
     if (totalCost < putCost) {
       removeBlocks.foreach { t =>
 
-        prevDiscardedBlocks(t._1) = true
+        prevDiscardedBlocks.put(t._1, true)
+
         executor.submit(new Runnable {
           override def run(): Unit = {
             logInfo(s"Remove block from worker ${t._1}")
