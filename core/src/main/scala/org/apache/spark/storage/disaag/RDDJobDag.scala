@@ -106,10 +106,10 @@ class RDDNode(val rddId: Int,
 
   var createdTime: AtomicLong = new AtomicLong(0)
 
-  val cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+  var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
 
   def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
-    cachedParents.union(cp)
+    cachedParents = cp
   }
 
   override def equals(that: Any): Boolean =
@@ -203,9 +203,11 @@ object RDDJobDag extends Logging {
       }
     }
 
-    val set = new mutable.HashSet[RDDNode]
+    var set: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
     for (parent <- child.parents) {
-      set.union(find(child, parent))
+      val v = find(child, parent)
+      set = set.union(v)
+      // logInfo(s"Find cached parent of ${child}: $v, $set")
     }
 
     set

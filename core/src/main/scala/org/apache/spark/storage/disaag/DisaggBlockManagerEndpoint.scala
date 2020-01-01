@@ -164,10 +164,17 @@ class DisaggBlockManagerEndpoint(
   // TODO: which blocks to remove ?
 
   val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
+  val prevDiscardedBlocks: Map[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]().asScala
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
     val prevTime = prevDiscardTime.get()
+
+    if (prevDiscardedBlocks.contains(blockId)) {
+      logInfo(s"Discard $blockId because it is already discarded")
+      return false
+    }
 
     if (totalSize.get() + estimateSize < threshold
       || System.currentTimeMillis() - prevTime < 1000) {
@@ -180,7 +187,8 @@ class DisaggBlockManagerEndpoint(
     var totalDiscardSize = 0L
     val putCost = rddJobDag.get.calculateCost(blockId, System.currentTimeMillis())
 
-    val removeBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+    val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+      new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
     if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
       sizePriorityQueue.synchronized {
@@ -193,27 +201,40 @@ class DisaggBlockManagerEndpoint(
           if (totalCost + discardCost < putCost) {
             totalCost += discardCost
             totalDiscardSize += blockInfo.size
-            removeBlocks.append(bid)
+            removeBlocks.append((bid, blockInfo))
             iterator.remove()
-            logInfo(s"Remove: Cost: $totalCost/$putCost, " +
+            logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
               s"size: $totalDiscardSize/$estimateSize, remove block: $bid")
           }
         }
       }
     }
 
-    if (totalDiscardSize >= estimateSize && totalCost < putCost) {
-      removeBlocks.foreach { bid =>
+    if (totalCost < putCost) {
+      removeBlocks.foreach { t =>
+
+        prevDiscardedBlocks(t._1) = true
         executor.submit(new Runnable {
           override def run(): Unit = {
-            logInfo(s"Remove block from worker $bid")
-            blockManagerMaster.removeBlockFromWorkers(bid)
+            logInfo(s"Remove block from worker ${t._1}")
+            blockManagerMaster.removeBlockFromWorkers(t._1)
           }
         })
       }
-    }
 
-    true
+      true
+    } else {
+      // it means that the discarding cost is greater than putting block
+      // so, we do not store the block
+      logInfo(s"Re-add blocks instead of storing $blockId")
+      sizePriorityQueue.synchronized {
+        removeBlocks.foreach { t =>
+          sizePriorityQueue.add(t)
+        }
+      }
+
+      false
+    }
   }
 
   def discardBlocksIfNecessary(estimateSize: Long): Boolean = {
