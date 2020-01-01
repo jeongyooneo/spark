@@ -31,8 +31,13 @@ import scala.util.parsing.json.JSON
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val edges: ListBuffer[(Int, Int)],
-                val vertices: mutable.Map[Int, RDDNode]) {
+                val vertices: mutable.Map[Int, RDDNode]) extends Logging {
 
+  vertices.foreach { v =>
+    val vertex = v._2
+    vertex.setCachedParents(RDDJobDag.findCachedParents(vertex))
+    logInfo(s"RDD $vertex cached parents ${vertex.cachedParents}")
+  }
 
   override def toString: String = {
     val sb = new StringBuilder()
@@ -69,7 +74,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     }
 
-    nodeCreatedTime - parentCreatedTime
+    (nodeCreatedTime - parentCreatedTime) * dag(rddNode).size
   }
 
   def calculateCost(blockId: BlockId): Long = {
@@ -79,13 +84,18 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val nodeCreatedTime = rddNode.createdTime.get()
 
     var parentCreatedTime = Long.MaxValue
-    for (parent <- rddNode.parents) {
+    for (parent <- rddNode.cachedParents) {
       if (parent.createdTime.get() < parentCreatedTime) {
         parentCreatedTime = parent.createdTime.get()
       }
     }
 
-    nodeCreatedTime - parentCreatedTime
+    if (parentCreatedTime == Long.MaxValue) {
+      // this means that there is no cached parent RDD
+      nodeCreatedTime
+    } else {
+      nodeCreatedTime - parentCreatedTime
+    }
   }
 }
 
@@ -95,6 +105,12 @@ class RDDNode(val rddId: Int,
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
 
   var createdTime: AtomicLong = new AtomicLong(0)
+
+  val cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+
+  def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
+    cachedParents.union(cp)
+  }
 
   override def equals(that: Any): Boolean =
     that match
@@ -168,5 +184,30 @@ object RDDJobDag extends Logging {
 
       Option(new RDDJobDag(dag, edges, vertices))
     }
+  }
+
+  def findCachedParents(child: RDDNode): mutable.Set[RDDNode] = {
+
+    def find(child: RDDNode, parentNode: RDDNode): mutable.Set[RDDNode] = {
+      if (parentNode.cached) {
+        val l = new mutable.HashSet[RDDNode]
+        l.add(parentNode)
+        l
+      } else {
+        val l: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
+        for (parent <- parentNode.parents) {
+          val n = find(parentNode, parent)
+          l.union(n)
+        }
+        l
+      }
+    }
+
+    val set = new mutable.HashSet[RDDNode]
+    for (parent <- child.parents) {
+      set.union(find(child, parent))
+    }
+
+    set
   }
 }
