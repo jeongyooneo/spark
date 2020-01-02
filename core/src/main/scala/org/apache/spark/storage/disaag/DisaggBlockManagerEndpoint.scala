@@ -170,6 +170,9 @@ class DisaggBlockManagerEndpoint(
   val blocksRemovedByMaster: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
 
+  val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
+    new ConcurrentHashMap[BlockId, Long]()
+
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
     val prevTime = prevDiscardTime.get()
@@ -182,6 +185,9 @@ class DisaggBlockManagerEndpoint(
     if (totalSize.get() + estimateSize < threshold
       || System.currentTimeMillis() - prevTime < 50) {
       logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
+
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
       return true
     }
 
@@ -246,6 +252,9 @@ class DisaggBlockManagerEndpoint(
           }
         })
       }
+
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
 
       true
     }
@@ -395,7 +404,13 @@ class DisaggBlockManagerEndpoint(
       val v = info.get
       v.size = size
       v.writeDone = true
-      totalSize.addAndGet(v.size)
+
+      if (blocksSizeToBeCreated.contains(blockId)) {
+        val estimateSize = blocksSizeToBeCreated.remove(blockId)
+        totalSize.addAndGet(v.size - estimateSize)
+      } else {
+        totalSize.addAndGet(v.size)
+      }
 
       lruQueue.synchronized {
         lruQueue.append(v)
