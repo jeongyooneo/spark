@@ -177,6 +177,10 @@ class DisaggBlockManagerEndpoint(
   val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]()
 
+
+  val prevCreatedBlocks: ConcurrentHashMap[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]()
+
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
     val prevTime = prevDiscardTime.get()
@@ -400,8 +404,10 @@ class DisaggBlockManagerEndpoint(
     // logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
-    rddJobDag.get.setCreatedTimeForRDD(blockId)
-
+    if (!prevCreatedBlocks.containsKey(blockId)) {
+      prevCreatedBlocks.put(blockId, true)
+      rddJobDag.get.setCreatedTimeForRDD(blockId)
+    }
 
     if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")

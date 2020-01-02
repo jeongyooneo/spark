@@ -79,10 +79,10 @@ class BlockManagerMasterEndpoint(
     val size = disaggBlockSizeInfo.get(blockId)
 
     if (size.isDefined) {
-      logInfo(s"tg: Getting disagg block  $blockId size $size in master")
+      // logInfo(s"tg: Getting disagg block  $blockId size $size in master")
       size.get
     } else {
-      logInfo(s"tg: No disagg block  $blockId size in master")
+       // logInfo(s"tg: No disagg block  $blockId size in master")
       0L
     }
   }
@@ -454,7 +454,7 @@ class BlockManagerMasterEndpoint(
       disaggSize: Long,
       totalDisaggSize: AtomicLong): Boolean = {
 
-    logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
+    // logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.isDriver && !isLocal) {
@@ -473,7 +473,7 @@ class BlockManagerMasterEndpoint(
 
     // update disagg info
     if (storageLevel.useDisagg && disaggSize > 0) {
-      logInfo(s"Update disagg block info $blockId size $disaggSize")
+      // logInfo(s"Update disagg block info $blockId size $disaggSize")
       disaggBlockSizeInfo(blockId) = disaggSize
     }
 
