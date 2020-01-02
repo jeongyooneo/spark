@@ -94,7 +94,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       // this means that there is no cached parent RDD
       nodeCreatedTime
     } else {
-      nodeCreatedTime - parentCreatedTime
+      Math.max(0L, nodeCreatedTime - parentCreatedTime)
     }
   }
 }

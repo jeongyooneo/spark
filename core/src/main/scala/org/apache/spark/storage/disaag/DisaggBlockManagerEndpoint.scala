@@ -217,7 +217,7 @@ class DisaggBlockManagerEndpoint(
     if (totalDiscardSize < estimateSize) {
       // it means that the discarding cost is greater than putting block
       // so, we do not store the block
-      logInfo(s"Re-add blocks instead of storing $blockId, discardingCost: $totalCost, " +
+      logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
         s"discardingSize: $totalDiscardSize/$estimateSize")
 
       sizePriorityQueue.synchronized {
@@ -225,6 +225,8 @@ class DisaggBlockManagerEndpoint(
           sizePriorityQueue.add(t)
         }
       }
+
+      prevDiscardedBlocks.put(blockId, true)
 
       false
     } else {
