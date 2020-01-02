@@ -126,7 +126,7 @@ class DisaggBlockManagerEndpoint(
   def fileCreated(blockId: BlockId): Boolean = {
     logInfo(s"Disagg endpoint: file created: $blockId")
     if (disaggBlockInfo.contains(blockId)) {
-      logInfo(s"tg: Disagg block is already created $blockId")
+      // logInfo(s"tg: Disagg block is already created $blockId")
       false
     } else {
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
@@ -141,7 +141,10 @@ class DisaggBlockManagerEndpoint(
 
   def fileRead(blockId: BlockId): Unit = {
     // TODO: file read
-    logInfo(s"file read disagg block $blockId")
+    // logInfo(s"file read disagg block $blockId")
+
+    // disable file read
+    /*
     if (disaggBlockInfo.get(blockId).isDefined) {
       val info = disaggBlockInfo.get(blockId).get
       info.read = true
@@ -156,6 +159,7 @@ class DisaggBlockManagerEndpoint(
         // lruQueue.append(info)
       }
     }
+    */
   }
 
   val executor: ExecutorService = Executors.newCachedThreadPool()
@@ -255,6 +259,8 @@ class DisaggBlockManagerEndpoint(
         })
       }
 
+
+      logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
       blocksSizeToBeCreated.put(blockId, estimateSize)
       totalSize.addAndGet(estimateSize)
 
@@ -342,7 +348,7 @@ class DisaggBlockManagerEndpoint(
     removeBlocks.foreach { bid =>
       executor.submit(new Runnable {
         override def run(): Unit = {
-          logInfo(s"Remove block from worker $bid")
+          // logInfo(s"Remove block from worker $bid")
           blockManagerMaster.removeBlockFromWorkers(bid)
         }
       })
@@ -360,7 +366,7 @@ class DisaggBlockManagerEndpoint(
   }
 
   def fileRemoved(blockId: BlockId): Boolean = {
-    logInfo(s"Disagg endpoint: file removed: $blockId")
+    // logInfo(s"Disagg endpoint: file removed: $blockId")
     val blockInfo = disaggBlockInfo.remove(blockId).get
 
     lruQueue.synchronized {
@@ -391,7 +397,7 @@ class DisaggBlockManagerEndpoint(
   }
 
   def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
-    logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
+    // logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
     rddJobDag.get.setCreatedTimeForRDD(blockId)
@@ -422,7 +428,7 @@ class DisaggBlockManagerEndpoint(
         sizePriorityQueue.add((blockId, v))
       }
 
-      logInfo(s"End of disagg file writing $blockId, total: $totalSize")
+      // logInfo(s"End of disagg file writing $blockId, total: $totalSize")
       true
     }
   }
@@ -431,7 +437,7 @@ class DisaggBlockManagerEndpoint(
     val info = disaggBlockInfo.get(blockId)
 
     if (info.isEmpty) {
-      logInfo(s"disagg not containing $blockId")
+       // logInfo(s"disagg not containing $blockId")
       0
     } else {
       val v = info.get
@@ -439,7 +445,7 @@ class DisaggBlockManagerEndpoint(
         logInfo(s"Waiting for disagg block writing $blockId")
         2
       } else {
-        logInfo(s"Disagg endpoint: contains: $blockId")
+        // logInfo(s"Disagg endpoint: contains: $blockId")
         1
       }
       /*
