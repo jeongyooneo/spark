@@ -409,7 +409,7 @@ class DisaggBlockManagerEndpoint(
         val estimateSize = blocksSizeToBeCreated.remove(blockId)
         totalSize.addAndGet(v.size - estimateSize)
       } else {
-        totalSize.addAndGet(v.size)
+        throw new RuntimeException(s"No created block $blockId")
       }
 
       lruQueue.synchronized {
