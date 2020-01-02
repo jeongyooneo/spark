@@ -455,7 +455,7 @@ class DisaggBlockManagerEndpoint(
 
     case GetSize(blockId) =>
       if (disaggBlockInfo.get(blockId).isEmpty) {
-        throw new RuntimeException("disagg block is empty.. no size $blockId")
+        throw new RuntimeException(s"disagg block is empty.. no size $blockId")
       }
       context.reply(disaggBlockInfo.get(blockId).get.size)
 

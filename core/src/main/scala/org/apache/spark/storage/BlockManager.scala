@@ -1243,10 +1243,11 @@ private[spark] class BlockManager(
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter1)(classTag)
                 }
-                size = disaggStore.getSize(blockId)
 
                 if (!disaggSuccess) {
                   iteratorFromFailedMemoryStorePut = Some(iter)
+                } else {
+                  size = disaggStore.getSize(blockId)
                 }
 
               } else {
@@ -1274,10 +1275,11 @@ private[spark] class BlockManager(
                   val out = Channels.newOutputStream(channel)
                   partiallySerializedValues.finishWritingToStream(out)
                 }
-                size = disaggStore.getSize(blockId)
 
                 if (!disaggSuccess) {
                   iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
+                } else {
+                  size = disaggStore.getSize(blockId)
                 }
 
               } else {
