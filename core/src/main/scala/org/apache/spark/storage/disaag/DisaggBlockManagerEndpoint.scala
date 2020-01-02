@@ -181,9 +181,14 @@ class DisaggBlockManagerEndpoint(
   val prevCreatedBlocks: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
 
-  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
+  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
 
     val prevTime = prevDiscardTime.get()
+
+    if (!prevCreatedBlocks.containsKey(blockId)) {
+      prevCreatedBlocks.put(blockId, true)
+      rddJobDag.get.setCreatedTimeForRDD(blockId)
+    }
 
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
@@ -192,83 +197,85 @@ class DisaggBlockManagerEndpoint(
     }
     */
 
-    if (totalSize.get() + estimateSize < threshold
-      || System.currentTimeMillis() - prevTime < 50) {
-      logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
+    synchronized {
+      if (totalSize.get() + estimateSize < threshold
+        || System.currentTimeMillis() - prevTime < 50) {
+        logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
 
-      blocksSizeToBeCreated.put(blockId, estimateSize)
-      totalSize.addAndGet(estimateSize)
-      return true
-    }
+        blocksSizeToBeCreated.put(blockId, estimateSize)
+        totalSize.addAndGet(estimateSize)
+        return true
+      }
 
-    // discard!!
-    var totalCost = 0L
-    var totalDiscardSize = 0L
-    val putCost = rddJobDag.get.calculateCost(blockId, System.currentTimeMillis())
+      // discard!!
+      var totalCost = 0L
+      var totalDiscardSize = 0L
+      val putCost = rddJobDag.get.calculateCost(blockId, System.currentTimeMillis())
 
-    val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
-      new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+      val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+        new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
-    if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
-      sizePriorityQueue.synchronized {
-        val iterator = sizePriorityQueue.iterator
+      if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
+        sizePriorityQueue.synchronized {
+          val iterator = sizePriorityQueue.iterator
 
-        val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
-          totalSize.get() + estimateSize - threshold)
+          val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
+            totalSize.get() + estimateSize - threshold)
 
-        while (iterator.hasNext && totalDiscardSize < removalSize) {
-          val (bid, blockInfo) = iterator.next()
+          while (iterator.hasNext && totalDiscardSize < removalSize) {
+            val (bid, blockInfo) = iterator.next()
 
-          val discardCost = rddJobDag.get.calculateCost(bid)
+            val discardCost = rddJobDag.get.calculateCost(bid)
 
-          if (totalCost + discardCost < putCost) {
-            totalCost += discardCost
-            totalDiscardSize += blockInfo.size
-            removeBlocks.append((bid, blockInfo))
-            iterator.remove()
-            logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
-              s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+            if (totalCost + discardCost < putCost) {
+              totalCost += discardCost
+              totalDiscardSize += blockInfo.size
+              removeBlocks.append((bid, blockInfo))
+              iterator.remove()
+              logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+            }
           }
         }
       }
-    }
 
-    if (totalDiscardSize < estimateSize) {
-      // it means that the discarding cost is greater than putting block
-      // so, we do not store the block
-      logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
-        s"discardingSize: $totalDiscardSize/$estimateSize")
+      if (totalDiscardSize < estimateSize) {
+        // it means that the discarding cost is greater than putting block
+        // so, we do not store the block
+        logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
+          s"discardingSize: $totalDiscardSize/$estimateSize")
 
-      sizePriorityQueue.synchronized {
+        sizePriorityQueue.synchronized {
+          removeBlocks.foreach { t =>
+            sizePriorityQueue.add(t)
+          }
+        }
+
+        prevDiscardedBlocks.put(blockId, true)
+
+        false
+      } else {
         removeBlocks.foreach { t =>
-          sizePriorityQueue.add(t)
+
+          prevDiscardedBlocks.put(t._1, true)
+          blocksRemovedByMaster.put(t._1, true)
+          totalSize.addAndGet(-t._2.size)
+
+          executor.submit(new Runnable {
+            override def run(): Unit = {
+              logInfo(s"Remove block from worker ${t._1}")
+              blockManagerMaster.removeBlockFromWorkers(t._1)
+            }
+          })
         }
+
+
+        logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
+        blocksSizeToBeCreated.put(blockId, estimateSize)
+        totalSize.addAndGet(estimateSize)
+
+        true
       }
-
-      prevDiscardedBlocks.put(blockId, true)
-
-      false
-    } else {
-      removeBlocks.foreach { t =>
-
-        prevDiscardedBlocks.put(t._1, true)
-        blocksRemovedByMaster.put(t._1, true)
-        totalSize.addAndGet(-t._2.size)
-
-        executor.submit(new Runnable {
-          override def run(): Unit = {
-            logInfo(s"Remove block from worker ${t._1}")
-            blockManagerMaster.removeBlockFromWorkers(t._1)
-          }
-        })
-      }
-
-
-      logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
-      blocksSizeToBeCreated.put(blockId, estimateSize)
-      totalSize.addAndGet(estimateSize)
-
-      true
     }
   }
 
@@ -404,10 +411,6 @@ class DisaggBlockManagerEndpoint(
     // logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
-    if (!prevCreatedBlocks.containsKey(blockId)) {
-      prevCreatedBlocks.put(blockId, true)
-      rddJobDag.get.setCreatedTimeForRDD(blockId)
-    }
 
     if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")
