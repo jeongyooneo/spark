@@ -177,7 +177,7 @@ class DisaggBlockManagerEndpoint(
     }
 
     if (totalSize.get() + estimateSize < threshold
-      || System.currentTimeMillis() - prevTime < 100) {
+      || System.currentTimeMillis() - prevTime < 50) {
       logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
       return true
     }
