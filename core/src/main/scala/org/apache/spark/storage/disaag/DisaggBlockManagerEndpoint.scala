@@ -167,6 +167,9 @@ class DisaggBlockManagerEndpoint(
   val prevDiscardedBlocks: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
 
+  val blocksRemovedByMaster: ConcurrentHashMap[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]()
+
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = synchronized {
 
     val prevTime = prevDiscardTime.get()
@@ -233,6 +236,8 @@ class DisaggBlockManagerEndpoint(
       removeBlocks.foreach { t =>
 
         prevDiscardedBlocks.put(t._1, true)
+        blocksRemovedByMaster.put(t._1, true)
+        totalSize.addAndGet(-t._2.size)
 
         executor.submit(new Runnable {
           override def run(): Unit = {
@@ -367,7 +372,10 @@ class DisaggBlockManagerEndpoint(
       }
     }
 
-    totalSize.addAndGet(-blockInfo.size)
+    if (!blocksRemovedByMaster.remove(blockId)) {
+      totalSize.addAndGet(-blockInfo.size)
+    }
+
     true
   }
 
