@@ -177,10 +177,12 @@ class DisaggBlockManagerEndpoint(
 
     val prevTime = prevDiscardTime.get()
 
-    if (prevDiscardedBlocks.contains(blockId)) {
+    /*
+    if (prevDiscardedBlocks.containsKey(blockId)) {
       logInfo(s"Discard $blockId because it is already discarded")
       return false
     }
+    */
 
     if (totalSize.get() + estimateSize < threshold
       || System.currentTimeMillis() - prevTime < 50) {
@@ -405,7 +407,7 @@ class DisaggBlockManagerEndpoint(
       v.size = size
       v.writeDone = true
 
-      if (blocksSizeToBeCreated.contains(blockId)) {
+      if (blocksSizeToBeCreated.containsKey(blockId)) {
         val estimateSize = blocksSizeToBeCreated.remove(blockId)
         totalSize.addAndGet(v.size - estimateSize)
       } else {
