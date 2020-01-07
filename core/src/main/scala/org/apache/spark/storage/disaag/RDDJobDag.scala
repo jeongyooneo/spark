@@ -154,7 +154,7 @@ object RDDJobDag extends Logging {
           val stageInfo = jsonMap("Stage Info").asInstanceOf[Map[Any, Any]]
           logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
           val rdds = stageInfo("RDD Info").asInstanceOf[List[Map[Any, Any]]]
-          val stageId = stageInfo("Stage ID").asInstanceOf[Int]
+          val stageId = stageInfo("Stage ID").asInstanceOf[Double].toInt
 
           // add vertices
           for (rdd <- rdds) {
