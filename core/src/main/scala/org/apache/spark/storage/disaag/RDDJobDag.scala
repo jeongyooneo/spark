@@ -201,7 +201,7 @@ object RDDJobDag extends Logging {
   }
 
   private def findSameStage(l: mutable.Set[RDDNode], n: RDDNode): Boolean = {
-    l.filter(n => n.stageId == n.stageId).nonEmpty
+    l.exists(nn => nn.stageId.equals(n.stageId))
   }
 
   def findCachedParents(child: RDDNode): mutable.Set[RDDNode] = {
