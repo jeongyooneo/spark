@@ -476,7 +476,13 @@ abstract class RDD[T: ClassTag](
     SparkEnv.get.blockManager.getOrElseUpdate(context,
       blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
-      computeOrReadCheckpoint(partition, context)
+        try {
+          computeOrReadCheckpoint(partition, context)
+        } catch {
+          case e: Exception =>
+            e.printStackTrace()
+            throw new RuntimeException(s"Exception while computing rdd $blockId")
+        }
     }) match {
       case Left(blockResult) =>
         if (readCachedBlock) {
@@ -484,8 +490,15 @@ abstract class RDD[T: ClassTag](
           existingMetrics.incBytesRead(blockResult.bytes)
           new InterruptibleIterator[T](context, blockResult.data.asInstanceOf[Iterator[T]]) {
             override def next(): T = {
-              existingMetrics.incRecordsRead(1)
-              delegate.next()
+              try {
+                existingMetrics.incRecordsRead(1)
+                delegate.next()
+              } catch {
+                case e: Exception =>
+                  e.printStackTrace()
+                  throw new
+                      RuntimeException(s"Exception while computing rdd $blockId")
+              }
             }
           }
         } else {
