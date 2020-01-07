@@ -106,10 +106,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       stage_removed_edge.synchronized {
         val same_stage_id_edges = stage_removed_edge.filter(n => n.stageId.equals(stageId))
         for (edge_node <- same_stage_id_edges) {
+          logInfo(s"Stage completed.. remove Stage ${stageId} nodes from ${key}")
           stage_removed_edge.remove(edge_node)
         }
       }
-      logInfo(s"Stage completed.. remove Stage ${stageId} nodes from ${key}")
     }
   }
 }
