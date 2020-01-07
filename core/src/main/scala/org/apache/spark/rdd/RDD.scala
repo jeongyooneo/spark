@@ -496,7 +496,8 @@ abstract class RDD[T: ClassTag](
               } catch {
                 case e: Exception =>
                   e.printStackTrace()
-                  throw new RuntimeException(s"Exception while computing rdd $blockId, " + e.getMessage)
+                  throw new RuntimeException(s"Exception while computing rdd $blockId, " +
+                    s"" + e.getMessage)
               }
             }
           }

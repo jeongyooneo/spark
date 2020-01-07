@@ -20,6 +20,8 @@ package org.apache.spark.storage.disaag
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
+import java.util.concurrent.locks.{ReadWriteLock, ReentrantReadWriteLock}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -131,7 +133,7 @@ private[spark] class DisaggStore(
 
   def getStream(blockId: BlockId): CrailBlockData = {
 
-    disaggManager.read(blockId)
+    // disaggManager.read(blockId)
 
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)
@@ -147,7 +149,6 @@ private[spark] class DisaggStore(
 
   def getBytes(blockId: BlockId): BlockData = {
 
-    disaggManager.read(blockId)
 
     val file = disaggManager.getFile(blockId)
     val blockSize = getSize(blockId)
@@ -181,5 +182,13 @@ private[spark] class DisaggStore(
 
   def contains(blockId: BlockId): Boolean = {
     disaggManager.blockExists(blockId)
+  }
+
+  def readLock(blockId: BlockId): Boolean = {
+    disaggManager.read(blockId)
+  }
+
+  def readUnlock(blockId: BlockId): Unit = {
+    disaggManager.readUnlock(blockId)
   }
 }

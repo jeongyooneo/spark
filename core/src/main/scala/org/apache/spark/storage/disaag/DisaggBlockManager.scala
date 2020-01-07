@@ -41,8 +41,12 @@ class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize))
   }
 
-  def read(blockId: BlockId) : Unit = {
-    driverEndpoint.askSync[Unit](FileRead(blockId))
+  def read(blockId: BlockId) : Boolean = {
+    driverEndpoint.askSync[Boolean](FileRead(blockId))
+  }
+
+  def readUnlock(blockId: BlockId) : Unit = {
+    driverEndpoint.ask[Unit](FileReadUnlock(blockId))
   }
 
   def createFile(blockId: BlockId) : CrailFile = {

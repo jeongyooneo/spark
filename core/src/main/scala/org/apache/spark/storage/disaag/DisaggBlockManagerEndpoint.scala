@@ -18,7 +18,7 @@
 package org.apache.spark.storage.disaag
 
 import java.util.{Comparator, PriorityQueue}
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
@@ -139,7 +139,26 @@ class DisaggBlockManagerEndpoint(
     }
   }
 
-  def fileRead(blockId: BlockId): Unit = {
+  def fileReadUnlock(blockId: BlockId): Unit = {
+    val info = disaggBlockInfo.get(blockId)
+    info.get.readCount.decrementAndGet()
+  }
+
+  def fileRead(blockId: BlockId): Boolean = {
+    val info = disaggBlockInfo.get(blockId)
+
+    if (info.isEmpty) {
+      false
+    } else {
+      val v = info.get
+      if (v.readCount.incrementAndGet() > 0) {
+        true
+      } else {
+        v.readCount.decrementAndGet()
+        false
+      }
+    }
+
     // TODO: file read
     // logInfo(s"file read disagg block $blockId")
 
@@ -269,8 +288,18 @@ class DisaggBlockManagerEndpoint(
 
           executor.submit(new Runnable {
             override def run(): Unit = {
-              logInfo(s"Remove block from worker ${t._1}")
-              blockManagerMaster.removeBlockFromWorkers(t._1)
+              if (disaggBlockInfo.get(t._1).isDefined) {
+                val info = disaggBlockInfo.get(t._1).get
+
+                while (info.readCount.decrementAndGet() >= 0) {
+                  info.readCount.getAndIncrement()
+                  Thread.sleep(400)
+                  logInfo(s"Waiting for removing ${t._1}")
+                }
+
+                logInfo(s"Remove block from worker ${t._1}")
+                blockManagerMaster.removeBlockFromWorkers(t._1)
+              }
             }
           })
         }
@@ -365,7 +394,6 @@ class DisaggBlockManagerEndpoint(
     removeBlocks.foreach { bid =>
       executor.submit(new Runnable {
         override def run(): Unit = {
-          // logInfo(s"Remove block from worker $bid")
           blockManagerMaster.removeBlockFromWorkers(bid)
         }
       })
@@ -489,6 +517,9 @@ class DisaggBlockManagerEndpoint(
     case FileRead(blockId) =>
       context.reply(fileRead(blockId))
 
+    case FileReadUnlock(blockId) =>
+      context.reply(fileReadUnlock(blockId))
+
     case DiscardBlocksIfNecessary(estimateSize) =>
       context.reply(discardBlocksIfNecessary(estimateSize))
 
@@ -516,6 +547,7 @@ class CrailBlockInfo(blockId: BlockId,
   var writeDone: Boolean = false
   var size: Long = 0L
   var read: Boolean = true
+  val readCount: AtomicInteger = new AtomicInteger()
 
   override def toString: String = {
     s"<$bid/read:$read>"

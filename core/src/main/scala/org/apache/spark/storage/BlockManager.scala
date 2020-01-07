@@ -562,7 +562,7 @@ private[spark] class BlockManager(
 
   def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
 
-    if (!disaggStore.contains(blockId)) {
+    if (!disaggStore.readLock(blockId)) {
       return None
     }
 
@@ -579,6 +579,8 @@ private[spark] class BlockManager(
           blockId,
           disaggData.toInputStream())(info.classTag)
     }
+
+    disaggStore.readUnlock(blockId)
 
     // We do not cache this value because it is retrieved from remote disagg
     Some(new BlockResult(iterToReturn, DataReadMethod.Network, disaggData.size))
@@ -631,7 +633,7 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
-        } else if (level.useDisagg && disaggStore.contains(blockId)) {
+        } else if (level.useDisagg && disaggStore.readLock(blockId)) {
           val disaggFetchStart = System.nanoTime
 
           logInfo(s"Found block $blockId in disagg memory")
@@ -662,6 +664,8 @@ private[spark] class BlockManager(
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
             releaseLockAndDispose(blockId, disaggData, taskAttemptId)
           })
+
+          disaggStore.readUnlock(blockId)
 
           Some(new BlockResult(ci, DataReadMethod.Network, info.size))
         } else if (!level.useDisagg) {
@@ -713,8 +717,10 @@ private[spark] class BlockManager(
         // serialized bytes. Because the caller only requested bytes, it doesn't make sense to
         // cache the block's deserialized objects since that caching may not have a payoff.
         diskStore.getBytes(blockId)
-      } else if (level.useDisagg && disaggStore.contains(blockId)) {
-        disaggStore.getBytes(blockId)
+      } else if (level.useDisagg && disaggStore.readLock(blockId)) {
+        val data = disaggStore.getBytes(blockId)
+        disaggStore.readUnlock(blockId)
+        data
       } else if (level.useMemory && memoryStore.contains(blockId)) {
         // The block was not found on disk, so serialize an in-memory copy:
         new ByteBufferBlockData(serializerManager.dataSerializeWithExplicitClassTag(
@@ -730,9 +736,11 @@ private[spark] class BlockManager(
         maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
           .map(new ByteBufferBlockData(_, false))
           .getOrElse(diskData)
-      } else if (level.useDisagg && disaggStore.contains(blockId)) {
+      } else if (level.useDisagg && disaggStore.readLock(blockId)) {
         // disaggregation
         val disaggData = disaggStore.getBytes(blockId)
+        disaggStore.readUnlock(blockId)
+
         disaggCachingPolicy.maybeCacheDisaggBytesInMemory(info, blockId, level, disaggData)
           .map(new ByteBufferBlockData(_, false))
           .getOrElse(disaggData)
