@@ -151,11 +151,13 @@ class DisaggBlockManagerEndpoint(
       false
     } else {
       val v = info.get
-      if (v.readCount.incrementAndGet() > 0) {
-        true
-      } else {
-        v.readCount.decrementAndGet()
-        false
+      v.synchronized {
+        if (!v.isRemoved) {
+          v.readCount.incrementAndGet()
+          true
+        } else {
+          false
+        }
       }
     }
 
@@ -291,14 +293,20 @@ class DisaggBlockManagerEndpoint(
               if (disaggBlockInfo.get(t._1).isDefined) {
                 val info = disaggBlockInfo.get(t._1).get
 
-                while (info.readCount.decrementAndGet() >= 0) {
-                  info.readCount.getAndIncrement()
-                  Thread.sleep(400)
-                  logInfo(s"Waiting for removing ${t._1}")
-                }
+                while (!info.isRemoved) {
+                  while (info.readCount.get() > 0) {
+                    // waiting...
+                    Thread.sleep(200)
+                  }
 
-                logInfo(s"Remove block from worker ${t._1}")
-                blockManagerMaster.removeBlockFromWorkers(t._1)
+                  info.synchronized {
+                    if (info.readCount.get() == 0) {
+                      info.isRemoved = true
+                      logInfo(s"Remove block from worker ${t._1}")
+                      blockManagerMaster.removeBlockFromWorkers(t._1)
+                    }
+                  }
+                }
               }
             }
           })
@@ -548,6 +556,7 @@ class CrailBlockInfo(blockId: BlockId,
   var size: Long = 0L
   var read: Boolean = true
   val readCount: AtomicInteger = new AtomicInteger()
+  var isRemoved = false
 
   override def toString: String = {
     s"<$bid/read:$read>"

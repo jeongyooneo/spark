@@ -20,8 +20,6 @@ package org.apache.spark.storage.disaag
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
-import java.util.concurrent.{ConcurrentHashMap, ConcurrentMap}
-import java.util.concurrent.locks.{ReadWriteLock, ReentrantReadWriteLock}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
