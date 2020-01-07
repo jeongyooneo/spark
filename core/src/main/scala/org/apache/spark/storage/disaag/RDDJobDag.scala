@@ -29,7 +29,7 @@ import scala.io.Source
 import scala.util.parsing.json.JSON
 
 
-class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
+class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])],
                 val edges: ListBuffer[(Int, Int)],
                 val vertices: mutable.Map[Int, RDDNode]) extends Logging {
 
@@ -74,7 +74,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     }
 
-    (nodeCreatedTime - parentCreatedTime) * dag(rddNode).size
+    (nodeCreatedTime - parentCreatedTime) * dag(rddNode)._2.size
   }
 
   def calculateCost(blockId: BlockId): Long = {
@@ -100,7 +100,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 }
 
 class RDDNode(val rddId: Int,
-              val cached: Boolean) {
+              val cached: Boolean,
+              val stageId: Int) {
 
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
 
@@ -139,7 +140,7 @@ object RDDJobDag extends Logging {
     if (filePath.equals("??")) {
       Option.empty
     } else {
-      val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]] = mutable.Map()
+      val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])] = mutable.Map()
       val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
       val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
 
@@ -153,6 +154,7 @@ object RDDJobDag extends Logging {
           val stageInfo = jsonMap("Stage Info").asInstanceOf[Map[Any, Any]]
           logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
           val rdds = stageInfo("RDD Info").asInstanceOf[List[Map[Any, Any]]]
+          val stageId = stageInfo("Stage ID").asInstanceOf[Int]
 
           // add vertices
           for (rdd <- rdds) {
@@ -161,11 +163,11 @@ object RDDJobDag extends Logging {
               .asInstanceOf[Double].toInt
             val cached = numCachedPartitions > 0
             val parents = rdd("Parent IDs").asInstanceOf[List[Double]]
-            val rdd_object = new RDDNode(rdd_id, cached)
+            val rdd_object = new RDDNode(rdd_id, cached, stageId)
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
-              dag(rdd_object) = new mutable.HashSet()
+              dag(rdd_object) = (new mutable.HashSet(), new mutable.HashSet())
               for (parent_id: Double <- parents) {
                 edges.append((parent_id.toInt, rdd_id))
               }
@@ -178,12 +180,28 @@ object RDDJobDag extends Logging {
       for ((parent_id, child_id) <- edges) {
         val child_rdd_object = vertices(child_id)
         val parent_rdd_object = vertices(parent_id)
-        dag(parent_rdd_object).add(child_rdd_object)
+        dag(parent_rdd_object)._1.add(child_rdd_object)
         child_rdd_object.parents.append(parent_rdd_object)
+      }
+
+      for (node <- dag.keys) {
+        val (child, child_stage) = dag(node)
+
+        for (child_node <- child) {
+          if (!findSameStage(child_stage, child_node)) {
+            child_stage.add(child_node)
+          }
+        }
+
+        dag(node) = (child, child_stage)
       }
 
       Option(new RDDJobDag(dag, edges, vertices))
     }
+  }
+
+  private def findSameStage(l: mutable.Set[RDDNode], n: RDDNode): Boolean = {
+    l.filter(n => n.stageId == n.stageId).nonEmpty
   }
 
   def findCachedParents(child: RDDNode): mutable.Set[RDDNode] = {
