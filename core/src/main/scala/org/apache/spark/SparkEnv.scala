@@ -64,6 +64,7 @@ class SparkEnv (
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
     val blockManager: BlockManager,
+    val disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
     val securityManager: SecurityManager,
     val metricsSystem: MetricsSystem,
     val memoryManager: MemoryManager,
@@ -78,6 +79,7 @@ class SparkEnv (
   private[spark] val hadoopJobMetadata = new MapMaker().softValues().makeMap[String, Any]()
 
   private[spark] var driverTmpDir: Option[String] = None
+
 
   private[spark] def stop() {
 
@@ -351,6 +353,8 @@ object SparkEnv extends Logging {
     var blockManagerMaster: BlockManagerMaster = null
     var disaggBlockManager: DisaggBlockManager = null
 
+    var disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint = null
+
     if (isDriver) {
       val blockManagerMasterEndpoint =
         new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)
@@ -359,10 +363,12 @@ object SparkEnv extends Logging {
         BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
         conf, isDriver)
 
-      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
-        DisaggBlockManager.DRIVER_ENDPOINT_NAME,
+      disaggBlockManagerEndpoint =
         new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          blockManagerMasterEndpoint, thresholdMB, dagPath)), conf)
+          blockManagerMasterEndpoint, thresholdMB, dagPath)
+
+      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+        DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
 
 
     } else {
@@ -415,6 +421,7 @@ object SparkEnv extends Logging {
       shuffleManager,
       broadcastManager,
       blockManager,
+      disaggBlockManagerEndpoint,
       securityManager,
       metricsSystem,
       memoryManager,

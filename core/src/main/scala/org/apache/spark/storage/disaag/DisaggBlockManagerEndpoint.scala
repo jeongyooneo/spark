@@ -181,6 +181,12 @@ class DisaggBlockManagerEndpoint(
   val prevCreatedBlocks: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
 
+
+  def stageCompleted(stageId: Int): Unit = {
+    logInfo(s"Handling stage ${stageId} completed in disagg manager")
+    rddJobDag.get.removeCompletedStageNode(stageId)
+  }
+
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
 
     val prevTime = prevDiscardTime.get()

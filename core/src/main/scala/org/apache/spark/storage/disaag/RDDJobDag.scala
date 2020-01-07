@@ -74,7 +74,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       }
     }
 
-    (nodeCreatedTime - parentCreatedTime) * dag(rddNode)._2.size
+    dag(rddNode)._2.synchronized {
+      (nodeCreatedTime - parentCreatedTime) * dag(rddNode)._2.size
+    }
   }
 
   def calculateCost(blockId: BlockId): Long = {
@@ -95,6 +97,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       nodeCreatedTime
     } else {
       Math.max(0L, nodeCreatedTime - parentCreatedTime)
+    }
+  }
+
+  def removeCompletedStageNode(stageId: Int): Unit = {
+    for (key <- dag.keys) {
+      val (edge, stage_removed_edge) = dag(key)
+      stage_removed_edge.synchronized {
+        val same_stage_id_edges = stage_removed_edge.filter(n => n.stageId.equals(stageId))
+        for (edge_node <- same_stage_id_edges) {
+          stage_removed_edge.remove(edge_node)
+        }
+      }
+      logInfo(s"Stage completed.. remove Stage ${stageId} nodes from ${key}")
     }
   }
 }

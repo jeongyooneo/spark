@@ -29,9 +29,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -42,6 +40,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
+import org.apache.spark.storage.disaag.DisaggBlockManagerEndpoint
 import org.apache.spark.util._
 
 /**
@@ -117,6 +116,7 @@ class DAGScheduler(
     listenerBus: LiveListenerBus,
     mapOutputTracker: MapOutputTrackerMaster,
     blockManagerMaster: BlockManagerMaster,
+    disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
     env: SparkEnv,
     clock: Clock = new SystemClock())
   extends Logging {
@@ -128,6 +128,7 @@ class DAGScheduler(
       sc.listenerBus,
       sc.env.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster],
       sc.env.blockManager.master,
+      sc.env.disaggBlockManagerEndpoint,
       sc.env)
   }
 
@@ -1561,7 +1562,12 @@ class DAGScheduler(
     if (!willRetry) {
       outputCommitCoordinator.stageEnd(stage.id)
     }
+
     listenerBus.post(SparkListenerStageCompleted(stage.latestInfo))
+
+    // send it to disagg block manager endpoint
+    disaggBlockManagerEndpoint.stageCompleted(stage.latestInfo.stageId)
+
     runningStages -= stage
   }
 
