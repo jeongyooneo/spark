@@ -221,6 +221,15 @@ class DisaggBlockManagerEndpoint(
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
 
+    if (blockId.name.startsWith("rdd_2_")) {
+      prevCreatedBlocks.put(blockId, true)
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+      return true
+    } else {
+      return false
+    }
+
     val prevTime = prevDiscardTime.get()
 
     if (!prevCreatedBlocks.containsKey(blockId)) {
