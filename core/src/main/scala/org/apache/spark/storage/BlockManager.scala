@@ -634,6 +634,44 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
+        } else if (level.useDisagg && disaggStore.readLock(blockId)) {
+          val disaggFetchStart = System.nanoTime
+          logInfo(s"Found block $blockId in disagg memory")
+
+          var disaggData: BlockData = null
+
+          val iterToReturn: Iterator[Any] = {
+            if (level.deserialized) {
+              disaggData = disaggStore.getStream(blockId)
+              val disaggValues = serializerManager.dataDeserializeStream(
+                blockId,
+                disaggData.toInputStream())(info.classTag)
+              disaggCachingPolicy
+                .maybeCacheDisaggValuesInMemory(info, blockId, level, disaggValues)
+            } else {
+              disaggData = disaggStore.getBytes(blockId)
+              val stream = disaggCachingPolicy
+                .maybeCacheDisaggBytesInMemory(info, blockId, level, disaggData)
+                .map {
+                  _.toInputStream(dispose = false)
+                }
+                .getOrElse {
+                  disaggData.toInputStream()
+                }
+              serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
+            }
+          }
+
+          val disaggFetchTime = System.nanoTime - disaggFetchStart
+          logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
+
+          val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
+            releaseLockAndDispose(blockId, disaggData, taskAttemptId)
+          })
+
+          disaggStore.readUnlock(blockId)
+
+          Some(new BlockResult(ci, DataReadMethod.Network, info.size))
         } else if (!level.useDisagg) {
           handleLocalReadFailure(blockId)
         } else {
