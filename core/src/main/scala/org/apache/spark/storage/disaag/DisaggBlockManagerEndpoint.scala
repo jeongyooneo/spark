@@ -215,7 +215,7 @@ class DisaggBlockManagerEndpoint(
   }
 
 
-  def timeToRemove(blockCreatedTime: Long, currTime: Long) = {
+  private def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
     currTime - blockCreatedTime > 60 * 1000
   }
 
