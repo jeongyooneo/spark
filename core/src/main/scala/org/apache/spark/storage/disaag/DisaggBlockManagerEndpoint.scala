@@ -190,6 +190,15 @@ class DisaggBlockManagerEndpoint(
       rddJobDag.get.setCreatedTimeForRDD(blockId)
     }
 
+
+    if (blockId.name.startsWith("rdd_2_")) {
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+      return true
+    } else {
+      return false
+    }
+
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
       logInfo(s"Discard $blockId because it is already discarded")
