@@ -898,6 +898,7 @@ private[spark] class BlockManager(
         // stored. Therefore, we now hold a read lock on the block.
         val blockResult = getLocalValues(blockId).getOrElse {
           getDisaggValues(blockId).getOrElse {
+            // it means that the disagg just discards the data.
             // Since we held a read lock between the doPut() and get() calls, the block should not
             // have been evicted, so get() not returning the block indicates some internal error.
             releaseLock(blockId)
@@ -1041,7 +1042,7 @@ private[spark] class BlockManager(
 
         if (!putSucceeded && level.useDisagg &&
           disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
-          logWarning(s"Persisting block $blockId to disagg instead.")
+          logWarning(s"Persisting block $blockId to disagg instead 11.")
           disaggStore.putBytes(blockId, bytes)
         }
 
@@ -1210,9 +1211,10 @@ private[spark] class BlockManager(
                 size = diskStore.getSize(blockId)
               } else if (level.useDisagg &&
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
-                logWarning(s"tg: Persisting block $blockId to disagg instead.")
+                logWarning(s"tg: Persisting block $blockId to disagg instead 22.")
 
-                val (iter1, iter2) = iter.duplicate
+                val (iter1, iter2):
+                  (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = iter.duplicate
 
                 disaggSuccess = disaggStore.put(blockId,
                   estimateIteratorSize(iter2, classTag)) { channel =>
@@ -1221,7 +1223,7 @@ private[spark] class BlockManager(
                 }
 
                 if (!disaggSuccess) {
-                  iteratorFromFailedMemoryStorePut = Some(iter)
+                  iteratorFromFailedMemoryStorePut = Some(iter1)
                 } else {
                   size = disaggStore.getSize(blockId)
                 }
@@ -1245,7 +1247,7 @@ private[spark] class BlockManager(
                 size = diskStore.getSize(blockId)
               } else if (level.useDisagg &&
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
-                logWarning(s"tg: Persisting block $blockId to disagg instead.")
+                logWarning(s"tg: Persisting block $blockId to disagg instead 33.")
                 disaggSuccess = disaggStore.put(blockId,
                   partiallySerializedValues.unrolledBuffer.size) { channel =>
                   val out = Channels.newOutputStream(channel)

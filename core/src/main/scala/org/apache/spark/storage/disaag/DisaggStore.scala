@@ -110,8 +110,8 @@ private[spark] class DisaggStore(
 
         true
       } else {
-        logInfo(s"File $blockId is already created ... so skip creating the file")
-        false
+        throw new RuntimeException(
+          s"File $blockId is already created ... so skip creating the file")
       }
     } catch {
       case e: Exception =>

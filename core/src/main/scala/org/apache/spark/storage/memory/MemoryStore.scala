@@ -713,6 +713,14 @@ private[storage] class PartiallyUnrolledIterator[T](
     unrolled = null
   }
 
+  override def duplicate: (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = {
+    val (it1, it2) = unrolled.duplicate
+    val (it3, it4) = rest.duplicate
+
+    (new PartiallyUnrolledIterator[T](memoryStore, memoryMode, unrollMemory, it1, it3),
+      new PartiallyUnrolledIterator[T](memoryStore, memoryMode, unrollMemory, it2, it4))
+  }
+
   override def hasNext: Boolean = {
     if (unrolled == null) {
       rest.hasNext
