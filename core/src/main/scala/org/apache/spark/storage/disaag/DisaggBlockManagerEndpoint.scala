@@ -228,6 +228,13 @@ class DisaggBlockManagerEndpoint(
       rddJobDag.get.setCreatedTimeForRDD(blockId)
     }
 
+
+    if (blockId.name.startsWith("rdd_2")) {
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+      return true
+    }
+
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
       logInfo(s"Discard $blockId because it is already discarded")
@@ -266,7 +273,7 @@ class DisaggBlockManagerEndpoint(
 
             val discardCost = rddJobDag.get.calculateCost(bid)
 
-            if (totalCost + discardCost < putCost
+            if (!bid.name.startsWith("rdd_2_") && totalCost + discardCost < putCost
               && timeToRemove(blockInfo.createdTime, currTime)) {
               totalCost += discardCost
               totalDiscardSize += blockInfo.size
@@ -493,7 +500,7 @@ class DisaggBlockManagerEndpoint(
         sizePriorityQueue.add((blockId, v))
       }
 
-      // logInfo(s"End of disagg file writing $blockId, total: $totalSize")
+      logInfo(s"Storing file writing $blockId, total: $totalSize")
       true
     }
   }
