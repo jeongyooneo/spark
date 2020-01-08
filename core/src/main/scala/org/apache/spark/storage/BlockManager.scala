@@ -1251,8 +1251,7 @@ private[spark] class BlockManager(
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead 22.")
 
-                val (iter1, iter2):
-                  (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = iter.duplicate
+                val (iter1, iter2) = iter.duplicate
 
                 disaggSuccess = disaggStore.put(blockId,
                   estimateIteratorSize(iter2, classTag)) { channel =>
@@ -1261,7 +1260,7 @@ private[spark] class BlockManager(
                 }
 
                 if (!disaggSuccess) {
-                  iteratorFromFailedMemoryStorePut = Some(iter1)
+                  iteratorFromFailedMemoryStorePut = Some(iter)
                 } else {
                   size = disaggStore.getSize(blockId)
                 }
