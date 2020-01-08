@@ -570,7 +570,8 @@ private[spark] class BlockManager(
 
     // disaggregation
     // for optimization, we use getStream rather than getByte
-    val disaggData = disaggStore.getStream(blockId)
+    // val disaggData = disaggStore.getStream(blockId)
+    val disaggData = disaggStore.getBytes(blockId)
     val info = new BlockInfo(StorageLevel.DISAGG, implicitly[ClassTag[T]], true)
     info.size = disaggData.size
 
