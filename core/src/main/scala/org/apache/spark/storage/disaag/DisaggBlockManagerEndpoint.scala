@@ -214,6 +214,11 @@ class DisaggBlockManagerEndpoint(
     rddJobDag.get.removeCompletedStageNode(stageId)
   }
 
+
+  def timeToRemove(blockCreatedTime: Long, currTime: Long) = {
+    currTime - blockCreatedTime > 60 * 1000
+  }
+
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
 
     val prevTime = prevDiscardTime.get()
@@ -255,12 +260,14 @@ class DisaggBlockManagerEndpoint(
           val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
             totalSize.get() + estimateSize - threshold)
 
+          val currTime = System.currentTimeMillis()
           while (iterator.hasNext && totalDiscardSize < removalSize) {
             val (bid, blockInfo) = iterator.next()
 
             val discardCost = rddJobDag.get.calculateCost(bid)
 
-            if (totalCost + discardCost < putCost) {
+            if (totalCost + discardCost < putCost
+              && timeToRemove(blockInfo.createdTime, currTime)) {
               totalCost += discardCost
               totalDiscardSize += blockInfo.size
               removeBlocks.append((bid, blockInfo))
@@ -566,6 +573,7 @@ class CrailBlockInfo(blockId: BlockId,
   var read: Boolean = true
   val readCount: AtomicInteger = new AtomicInteger()
   var isRemoved = false
+  val createdTime = System.currentTimeMillis()
 
   override def toString: String = {
     s"<$bid/read:$read>"
