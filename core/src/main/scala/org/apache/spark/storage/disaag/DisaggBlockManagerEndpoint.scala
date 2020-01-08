@@ -151,6 +151,12 @@ class DisaggBlockManagerEndpoint(
       false
     } else {
       val v = info.get
+
+      while (!v.writeDone) {
+        Thread.sleep(500)
+        logInfo(s"Waiting for write done $blockId")
+      }
+
       v.synchronized {
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
@@ -296,7 +302,8 @@ class DisaggBlockManagerEndpoint(
                 while (!info.isRemoved) {
                   while (info.readCount.get() > 0) {
                     // waiting...
-                    Thread.sleep(200)
+                    Thread.sleep(1000)
+                    logInfo(s"Waiting for deleting ${t._1}, count: ${info.readCount}")
                   }
 
                   info.synchronized {
@@ -543,9 +550,11 @@ class DisaggBlockManagerEndpoint(
     case GetSize(blockId) =>
       if (disaggBlockInfo.get(blockId).isEmpty) {
         throw new RuntimeException(s"disagg block is empty.. no size $blockId")
+      } else if (!disaggBlockInfo.get(blockId).get.writeDone) {
+        throw new RuntimeException(s"disagg block size is 0.. not write done $blockId")
+      } else {
+        context.reply(disaggBlockInfo.get(blockId).get.size)
       }
-      context.reply(disaggBlockInfo.get(blockId).get.size)
-
   }
 }
 

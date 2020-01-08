@@ -633,41 +633,6 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
-        } else if (level.useDisagg && disaggStore.readLock(blockId)) {
-          val disaggFetchStart = System.nanoTime
-
-          logInfo(s"Found block $blockId in disagg memory")
-
-          var disaggData: BlockData = null
-
-          val iterToReturn: Iterator[Any] = {
-            if (level.deserialized) {
-              disaggData = disaggStore.getStream(blockId)
-              val disaggValues = serializerManager.dataDeserializeStream(
-                blockId,
-                disaggData.toInputStream())(info.classTag)
-              disaggCachingPolicy
-                .maybeCacheDisaggValuesInMemory(info, blockId, level, disaggValues)
-            } else {
-              disaggData = disaggStore.getBytes(blockId)
-              val stream = disaggCachingPolicy
-                .maybeCacheDisaggBytesInMemory(info, blockId, level, disaggData)
-                .map { _.toInputStream(dispose = false) }
-                .getOrElse { disaggData.toInputStream() }
-              serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
-            }
-          }
-
-          val disaggFetchTime = System.nanoTime - disaggFetchStart
-          logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
-
-          val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
-            releaseLockAndDispose(blockId, disaggData, taskAttemptId)
-          })
-
-          disaggStore.readUnlock(blockId)
-
-          Some(new BlockResult(ci, DataReadMethod.Network, info.size))
         } else if (!level.useDisagg) {
           handleLocalReadFailure(blockId)
         } else {
@@ -931,10 +896,12 @@ private[spark] class BlockManager(
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
         val blockResult = getLocalValues(blockId).getOrElse {
-          // Since we held a read lock between the doPut() and get() calls, the block should not
-          // have been evicted, so get() not returning the block indicates some internal error.
-          releaseLock(blockId)
-          throw new SparkException(s"get() failed for block $blockId even though we held a lock")
+          getDisaggValues(blockId).getOrElse {
+            // Since we held a read lock between the doPut() and get() calls, the block should not
+            // have been evicted, so get() not returning the block indicates some internal error.
+            releaseLock(blockId)
+            throw new SparkException(s"get() failed for block $blockId even though we held a lock")
+          }
         }
         // We already hold a read lock on the block from the doPut() call and getLocalValues()
         // acquires the lock again, so we need to call releaseLock() here so that the net number
