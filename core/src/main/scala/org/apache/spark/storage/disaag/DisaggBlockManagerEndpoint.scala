@@ -211,7 +211,7 @@ class DisaggBlockManagerEndpoint(
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
-    rddJobDag.get.removeCompletedStageNode(stageId)
+    // rddJobDag.get.removeCompletedStageNode(stageId)
   }
 
 
