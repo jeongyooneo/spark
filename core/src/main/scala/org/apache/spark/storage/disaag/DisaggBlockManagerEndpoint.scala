@@ -232,14 +232,16 @@ class DisaggBlockManagerEndpoint(
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
     if (putCost < 1000) {
-      logInfo(s"Do not store block $blockId, cost $putCost")
+      logInfo(s"Discarding block $blockId, cost $putCost")
+      rddJobDag.get.setCreatedTimeBlock(blockId)
       return false
     }
 
     synchronized {
       if (totalSize.get() + estimateSize < threshold
         || System.currentTimeMillis() - prevTime < 50) {
-        logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
+        logInfo(s"Storing $blockId, cost: $putCost, " +
+          s"size $estimateSize / $totalSize, threshold: $threshold")
 
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
@@ -323,6 +325,8 @@ class DisaggBlockManagerEndpoint(
           }
         }
         */
+
+        rddJobDag.get.setCreatedTimeBlock(blockId)
 
         false
       } else {

@@ -85,6 +85,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     sb.toString()
   }
 
+  def setCreatedTimeBlock(blockId: BlockId): Unit = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    if (!rddNode.storedBlocksCreatedTime.contains(blockId)) {
+      rddNode.storedBlocksCreatedTime.put(blockId, System.currentTimeMillis())
+    }
+  }
+
   def storingBlock(blockId: BlockId): Unit = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
