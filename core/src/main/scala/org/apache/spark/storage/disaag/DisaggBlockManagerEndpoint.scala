@@ -275,7 +275,12 @@ class DisaggBlockManagerEndpoint(
                 case None =>
                   // do nothing
                 case Some(blockInfo) =>
-                  if (totalCost + discardCost < putCost
+                  if (discardCost <= 0) {
+                    // gc !!
+                    removeBlocks.append((bid, blockInfo))
+                    logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                      s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                  } else if (totalCost + discardCost < putCost
                     && timeToRemove(blockInfo.createdTime, currTime)
                     && !recentlyRemoved.contains(bid)) {
                     totalCost += discardCost
