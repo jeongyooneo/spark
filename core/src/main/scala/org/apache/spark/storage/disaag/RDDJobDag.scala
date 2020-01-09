@@ -132,6 +132,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
           if (time.isDefined) {
             l.append(time.get)
+          } else {
+            throw new RuntimeException(s"Parent of ${childBlockId} " +
+              s"block ($parentBlockId) is not stored.. ")
           }
         }
       }
@@ -178,11 +181,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       costSum += (nodeCreatedTime - parentTime)
     }
 
-    dag(rddNode)._2.synchronized {
-      // TODO: child cached중에서 저장 안된 애들 갯수를 곱해야함!
-      // costSum * dag(rddNode)._2.size
-      costSum * calcChildUncachedBlocks(rddNode, blockId)
-    }
+    val uncachedChild = calcChildUncachedBlocks(rddNode, blockId)
+
+    logInfo(s"Cost of $blockId: $costSum * $uncachedChild")
+    costSum * uncachedChild
   }
 
   private def calculateCost(blockId: BlockId): Long = {
@@ -351,7 +353,7 @@ object RDDJobDag extends Logging {
     for (child <- dag(parent)._1) {
       val v = find(parent, child)
       set = set.union(v)
-      // logInfo(s"Find cached parent of ${child}: $v, $set")
+      logInfo(s"Find cached child of ${parent}/$child $v, $set")
     }
 
     set

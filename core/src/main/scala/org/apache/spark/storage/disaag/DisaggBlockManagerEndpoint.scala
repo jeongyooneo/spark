@@ -229,6 +229,13 @@ class DisaggBlockManagerEndpoint(
     }
     */
 
+    val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
+
+    if (putCost < 1000) {
+      logInfo(s"Do not store block $blockId, cost $putCost")
+      return false
+    }
+
     synchronized {
       if (totalSize.get() + estimateSize < threshold
         || System.currentTimeMillis() - prevTime < 50) {
@@ -244,7 +251,6 @@ class DisaggBlockManagerEndpoint(
       // discard!!
       var totalCost = 0L
       var totalDiscardSize = 0L
-      val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
       val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
