@@ -17,7 +17,6 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
@@ -99,11 +98,13 @@ class DisaggBlockManagerEndpoint(
   private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
+  /*
   private val sizePriorityQueue: PriorityQueue[(BlockId, CrailBlockInfo)] =
     new PriorityQueue[(BlockId, CrailBlockInfo)](new Comparator[(BlockId, CrailBlockInfo)] {
       override def compare(o1: (BlockId, CrailBlockInfo), o2: (BlockId, CrailBlockInfo)): Int =
         o2._2.size.compare(o1._2.size)
     })
+  */
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
@@ -189,8 +190,6 @@ class DisaggBlockManagerEndpoint(
   // TODO: which blocks to remove ?
 
   val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
-  val prevDiscardedBlocks: ConcurrentHashMap[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]()
 
   val blocksRemovedByMaster: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
@@ -212,6 +211,8 @@ class DisaggBlockManagerEndpoint(
   private def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
     currTime - blockCreatedTime > 8 * 1000
   }
+
+  val recentlyRemoved: mutable.Set[BlockId] = new mutable.HashSet[BlockId]()
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
 
@@ -249,6 +250,34 @@ class DisaggBlockManagerEndpoint(
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
       if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
+
+        rddJobDag.get.sortedBlockCost match {
+          case None =>
+            None
+          case Some(l) =>
+            val iterator = l.iterator
+
+            val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
+              totalSize.get() + estimateSize - threshold)
+
+            val currTime = System.currentTimeMillis()
+            while (iterator.hasNext && totalDiscardSize < removalSize) {
+              val (bid, discardCost) = iterator.next()
+              val blockInfo = disaggBlockInfo(bid)
+
+              if (totalCost + discardCost < putCost
+                && timeToRemove(blockInfo.createdTime, currTime)
+                && !recentlyRemoved.contains(bid)) {
+                totalCost += discardCost
+                totalDiscardSize += blockInfo.size
+                removeBlocks.append((bid, blockInfo))
+                logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                  s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+              }
+            }
+        }
+
+        /*
         sizePriorityQueue.synchronized {
           val iterator = sizePriorityQueue.iterator
 
@@ -272,6 +301,7 @@ class DisaggBlockManagerEndpoint(
             }
           }
         }
+        */
       }
 
       if (totalDiscardSize < estimateSize) {
@@ -280,19 +310,18 @@ class DisaggBlockManagerEndpoint(
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
 
+        /*
         sizePriorityQueue.synchronized {
           removeBlocks.foreach { t =>
             sizePriorityQueue.add(t)
           }
         }
-
-        prevDiscardedBlocks.put(blockId, true)
+        */
 
         false
       } else {
         removeBlocks.foreach { t =>
 
-          prevDiscardedBlocks.put(t._1, true)
           blocksRemovedByMaster.put(t._1, true)
           totalSize.addAndGet(-t._2.size)
 
@@ -313,8 +342,11 @@ class DisaggBlockManagerEndpoint(
                   info.synchronized {
                     if (info.readCount.get() == 0) {
                       info.isRemoved = true
+                      recentlyRemoved.add(t._1)
+
                       logInfo(s"Remove block from worker ${t._1}")
                       blockManagerMaster.removeBlockFromWorkers(t._1)
+
                     }
                   }
                 }
@@ -433,6 +465,8 @@ class DisaggBlockManagerEndpoint(
     // logInfo(s"Disagg endpoint: file removed: $blockId")
     val blockInfo = disaggBlockInfo.remove(blockId).get
 
+    recentlyRemoved.remove(blockId)
+
     rddJobDag.get.removingBlock(blockId)
 
     lruQueue.synchronized {
@@ -443,6 +477,7 @@ class DisaggBlockManagerEndpoint(
       }
     }
 
+    /*
     sizePriorityQueue.synchronized {
       val iterator = sizePriorityQueue.iterator()
       var done = false
@@ -454,6 +489,7 @@ class DisaggBlockManagerEndpoint(
         }
       }
     }
+    */
 
     if (!blocksRemovedByMaster.remove(blockId)) {
       totalSize.addAndGet(-blockInfo.size)
@@ -488,9 +524,11 @@ class DisaggBlockManagerEndpoint(
         lruQueue.append(v)
       }
 
+      /*
       sizePriorityQueue.synchronized {
         sizePriorityQueue.add((blockId, v))
       }
+      */
 
       logInfo(s"Storing file writing $blockId, total: $totalSize")
       true

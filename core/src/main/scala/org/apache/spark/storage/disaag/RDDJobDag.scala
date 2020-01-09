@@ -36,7 +36,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   vertices.foreach { v =>
     val vertex = v._2
     vertex.setCachedParents(RDDJobDag.findCachedParents(vertex))
-    logInfo(s"RDD $vertex cached parents ${vertex.cachedParents}")
+    vertex.setCachedChildren(RDDJobDag.findCachedChilds(vertex, dag))
+    // logInfo(s"RDD $vertex cached parents ${vertex.cachedParents}")
+    logInfo(s"RDD $vertex cached children ${vertex.cachedChildren}")
   }
 
   val startTime = System.currentTimeMillis()
@@ -52,6 +54,25 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     logInfo(s"BlockCost: ${blockCost}")
+  }
+
+  @volatile
+  var sortedBlockCost: Option[mutable.ListBuffer[(BlockId, Long)]] = None
+
+  def updateCostAndSort: Unit = {
+    val l: mutable.ListBuffer[(BlockId, Long)] = new mutable.ListBuffer[(BlockId, Long)]()
+
+    vertices.foreach { v =>
+      val vertex = v._2
+      vertex.currentStoredBlocks.keys.foreach { key: BlockId =>
+        val cost = calculateCost(key)
+        blockCost.put(key, cost)
+        l.append((key, cost))
+      }
+    }
+
+    logInfo(s"SortedBlockCost: ${sortedBlockCost}")
+    sortedBlockCost = Some(l.sortWith(_._2 < _._2))
   }
 
   override def toString: String = {
@@ -85,7 +106,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     blockId.asRDDId.get.rddId
   }
 
-  private def getParentBlockId(rddId: Int, childBlockId: BlockId): BlockId = {
+  private def getBlockId(rddId: Int, childBlockId: BlockId): BlockId = {
     val index = childBlockId.name.split("_")(2).toInt
     RDDBlockId(rddId, index)
   }
@@ -102,7 +123,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
       for (parent <- rddNode.cachedParents) {
-        val parentBlockId = getParentBlockId(parent.rddId, childBlockId)
+        val parentBlockId = getBlockId(parent.rddId, childBlockId)
         if (!parent.currentStoredBlocks.contains(parentBlockId)) {
           // the parent block is not cached ...
           l.appendAll(dfsCachedParentTimeFind(parentBlockId))
@@ -130,6 +151,21 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
   }
 
+  private def calcChildUncachedBlocks(rddNode: RDDNode, blockId: BlockId): Int = {
+
+    var uncachedSum = 0
+
+    for (cachedChildnode <- rddNode.cachedChildren) {
+      val childBlockId = getBlockId(cachedChildnode.rddId, blockId)
+      if (!cachedChildnode.currentStoredBlocks.contains(childBlockId)) {
+        uncachedSum += 1
+        calcChildUncachedBlocks(cachedChildnode, blockId)
+      }
+    }
+
+    uncachedSum
+  }
+
   def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
@@ -143,7 +179,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     dag(rddNode)._2.synchronized {
-      costSum * dag(rddNode)._2.size
+      // TODO: child cached중에서 저장 안된 애들 갯수를 곱해야함!
+      // costSum * dag(rddNode)._2.size
+      costSum * calcChildUncachedBlocks(rddNode, blockId)
     }
   }
 
@@ -156,7 +194,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     calculateCostToBeStored(blockId, nodeCreatedTime)
   }
 
+  val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
+
   def removeCompletedStageNode(stageId: Int): Unit = {
+    completedStages.add(stageId)
+    /*
     for (key <- dag.keys) {
       val (edge, stage_removed_edge) = dag(key)
       stage_removed_edge.synchronized {
@@ -167,6 +209,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
         }
       }
     }
+    */
   }
 }
 
@@ -178,6 +221,8 @@ class RDDNode(val rddId: Int,
 
   var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
 
+  var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+
   val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]().asScala
 
@@ -186,6 +231,10 @@ class RDDNode(val rddId: Int,
 
   def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
     cachedParents = cp
+  }
+
+  def setCachedChildren(cp: mutable.Set[RDDNode]): Unit = {
+    cachedChildren = cp
   }
 
   override def equals(that: Any): Boolean =
@@ -277,6 +326,35 @@ object RDDJobDag extends Logging {
 
   private def findSameStage(l: mutable.Set[RDDNode], n: RDDNode): Boolean = {
     l.exists(nn => nn.stageId.equals(n.stageId))
+  }
+
+  def findCachedChilds(parent: RDDNode,
+                       dag: mutable.Map[RDDNode,
+                         (mutable.Set[RDDNode], mutable.Set[RDDNode])]): mutable.Set[RDDNode] = {
+
+    def find(parent: RDDNode, childNode: RDDNode): mutable.Set[RDDNode] = {
+      if (childNode.cached) {
+        val l = new mutable.HashSet[RDDNode]
+        l.add(childNode)
+        l
+      } else {
+        val l: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
+        for (child <- dag(childNode)._1) {
+          val n = find(childNode, child)
+          l.union(n)
+        }
+        l
+      }
+    }
+
+    var set: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
+    for (child <- dag(parent)._1) {
+      val v = find(parent, child)
+      set = set.union(v)
+      // logInfo(s"Find cached parent of ${child}: $v, $set")
+    }
+
+    set
   }
 
   def findCachedParents(child: RDDNode): mutable.Set[RDDNode] = {

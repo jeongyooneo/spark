@@ -113,7 +113,7 @@ class BlockManagerMasterEndpoint(
       builder.append("------- stat logging start ------\n")
 
       if (rddJobDag.isDefined) {
-        rddJobDag.get.updateCost
+        rddJobDag.get.updateCostAndSort
       }
 
       blockManagerInfo.foreach {
