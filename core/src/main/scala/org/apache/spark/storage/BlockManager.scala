@@ -1130,6 +1130,10 @@ private[spark] class BlockManager(
         logWarning(s"Putting block $blockId failed")
       }
       res
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        throw new RuntimeException(s"Putting block $blockId execption... $e")
     } finally {
       // This cleanup is performed in a finally block rather than a `catch` to avoid having to
       // catch and properly re-throw InterruptedException.
