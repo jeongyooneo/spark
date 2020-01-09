@@ -18,16 +18,16 @@
 package org.apache.spark.storage.disaag
 
 
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.BlockId
+import org.apache.spark.storage.{BlockId, RDDBlockId}
 
-import scala.collection.mutable
+import scala.collection.convert.decorateAsScala._
+import scala.collection.{mutable, _}
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
 import scala.util.parsing.json.JSON
-
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])],
                 val edges: ListBuffer[(Int, Int)],
@@ -37,6 +37,21 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     val vertex = v._2
     vertex.setCachedParents(RDDJobDag.findCachedParents(vertex))
     logInfo(s"RDD $vertex cached parents ${vertex.cachedParents}")
+  }
+
+  val startTime = System.currentTimeMillis()
+
+  val blockCost: concurrent.Map[BlockId, Long] = new ConcurrentHashMap[BlockId, Long]().asScala
+
+  def updateCost: Unit = {
+    vertices.foreach { v =>
+      val vertex = v._2
+      vertex.currentStoredBlocks.keys.foreach { key: BlockId =>
+        blockCost.put(key, calculateCost(key))
+      }
+    }
+
+    logInfo(s"BlockCost: ${blockCost}")
   }
 
   override def toString: String = {
@@ -49,55 +64,90 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     sb.toString()
   }
 
+  def storingBlock(blockId: BlockId): Unit = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    rddNode.currentStoredBlocks.put(blockId, true)
+    if (!rddNode.storedBlocksCreatedTime.contains(blockId)) {
+      rddNode.storedBlocksCreatedTime.put(blockId, System.currentTimeMillis())
+    }
+  }
+
+  def removingBlock(blockId: BlockId): Unit = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    rddNode.currentStoredBlocks.remove(blockId)
+  }
+
   private def blockIdToRDDId(blockId: BlockId): Int = {
     blockId.asRDDId.get.rddId
   }
 
-  def setCreatedTimeForRDD(blockId: BlockId): Unit = {
-    val rddId = blockIdToRDDId(blockId)
+  private def getParentBlockId(rddId: Int, childBlockId: BlockId): BlockId = {
+    val index = childBlockId.name.split("_")(2).toInt
+    RDDBlockId(rddId, index)
+  }
+
+  private def dfsCachedParentTimeFind(childBlockId: BlockId): ListBuffer[Long] = {
+    val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
-    rddNode.synchronized {
-      if (rddNode.createdTime.get() < System.currentTimeMillis()) {
-        rddNode.createdTime.set(System.currentTimeMillis())
+
+    if (rddNode.cachedParents.isEmpty) {
+      val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
+      l.append(startTime)
+      l
+    } else {
+      val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
+
+      for (parent <- rddNode.cachedParents) {
+        val parentBlockId = getParentBlockId(rddId, childBlockId)
+        if (!parent.currentStoredBlocks.contains(parentBlockId)) {
+          // the parent block is not cached ...
+          l.appendAll(dfsCachedParentTimeFind(parentBlockId))
+        } else {
+          val parentBlockId = getParentBlockId(parent.rddId, childBlockId)
+          val time = parent.storedBlocksCreatedTime.get(parentBlockId)
+
+          if (time.isDefined) {
+            l.append(time.get)
+          }
+        }
       }
+
+      l
     }
   }
 
-  def calculateCost(blockId: BlockId, nodeCreatedTime: Long): Long = {
+  def getCost(blockId: BlockId): Long = {
+    blockCost.get(blockId).get
+  }
+
+  def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    var parentCreatedTime = Long.MaxValue
-    for (parent <- rddNode.parents) {
-      if (parent.createdTime.get() < parentCreatedTime) {
-        parentCreatedTime = parent.createdTime.get()
-      }
+    var costSum = 0L
+
+    val parentCachedBlockTimes = dfsCachedParentTimeFind(blockId)
+
+    for (parentTime <- parentCachedBlockTimes) {
+      costSum += (nodeCreatedTime - parentTime)
     }
 
     dag(rddNode)._2.synchronized {
-      (nodeCreatedTime - parentCreatedTime) * dag(rddNode)._2.size
+      costSum * dag(rddNode)._2.size
     }
   }
 
-  def calculateCost(blockId: BlockId): Long = {
+  private def calculateCost(blockId: BlockId): Long = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    val nodeCreatedTime = rddNode.createdTime.get()
+    val nodeCreatedTime = rddNode.storedBlocksCreatedTime.get(blockId).get
 
-    var parentCreatedTime = Long.MaxValue
-    for (parent <- rddNode.cachedParents) {
-      if (parent.createdTime.get() < parentCreatedTime) {
-        parentCreatedTime = parent.createdTime.get()
-      }
-    }
-
-    if (parentCreatedTime == Long.MaxValue) {
-      // this means that there is no cached parent RDD
-      nodeCreatedTime
-    } else {
-      Math.max(0L, nodeCreatedTime - parentCreatedTime)
-    }
+    calculateCostToBeStored(blockId, nodeCreatedTime)
   }
 
   def removeCompletedStageNode(stageId: Int): Unit = {
@@ -120,9 +170,13 @@ class RDDNode(val rddId: Int,
 
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
 
-  var createdTime: AtomicLong = new AtomicLong(0)
-
   var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+
+  val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]().asScala
+
+  val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
+    new ConcurrentHashMap[BlockId, Long]().asScala
 
   def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
     cachedParents = cp

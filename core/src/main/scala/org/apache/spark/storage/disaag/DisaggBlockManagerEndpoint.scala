@@ -46,8 +46,7 @@ class DisaggBlockManagerEndpoint(
     conf: SparkConf,
     listenerBus: LiveListenerBus,
     blockManagerMaster: BlockManagerMasterEndpoint,
-    thresholdMB: Long,
-    dagPath: String)
+    thresholdMB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
   val threshold: Long = thresholdMB * (1000 * 1000)
@@ -58,12 +57,6 @@ class DisaggBlockManagerEndpoint(
   logInfo("creating main dir " + rootDir)
   if (baseDirExists) {
     fs.delete(rootDir, true).get().syncDir()
-  }
-
-  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath)
-
-  if (rddJobDag.isDefined) {
-    logInfo(rddJobDag.get.toString)
   }
 
   /*
@@ -78,6 +71,7 @@ class DisaggBlockManagerEndpoint(
   inputStream.readFully()
   */
 
+  val rddJobDag = blockManagerMaster.rddJobDag
 
   fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
     CrailLocationClass.DEFAULT, true).get().syncDir()
@@ -211,12 +205,12 @@ class DisaggBlockManagerEndpoint(
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
-    // rddJobDag.get.removeCompletedStageNode(stageId)
+    rddJobDag.get.removeCompletedStageNode(stageId)
   }
 
 
   private def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
-    currTime - blockCreatedTime > 5 * 1000
+    currTime - blockCreatedTime > 8 * 1000
   }
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
@@ -225,14 +219,6 @@ class DisaggBlockManagerEndpoint(
 
     if (!prevCreatedBlocks.containsKey(blockId)) {
       prevCreatedBlocks.put(blockId, true)
-      rddJobDag.get.setCreatedTimeForRDD(blockId)
-    }
-
-
-    if (blockId.name.startsWith("rdd_2")) {
-      blocksSizeToBeCreated.put(blockId, estimateSize)
-      totalSize.addAndGet(estimateSize)
-      return true
     }
 
     /*
@@ -255,7 +241,7 @@ class DisaggBlockManagerEndpoint(
       // discard!!
       var totalCost = 0L
       var totalDiscardSize = 0L
-      val putCost = rddJobDag.get.calculateCost(blockId, System.currentTimeMillis())
+      val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
       val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
@@ -271,7 +257,7 @@ class DisaggBlockManagerEndpoint(
           while (iterator.hasNext && totalDiscardSize < removalSize) {
             val (bid, blockInfo) = iterator.next()
 
-            val discardCost = rddJobDag.get.calculateCost(bid)
+            val discardCost = rddJobDag.get.getCost(bid)
 
             if (!bid.name.startsWith("rdd_2_") && totalCost + discardCost < putCost
               && timeToRemove(blockInfo.createdTime, currTime)) {
@@ -308,6 +294,8 @@ class DisaggBlockManagerEndpoint(
           blocksRemovedByMaster.put(t._1, true)
           totalSize.addAndGet(-t._2.size)
 
+          rddJobDag.get.removingBlock(blockId)
+
           executor.submit(new Runnable {
             override def run(): Unit = {
               if (disaggBlockInfo.get(t._1).isDefined) {
@@ -333,10 +321,10 @@ class DisaggBlockManagerEndpoint(
           })
         }
 
-
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
+        rddJobDag.get.storingBlock(blockId)
 
         true
       }
@@ -442,6 +430,8 @@ class DisaggBlockManagerEndpoint(
   def fileRemoved(blockId: BlockId): Boolean = {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
     val blockInfo = disaggBlockInfo.remove(blockId).get
+
+    rddJobDag.get.removingBlock(blockId)
 
     lruQueue.synchronized {
 

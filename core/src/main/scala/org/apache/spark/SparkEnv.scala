@@ -357,7 +357,7 @@ object SparkEnv extends Logging {
 
     if (isDriver) {
       val blockManagerMasterEndpoint =
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)
 
       blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
         BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
@@ -365,7 +365,7 @@ object SparkEnv extends Logging {
 
       disaggBlockManagerEndpoint =
         new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          blockManagerMasterEndpoint, thresholdMB, dagPath)
+          blockManagerMasterEndpoint, thresholdMB)
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
@@ -374,14 +374,14 @@ object SparkEnv extends Logging {
     } else {
       blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
        BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)),
        conf, isDriver)
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
         new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus),
-          thresholdMB, dagPath)), conf)
+          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath),
+          thresholdMB)), conf)
     }
 
     // NB: blockManager is not valid until initialize() is called later.
