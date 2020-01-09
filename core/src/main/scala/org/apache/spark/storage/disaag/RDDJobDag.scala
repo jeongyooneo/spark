@@ -120,7 +120,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 
   def getCost(blockId: BlockId): Long = {
-    blockCost.get(blockId).get
+    blockCost.get(blockId) {
+      case None =>
+        val cost = calculateCost(blockId)
+        blockCost.put(blockId, cost)
+        cost
+      case Some(cost) =>
+        cost
+    }
   }
 
   def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): Long = {
