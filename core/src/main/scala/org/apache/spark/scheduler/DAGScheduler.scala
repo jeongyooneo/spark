@@ -946,6 +946,8 @@ class DAGScheduler(
           waitingStages += stage
         }
       }
+
+      disaggBlockManagerEndpoint.stageSubmitted(stage.id)
     } else {
       abortStage(stage, "No active job for stage " + stage.id, None)
     }

@@ -207,6 +207,11 @@ class DisaggBlockManagerEndpoint(
     rddJobDag.get.removeCompletedStageNode(stageId)
   }
 
+  def stageSubmitted(stageId: Int): Unit = {
+    logInfo(s"Stage submitted ${stageId}")
+    rddJobDag.get.stageSubmitted(stageId)
+  }
+
 
   private def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
     currTime - blockCreatedTime > 8 * 1000
