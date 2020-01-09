@@ -102,12 +102,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
       for (parent <- rddNode.cachedParents) {
-        val parentBlockId = getParentBlockId(rddId, childBlockId)
+        val parentBlockId = getParentBlockId(parent.rddId, childBlockId)
         if (!parent.currentStoredBlocks.contains(parentBlockId)) {
           // the parent block is not cached ...
           l.appendAll(dfsCachedParentTimeFind(parentBlockId))
         } else {
-          val parentBlockId = getParentBlockId(parent.rddId, childBlockId)
           val time = parent.storedBlocksCreatedTime.get(parentBlockId)
 
           if (time.isDefined) {
