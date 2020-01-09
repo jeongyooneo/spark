@@ -273,7 +273,7 @@ class DisaggBlockManagerEndpoint(
               val (bid, discardCost) = iterator.next()
               disaggBlockInfo.get(bid) match {
                 case None =>
-                  _
+                  // do nothing
                 case Some(blockInfo) =>
                   if (totalCost + discardCost < putCost
                     && timeToRemove(blockInfo.createdTime, currTime)
