@@ -147,7 +147,7 @@ class BlockManagerMasterEndpoint(
       logInfo(builder.toString())
     }
   }
-  scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
+  scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
