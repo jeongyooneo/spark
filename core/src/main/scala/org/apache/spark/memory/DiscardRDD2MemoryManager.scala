@@ -85,6 +85,12 @@ private[spark] class DiscardRDD2MemoryManager(
       blockId: BlockId,
       numBytes: Long,
       memoryMode: MemoryMode): Boolean = synchronized {
+
+
+    if (blockId.name.startsWith("rdd_2_")) {
+      return false
+    }
+
     require(memoryMode != MemoryMode.OFF_HEAP,
       "DiscardRDD2MemoryManager does not support off-heap unroll memory")
     val currentUnrollMemory = onHeapStorageMemoryPool.memoryStore.currentUnrollMemory
