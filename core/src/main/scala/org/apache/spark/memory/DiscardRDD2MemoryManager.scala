@@ -118,8 +118,8 @@ private[spark] object DiscardRDD2MemoryManager {
   private val MIN_MEMORY_BYTES = 32 * 1024 * 1024
 
   /**
-    * Return the total amount of memory available for the storage region, in bytes.
-    */
+   * Return the total amount of memory available for the storage region, in bytes.
+   */
   private def getMaxStorageMemory(conf: SparkConf): Long = {
     val systemMaxMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)
     val memoryFraction = conf.getDouble("spark.storage.memoryFraction", 0.6)
@@ -128,8 +128,8 @@ private[spark] object DiscardRDD2MemoryManager {
   }
 
   /**
-    * Return the total amount of memory available for the execution region, in bytes.
-    */
+   * Return the total amount of memory available for the execution region, in bytes.
+   */
   private def getMaxExecutionMemory(conf: SparkConf): Long = {
     val systemMaxMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)
 
