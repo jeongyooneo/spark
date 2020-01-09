@@ -340,10 +340,10 @@ object RDDJobDag extends Logging {
         l.add(childNode)
         l
       } else {
-        val l: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
+        var l: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
         for (child <- dag(childNode)._1) {
           val n = find(childNode, child)
-          l.union(n)
+          l = l.union(n)
         }
         l
       }
