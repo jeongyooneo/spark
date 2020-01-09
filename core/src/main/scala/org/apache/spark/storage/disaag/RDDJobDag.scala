@@ -192,7 +192,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     val uncachedChild = calcChildUncachedBlocks(rddNode, blockId)
 
-    // logInfo(s"Cost of $blockId: $costSum * $uncachedChild")
+    if (costSum <= 0 || uncachedChild == 0) {
+      logInfo(s"Cost of $blockId: $costSum * $uncachedChild, time: $nodeCreatedTime")
+    }
+
     costSum * uncachedChild
   }
 

@@ -271,16 +271,19 @@ class DisaggBlockManagerEndpoint(
             val currTime = System.currentTimeMillis()
             while (iterator.hasNext && totalDiscardSize < removalSize) {
               val (bid, discardCost) = iterator.next()
-              val blockInfo = disaggBlockInfo(bid)
-
-              if (totalCost + discardCost < putCost
-                && timeToRemove(blockInfo.createdTime, currTime)
-                && !recentlyRemoved.contains(bid)) {
-                totalCost += discardCost
-                totalDiscardSize += blockInfo.size
-                removeBlocks.append((bid, blockInfo))
-                logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
-                  s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+              disaggBlockInfo.get(bid) match {
+                case None =>
+                  _
+                case Some(blockInfo) =>
+                  if (totalCost + discardCost < putCost
+                    && timeToRemove(blockInfo.createdTime, currTime)
+                    && !recentlyRemoved.contains(bid)) {
+                    totalCost += discardCost
+                    totalDiscardSize += blockInfo.size
+                    removeBlocks.append((bid, blockInfo))
+                    logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                      s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                  }
               }
             }
         }
