@@ -235,6 +235,8 @@ class DisaggBlockManagerEndpoint(
 
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
+        rddJobDag.get.storingBlock(blockId)
+
         return true
       }
 
