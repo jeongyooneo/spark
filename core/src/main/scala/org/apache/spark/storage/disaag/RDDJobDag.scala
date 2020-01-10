@@ -118,20 +118,27 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     RDDBlockId(rddId, index)
   }
 
-  private def findRootStageStartTimes(rddNode: RDDNode): ListBuffer[Long] = {
+  private def getTaskId(stageId: Int, blockId: BlockId): String = {
+    val index = blockId.name.split("_")(2).toInt
+    s"$stageId-$index-0"
+  }
+
+  private def findRootStageStartTimes(rddNode: RDDNode, blockId: BlockId): ListBuffer[Long] = {
 
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
     if (rddNode.parents.isEmpty) {
-      stageStartTime.get(rddNode.stageId) match {
+      val rootTaskId = getTaskId(rddNode.stageId, blockId)
+      taskStartTime.get(rootTaskId) match {
         case None =>
-          throw new RuntimeException(s"Stage start time does not exist ${rddNode.stageId}")
+          throw new RuntimeException(s"Stage start time does " +
+            s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
         case Some(startTime) =>
           l.append(startTime)
       }
     } else {
       for (parent <- rddNode.parents) {
-        l.appendAll(findRootStageStartTimes(parent))
+        l.appendAll(findRootStageStartTimes(parent, blockId))
       }
     }
 
@@ -153,7 +160,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     if (rddNode.cachedParents.isEmpty) {
       // find root stage!!
-      findRootStageStartTimes(rddNode)
+      findRootStageStartTimes(rddNode, childBlockId)
     } else {
       val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
