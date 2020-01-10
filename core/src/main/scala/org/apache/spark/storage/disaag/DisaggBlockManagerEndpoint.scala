@@ -17,6 +17,7 @@
 
 package org.apache.spark.storage.disaag
 
+import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
@@ -98,13 +99,11 @@ class DisaggBlockManagerEndpoint(
   private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
-  /*
   private val sizePriorityQueue: PriorityQueue[(BlockId, CrailBlockInfo)] =
     new PriorityQueue[(BlockId, CrailBlockInfo)](new Comparator[(BlockId, CrailBlockInfo)] {
       override def compare(o1: (BlockId, CrailBlockInfo), o2: (BlockId, CrailBlockInfo)): Int =
         o2._2.size.compare(o1._2.size)
     })
-  */
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
@@ -273,6 +272,7 @@ class DisaggBlockManagerEndpoint(
 
       if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
 
+        /*
         rddJobDag.get.sortedBlockCost match {
           case None =>
             None
@@ -309,8 +309,8 @@ class DisaggBlockManagerEndpoint(
               }
             }
         }
+        */
 
-        /*
         sizePriorityQueue.synchronized {
           val iterator = sizePriorityQueue.iterator
 
@@ -323,7 +323,7 @@ class DisaggBlockManagerEndpoint(
 
             val discardCost = rddJobDag.get.getCost(bid)
 
-            if (!bid.name.startsWith("rdd_2_") && totalCost + discardCost < putCost
+            if (totalCost + discardCost < putCost
               && timeToRemove(blockInfo.createdTime, currTime)) {
               totalCost += discardCost
               totalDiscardSize += blockInfo.size
@@ -334,7 +334,6 @@ class DisaggBlockManagerEndpoint(
             }
           }
         }
-        */
       }
 
       removeBlocks.foreach { t =>
