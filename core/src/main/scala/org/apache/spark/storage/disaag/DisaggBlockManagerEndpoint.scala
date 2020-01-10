@@ -240,12 +240,6 @@ class DisaggBlockManagerEndpoint(
 
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
-    if (putCost < 2000) {
-      logInfo(s"Discarding block $blockId, cost $putCost")
-      rddJobDag.get.setCreatedTimeBlock(blockId)
-      return false
-    }
-
     synchronized {
       if (disaggBlockInfo.contains(blockId)) {
         return false
@@ -371,7 +365,7 @@ class DisaggBlockManagerEndpoint(
         })
       }
 
-      if (totalDiscardSize < estimateSize) {
+      if (totalDiscardSize < estimateSize || putCost < 2000) {
         // it means that the discarding cost is greater than putting block
         // so, we do not store the block
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
@@ -558,11 +552,9 @@ class DisaggBlockManagerEndpoint(
         lruQueue.append(v)
       }
 
-      /*
       sizePriorityQueue.synchronized {
         sizePriorityQueue.add((blockId, v))
       }
-      */
 
       logInfo(s"Storing file writing $blockId, total: $totalSize")
       true
