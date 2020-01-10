@@ -239,7 +239,7 @@ class DisaggBlockManagerEndpoint(
     }
     */
 
-    val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
+    val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
 
     if (putCost < 2000) {
       // it means that the discarding cost is greater than putting block
@@ -296,7 +296,8 @@ class DisaggBlockManagerEndpoint(
 
             if (removalSize == estimateSize) {
               while (iterator.hasNext && totalDiscardSize < removalSize) {
-                val (bid, discardCost) = iterator.next()
+                val (bid, discardBlockCost) = iterator.next()
+                val discardCost = discardBlockCost.cost
                 disaggBlockInfo.get(bid) match {
                   case None =>
                   // do nothing
@@ -325,7 +326,9 @@ class DisaggBlockManagerEndpoint(
               // remove blocks til threshold without considering cost
               // for hard threshold
               while (iterator.hasNext && totalDiscardSize < removalSize) {
-                val (bid, discardCost) = iterator.next()
+                val (bid, discardBlockCost) = iterator.next()
+                val discardCost = discardBlockCost.cost
+
                 disaggBlockInfo.get(bid) match {
                   case None =>
                   // do nothing

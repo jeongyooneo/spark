@@ -21,6 +21,7 @@ package org.apache.spark.storage.disaag
 import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark.internal.Logging
+import org.apache.spark.storage.disaag.RDDJobDag.BlockCost
 import org.apache.spark.storage.{BlockId, RDDBlockId}
 
 import scala.collection.convert.decorateAsScala._
@@ -41,7 +42,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     logInfo(s"RDD $vertex cached children ${vertex.cachedChildren}")
   }
 
-  val blockCost: concurrent.Map[BlockId, Long] = new ConcurrentHashMap[BlockId, Long]().asScala
+  val blockCost: concurrent.Map[BlockId, BlockCost] =
+    new ConcurrentHashMap[BlockId, BlockCost]().asScala
 
   def updateCost: Unit = {
     vertices.foreach { v =>
@@ -55,10 +57,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 
   @volatile
-  var sortedBlockCost: Option[mutable.ListBuffer[(BlockId, Long)]] = None
+  var sortedBlockCost: Option[mutable.ListBuffer[(BlockId, BlockCost)]] = None
 
   def updateCostAndSort: Unit = {
-    val l: mutable.ListBuffer[(BlockId, Long)] = new mutable.ListBuffer[(BlockId, Long)]()
+    val l: mutable.ListBuffer[(BlockId, BlockCost)] = new mutable.ListBuffer[(BlockId, BlockCost)]()
 
     vertices.foreach { v =>
       val vertex = v._2
@@ -70,7 +72,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     logInfo(s"SortedBlockCost: ${sortedBlockCost}")
-    sortedBlockCost = Some(l.sortWith(_._2 < _._2))
+    sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
   }
 
   override def toString: String = {
@@ -123,8 +125,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     s"$stageId-$index-0"
   }
 
-  private def findRootStageStartTimes(rddNode: RDDNode, blockId: BlockId): ListBuffer[Long] = {
+  private def findRootStageStartTimes(rddNode: RDDNode, blockId: BlockId):
+  (ListBuffer[BlockId], ListBuffer[Long]) = {
 
+    val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
     if (rddNode.parents.isEmpty) {
@@ -134,15 +138,18 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
           throw new RuntimeException(s"Stage start time does " +
             s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
         case Some(startTime) =>
+          b.append(blockId)
           l.append(startTime)
       }
     } else {
       for (parent <- rddNode.parents) {
-        l.appendAll(findRootStageStartTimes(parent, blockId))
+        val (bb, ll) = findRootStageStartTimes(parent, blockId)
+        b.appendAll(bb)
+        l.appendAll(ll)
       }
     }
 
-    l
+    (b, l)
   }
 
   val blockCreatedTimes: concurrent.Map[BlockId, Long] =
@@ -154,7 +161,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
   }
 
-  private def dfsCachedParentTimeFind(childBlockId: BlockId): ListBuffer[Long] = {
+  private def dfsCachedParentTimeFind(childBlockId: BlockId):
+  (ListBuffer[BlockId], ListBuffer[Long]) = {
+
     val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
 
@@ -163,12 +172,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       findRootStageStartTimes(rddNode, childBlockId)
     } else {
       val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
+      val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
 
       for (parent <- rddNode.cachedParents) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
         val time = blockCreatedTimes.get(parentBlockId)
 
         if (time.isDefined) {
+          b.append(parentBlockId)
           l.append(time.get)
         } else {
           throw new RuntimeException(s"Parent of ${childBlockId} " +
@@ -192,7 +203,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
         */
       }
 
-      l
+      (b, l)
     }
   }
 
@@ -201,51 +212,59 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       case None =>
         val cost = calculateCost(blockId)
         blockCost.put(blockId, cost)
-        cost
+        cost.cost
       case Some(cost) =>
-        cost
+        cost.cost
     }
   }
 
   private def calcChildUncachedBlocks(rddNode: RDDNode, blockId: BlockId,
-                                      stageSet: mutable.HashSet[Int]): Int = {
+                                      stageSet: mutable.HashSet[Int]): ListBuffer[BlockId] = {
 
-    var uncachedSum = 0
+    val l: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]()
 
     for (childnode <- dag(rddNode)._1) {
       val childBlockId = getBlockId(childnode.rddId, blockId)
       if (!childnode.currentStoredBlocks.contains(childBlockId)) {
-        if (!stageSet.contains(childnode.stageId)) {
-          uncachedSum += 1
+        if (!stageSet.contains(childnode.stageId) &&
+          !completedStages.contains(childnode.stageId)) {
+          l.append(childBlockId)
           stageSet.add(childnode.stageId)
         }
-        calcChildUncachedBlocks(childnode, blockId, stageSet)
+        l.appendAll(calcChildUncachedBlocks(childnode, blockId, stageSet))
       }
     }
 
-    uncachedSum
+    l
   }
 
-  def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): Long = {
+  def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): BlockCost = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
     var costSum = 0L
 
-    val parentCachedBlockTime = dfsCachedParentTimeFind(blockId).min
+    val (parentBlocks, times) = dfsCachedParentTimeFind(blockId)
+    val parentCachedBlockTime = times.min
 
     costSum += (nodeCreatedTime - parentCachedBlockTime)
 
-    val uncachedChild = calcChildUncachedBlocks(rddNode, blockId, new mutable.HashSet[Int]())
+    val childList = calcChildUncachedBlocks(rddNode, blockId, new mutable.HashSet[Int]())
+    val uncachedChild = childList.size
 
     if (costSum <= 0 || uncachedChild == 0) {
       logInfo(s"Cost of $blockId: $costSum * $uncachedChild, time: $nodeCreatedTime")
     }
 
-    costSum * uncachedChild
+    new BlockCost(
+      costSum * uncachedChild,
+      nodeCreatedTime,
+      parentBlocks,
+      times,
+      childList)
   }
 
-  private def calculateCost(blockId: BlockId): Long = {
+  private def calculateCost(blockId: BlockId): BlockCost = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
@@ -453,5 +472,16 @@ object RDDJobDag extends Logging {
     }
 
     set
+  }
+
+  class BlockCost(val cost: Long,
+                  val createTime: Long,
+                  val rootParentBlock: ListBuffer[BlockId],
+                  val rootParentStartTime: ListBuffer[Long],
+                  val childBlocks: ListBuffer[BlockId]) {
+
+    override def toString: String = {
+      s"<$cost/t:$createTime/p:$rootParentBlock/pt:$rootParentStartTime/c:$childBlocks>\n"
+    }
   }
 }
