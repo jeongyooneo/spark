@@ -481,7 +481,7 @@ object RDDJobDag extends Logging {
                   val childBlocks: ListBuffer[BlockId]) {
 
     override def toString: String = {
-      s"<$cost/t:$createTime/p:$rootParentBlock/pt:$rootParentStartTime/c:$childBlocks>\n"
+      s"$cost"
     }
   }
 }
