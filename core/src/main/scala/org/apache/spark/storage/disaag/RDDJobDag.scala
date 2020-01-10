@@ -156,6 +156,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
       for (parent <- rddNode.cachedParents) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
+        val time = blockCreatedTimes.get(parentBlockId)
+
+        if (time.isDefined) {
+          l.append(time.get)
+        } else {
+          throw new RuntimeException(s"Parent of ${childBlockId} " +
+            s"block ($parentBlockId) is not stored.. ")
+        }
+
+        /*
         if (!parent.currentStoredBlocks.contains(parentBlockId)) {
           // the parent block is not cached ...
           l.appendAll(dfsCachedParentTimeFind(parentBlockId))
@@ -169,6 +179,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
               s"block ($parentBlockId) is not stored.. ")
           }
         }
+        */
       }
 
       l
