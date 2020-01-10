@@ -241,7 +241,7 @@ class DisaggBlockManagerEndpoint(
 
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
-    if (putCost < 1000) {
+    if (putCost < 2000) {
       logInfo(s"Discarding block $blockId, cost $putCost")
       rddJobDag.get.setCreatedTimeBlock(blockId)
       return false
@@ -289,8 +289,11 @@ class DisaggBlockManagerEndpoint(
                 case None =>
                   // do nothing
                 case Some(blockInfo) =>
-                  if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)) {
+                  if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
+                          && !recentlyRemoved.contains(bid)) {
+
                     // gc !!
+                    totalDiscardSize += blockInfo.size
                     removeBlocks.append((bid, blockInfo))
                     logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
                       s"size: $totalDiscardSize/$removalSize, remove block: $bid")
