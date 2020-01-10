@@ -140,8 +140,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
   val blockCreatedTimes: concurrent.Map[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]().asScala
+
   def blockCreated(blockId: BlockId): Unit = {
-    blockCreatedTimes.putIfAbsent(blockId, System.currentTimeMillis())
+    if (!blockCreatedTimes.contains(blockId)) {
+      blockCreatedTimes.putIfAbsent(blockId, System.currentTimeMillis())
+    }
   }
 
   private def dfsCachedParentTimeFind(childBlockId: BlockId): ListBuffer[Long] = {

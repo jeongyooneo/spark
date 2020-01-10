@@ -126,7 +126,6 @@ class DisaggBlockManagerEndpoint(
     } else {
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-        rddJobDag.get.blockCreated(blockId)
         true
       } else {
         false
@@ -230,6 +229,8 @@ class DisaggBlockManagerEndpoint(
     if (!prevCreatedBlocks.containsKey(blockId)) {
       prevCreatedBlocks.put(blockId, true)
     }
+
+    rddJobDag.get.blockCreated(blockId)
 
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
