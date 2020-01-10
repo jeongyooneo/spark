@@ -337,6 +337,41 @@ class DisaggBlockManagerEndpoint(
         */
       }
 
+      removeBlocks.foreach { t =>
+
+        blocksRemovedByMaster.put(t._1, true)
+        totalSize.addAndGet(-t._2.size)
+
+        rddJobDag.get.removingBlock(blockId)
+
+        executor.submit(new Runnable {
+          override def run(): Unit = {
+            if (disaggBlockInfo.get(t._1).isDefined) {
+              val info = disaggBlockInfo.get(t._1).get
+
+              while (!info.isRemoved) {
+                while (info.readCount.get() > 0) {
+                  // waiting...
+                  Thread.sleep(1000)
+                  logInfo(s"Waiting for deleting ${t._1}, count: ${info.readCount}")
+                }
+
+                info.synchronized {
+                  if (info.readCount.get() == 0) {
+                    info.isRemoved = true
+                    recentlyRemoved.add(t._1)
+
+                    logInfo(s"Remove block from worker ${t._1}")
+                    blockManagerMaster.removeBlockFromWorkers(t._1)
+
+                  }
+                }
+              }
+            }
+          }
+        })
+      }
+
       if (totalDiscardSize < estimateSize) {
         // it means that the discarding cost is greater than putting block
         // so, we do not store the block
@@ -355,41 +390,6 @@ class DisaggBlockManagerEndpoint(
 
         false
       } else {
-        removeBlocks.foreach { t =>
-
-          blocksRemovedByMaster.put(t._1, true)
-          totalSize.addAndGet(-t._2.size)
-
-          rddJobDag.get.removingBlock(blockId)
-
-          executor.submit(new Runnable {
-            override def run(): Unit = {
-              if (disaggBlockInfo.get(t._1).isDefined) {
-                val info = disaggBlockInfo.get(t._1).get
-
-                while (!info.isRemoved) {
-                  while (info.readCount.get() > 0) {
-                    // waiting...
-                    Thread.sleep(1000)
-                    logInfo(s"Waiting for deleting ${t._1}, count: ${info.readCount}")
-                  }
-
-                  info.synchronized {
-                    if (info.readCount.get() == 0) {
-                      info.isRemoved = true
-                      recentlyRemoved.add(t._1)
-
-                      logInfo(s"Remove block from worker ${t._1}")
-                      blockManagerMaster.removeBlockFromWorkers(t._1)
-
-                    }
-                  }
-                }
-              }
-            }
-          })
-        }
-
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
