@@ -289,33 +289,64 @@ class DisaggBlockManagerEndpoint(
           case Some(l) =>
             val iterator = l.iterator
 
-            val removalSize = Math.max(2 * 1024 * 1024 * 1024L,
+            val removalSize = Math.max(estimateSize,
               totalSize.get() + estimateSize - threshold)
 
             val currTime = System.currentTimeMillis()
-            while (iterator.hasNext && totalDiscardSize < removalSize) {
-              val (bid, discardCost) = iterator.next()
-              disaggBlockInfo.get(bid) match {
-                case None =>
-                  // do nothing
-                case Some(blockInfo) =>
-                  if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                          && !recentlyRemoved.contains(bid)) {
 
-                    // gc !!
-                    totalDiscardSize += blockInfo.size
-                    removeBlocks.append((bid, blockInfo))
-                    logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
-                      s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                  } else if (totalCost + discardCost < putCost
-                    && timeToRemove(blockInfo.createdTime, currTime)
-                    && !recentlyRemoved.contains(bid)) {
-                    totalCost += discardCost
-                    totalDiscardSize += blockInfo.size
-                    removeBlocks.append((bid, blockInfo))
-                    logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
-                      s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                  }
+            if (removalSize == estimateSize) {
+              while (iterator.hasNext && totalDiscardSize < removalSize) {
+                val (bid, discardCost) = iterator.next()
+                disaggBlockInfo.get(bid) match {
+                  case None =>
+                  // do nothing
+                  case Some(blockInfo) =>
+                    if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
+                      && !recentlyRemoved.contains(bid)) {
+
+                      // gc !!
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                      logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                    } else if (totalCost + discardCost < putCost
+                      && timeToRemove(blockInfo.createdTime, currTime)
+                      && !recentlyRemoved.contains(bid)) {
+                      totalCost += discardCost
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                      logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                    }
+                }
+              }
+
+            } else {
+              // remove blocks til threshold without considering cost
+              // for hard threshold
+              while (iterator.hasNext && totalDiscardSize < removalSize) {
+                val (bid, discardCost) = iterator.next()
+                disaggBlockInfo.get(bid) match {
+                  case None =>
+                  // do nothing
+                  case Some(blockInfo) =>
+                    if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
+                      && !recentlyRemoved.contains(bid)) {
+
+                      // gc !!
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                      logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                    } else if (timeToRemove(blockInfo.createdTime, currTime)
+                      && !recentlyRemoved.contains(bid)) {
+                      totalCost += discardCost
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                      logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
+                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                    }
+                }
               }
             }
         }
