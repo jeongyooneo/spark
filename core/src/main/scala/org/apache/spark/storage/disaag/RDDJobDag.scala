@@ -230,7 +230,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
-  val stageStartTime: concurrent.Map[Int, Long] = new ConcurrentHashMap[Int, Long]().asScala
+  val stageStartTime: concurrent.Map[Int, Long] =
+    new ConcurrentHashMap[Int, Long]().asScala
+  val taskStartTime: concurrent.Map[String, Long] = new ConcurrentHashMap[String, Long]().asScala
+
+  def taskStarted(taskId: String): Unit = synchronized {
+    val stageId = taskId.split("-")(0).toInt
+  }
 
   def stageSubmitted(stageId: Int): Unit = {
     stageStartTime.putIfAbsent(stageId, System.currentTimeMillis())

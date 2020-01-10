@@ -18,7 +18,7 @@
 package org.apache.spark.storage.disaag
 
 import org.apache.crail._
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
@@ -38,7 +38,11 @@ class DisaggBlockManager(
   }
 
   def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
-    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize))
+
+    val taskContext = TaskContext.get()
+    val taskId = s"${taskContext.stageId()}-" +
+      s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
+    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize, taskId))
   }
 
   def read(blockId: BlockId) : Boolean = {

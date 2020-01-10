@@ -21,7 +21,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
 
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.storage._

@@ -201,6 +201,10 @@ class DisaggBlockManagerEndpoint(
   val prevCreatedBlocks: ConcurrentHashMap[BlockId, Boolean] =
     new ConcurrentHashMap[BlockId, Boolean]()
 
+  def taskStarted(taskId: String): Unit = {
+    logInfo(s"Handling task ${taskId} started")
+    rddJobDag.get.taskStarted(taskId)
+  }
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
@@ -605,7 +609,7 @@ class DisaggBlockManagerEndpoint(
     case DiscardBlocksIfNecessary(estimateSize) =>
       context.reply(discardBlocksIfNecessary(estimateSize))
 
-    case StoreBlockOrNot(blockId, estimateSize) =>
+    case StoreBlockOrNot(blockId, estimateSize, taskId) =>
       context.reply(storeBlockOrNot(blockId, estimateSize))
 
     case FileWriteEnd(blockId, size) =>

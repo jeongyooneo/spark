@@ -206,6 +206,9 @@ class DAGScheduler(
    */
   def taskStarted(task: Task[_], taskInfo: TaskInfo) {
     eventProcessLoop.post(BeginEvent(task, taskInfo))
+    val taskId = s"${task.stageId}-" +
+      s"${task.partitionId}-${taskInfo.attemptNumber}"
+    disaggBlockManagerEndpoint.taskStarted(taskId)
   }
 
   /**
