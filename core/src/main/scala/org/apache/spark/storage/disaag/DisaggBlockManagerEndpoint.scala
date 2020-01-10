@@ -139,25 +139,25 @@ class DisaggBlockManagerEndpoint(
     info.get.readCount.decrementAndGet()
   }
 
-  def fileRead(blockId: BlockId): Boolean = {
+  def fileRead(blockId: BlockId): Int = {
     val info = disaggBlockInfo.get(blockId)
 
     if (info.isEmpty) {
-      false
+      return 0
     } else {
       val v = info.get
 
       while (!v.writeDone) {
-        Thread.sleep(500)
-        logInfo(s"Waiting for write done $blockId")
+        return 2
+        // logInfo(s"Waiting for write done $blockId")
       }
 
       v.synchronized {
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
-          true
+          return 1
         } else {
-          false
+          return 0
         }
       }
     }

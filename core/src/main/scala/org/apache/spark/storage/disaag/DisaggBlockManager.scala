@@ -46,7 +46,19 @@ class DisaggBlockManager(
   }
 
   def read(blockId: BlockId) : Boolean = {
-    driverEndpoint.askSync[Boolean](FileRead(blockId))
+    val result = driverEndpoint.askSync[Int](FileRead(blockId))
+
+    if (result == 1) {
+      true
+    } else if (result == 2) {
+      // retry... the block is being written
+      Thread.sleep(500)
+      read(blockId)
+    } else if (result == 0) {
+      false
+    } else {
+      throw new RuntimeException(s"Invalid read value $result for reading $blockId")
+    }
   }
 
   def readUnlock(blockId: BlockId) : Unit = {
