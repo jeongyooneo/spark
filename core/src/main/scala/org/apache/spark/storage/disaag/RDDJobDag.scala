@@ -138,6 +138,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     l
   }
 
+  val blockCreatedTimes: concurrent.Map[BlockId, Long] =
+    new ConcurrentHashMap[BlockId, Long]().asScala
+  def blockCreated(blockId: BlockId): Unit = {
+    blockCreatedTimes.putIfAbsent(blockId, System.currentTimeMillis())
+  }
+
   private def dfsCachedParentTimeFind(childBlockId: BlockId): ListBuffer[Long] = {
     val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
@@ -205,11 +211,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     var costSum = 0L
 
-    val parentCachedBlockTimes = dfsCachedParentTimeFind(blockId)
+    val parentCachedBlockTime = dfsCachedParentTimeFind(blockId).min
 
-    for (parentTime <- parentCachedBlockTimes) {
-      costSum += (nodeCreatedTime - parentTime)
-    }
+    costSum += (nodeCreatedTime - parentCachedBlockTime)
 
     val uncachedChild = calcChildUncachedBlocks(rddNode, blockId, new mutable.HashSet[Int]())
 
