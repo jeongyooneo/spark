@@ -126,7 +126,6 @@ class DisaggBlockManagerEndpoint(
     } else {
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-
         true
       } else {
         false
@@ -247,6 +246,10 @@ class DisaggBlockManagerEndpoint(
     }
 
     synchronized {
+      if (disaggBlockInfo.contains(blockId)) {
+        return false
+      }
+
       if (totalSize.get() + estimateSize < threshold
         || System.currentTimeMillis() - prevTime < 50) {
         logInfo(s"Storing $blockId, cost: $putCost, " +
@@ -284,7 +287,7 @@ class DisaggBlockManagerEndpoint(
                 case None =>
                   // do nothing
                 case Some(blockInfo) =>
-                  if (discardCost <= 0) {
+                  if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)) {
                     // gc !!
                     removeBlocks.append((bid, blockInfo))
                     logInfo(s"Try to remove: Cost: $totalCost/$putCost, " +
