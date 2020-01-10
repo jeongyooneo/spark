@@ -126,7 +126,7 @@ class DisaggBlockManagerEndpoint(
     } else {
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-        rddJobDag.get.blockCreatedTimes(blockId)
+        rddJobDag.get.blockCreated(blockId)
         true
       } else {
         false
