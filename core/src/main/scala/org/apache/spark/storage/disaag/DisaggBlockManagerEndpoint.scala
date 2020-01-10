@@ -17,7 +17,6 @@
 
 package org.apache.spark.storage.disaag
 
-import java.util.{Comparator, PriorityQueue}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
@@ -99,11 +98,13 @@ class DisaggBlockManagerEndpoint(
   private val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
+  /*
   private val sizePriorityQueue: PriorityQueue[(BlockId, CrailBlockInfo)] =
     new PriorityQueue[(BlockId, CrailBlockInfo)](new Comparator[(BlockId, CrailBlockInfo)] {
       override def compare(o1: (BlockId, CrailBlockInfo), o2: (BlockId, CrailBlockInfo)): Int =
         o2._2.size.compare(o1._2.size)
     })
+  */
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
@@ -240,13 +241,29 @@ class DisaggBlockManagerEndpoint(
 
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis())
 
+    if (putCost < 2000) {
+      // it means that the discarding cost is greater than putting block
+      // so, we do not store the block
+      logInfo(s"Discarding $blockId, discardingCost: $putCost")
+
+      /*
+      sizePriorityQueue.synchronized {
+        removeBlocks.foreach { t =>
+          sizePriorityQueue.add(t)
+        }
+      }
+      */
+
+      rddJobDag.get.setCreatedTimeBlock(blockId)
+      return false
+    }
+
     synchronized {
       if (disaggBlockInfo.contains(blockId)) {
         return false
       }
 
-      if (totalSize.get() + estimateSize < threshold
-        || System.currentTimeMillis() - prevTime < 50) {
+      if (totalSize.get() + estimateSize < threshold) {
         logInfo(s"Storing $blockId, cost: $putCost, " +
           s"size $estimateSize / $totalSize, threshold: $threshold")
 
@@ -266,7 +283,6 @@ class DisaggBlockManagerEndpoint(
 
       if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
 
-        /*
         rddJobDag.get.sortedBlockCost match {
           case None =>
             None
@@ -303,8 +319,8 @@ class DisaggBlockManagerEndpoint(
               }
             }
         }
-        */
 
+        /*
         sizePriorityQueue.synchronized {
           val iterator = sizePriorityQueue.iterator
 
@@ -328,6 +344,7 @@ class DisaggBlockManagerEndpoint(
             }
           }
         }
+        */
       }
 
       removeBlocks.foreach { t =>
@@ -365,7 +382,7 @@ class DisaggBlockManagerEndpoint(
         })
       }
 
-      if (totalDiscardSize < estimateSize || putCost < 2000) {
+      if (totalDiscardSize < estimateSize) {
         // it means that the discarding cost is greater than putting block
         // so, we do not store the block
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
@@ -548,6 +565,7 @@ class DisaggBlockManagerEndpoint(
         throw new RuntimeException(s"No created block $blockId")
       }
 
+      /*
       lruQueue.synchronized {
         lruQueue.append(v)
       }
@@ -555,6 +573,7 @@ class DisaggBlockManagerEndpoint(
       sizePriorityQueue.synchronized {
         sizePriorityQueue.add((blockId, v))
       }
+      */
 
       logInfo(s"Storing file writing $blockId, total: $totalSize")
       true
