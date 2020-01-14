@@ -125,6 +125,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     s"$stageId-$index-0"
   }
 
+  private def getTaskIdFindIter(stageId: Int, blockId: BlockId): Option[Long] = {
+    val index = blockId.name.split("_")(2).toInt
+
+    for(i <- 0 to index) {
+      val taskId = s"$stageId-$i-0"
+      taskStartTime.get(taskId) match {
+        case Some(startTime) =>
+          return Some(startTime)
+      }
+    }
+
+    None
+  }
+
   private def findRootStageStartTimes(rddNode: RDDNode, blockId: BlockId):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
 
@@ -135,8 +149,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       val rootTaskId = getTaskId(rddNode.stageId, blockId)
       taskStartTime.get(rootTaskId) match {
         case None =>
-          throw new RuntimeException(s"Stage start time does " +
-            s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
+          getTaskIdFindIter(rddNode.stageId, blockId) match {
+            case None =>
+              throw new RuntimeException(s"Stage start time does " +
+                s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
+            case Some(startTime) =>
+              b.append(blockId)
+              l.append(startTime)
+          }
         case Some(startTime) =>
           b.append(blockId)
           l.append(startTime)
