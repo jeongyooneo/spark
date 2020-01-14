@@ -131,6 +131,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     for(i <- 0 to index) {
       val taskId = s"$stageId-$i-0"
       taskStartTime.get(taskId) match {
+        case None =>
+          //  do nothing
         case Some(startTime) =>
           return Some(startTime)
       }
