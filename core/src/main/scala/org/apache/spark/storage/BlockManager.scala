@@ -575,16 +575,21 @@ private[spark] class BlockManager(
     val info = new BlockInfo(StorageLevel.DISAGG, implicitly[ClassTag[T]], true)
     info.size = disaggData.size
 
-    val iterToReturn: Iterator[Any] = {
+    try {
+      val iterToReturn: Iterator[Any] = {
         serializerManager.dataDeserializeStream(
           blockId,
           disaggData.toInputStream())(info.classTag)
+      }
+      disaggStore.readUnlock(blockId)
+      // We do not cache this value because it is retrieved from remote disagg
+      Some(new BlockResult(iterToReturn, DataReadMethod.Network, disaggData.size))
+
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        throw new RuntimeException(s"Block id $blockId get exception...?")
     }
-
-    disaggStore.readUnlock(blockId)
-
-    // We do not cache this value because it is retrieved from remote disagg
-    Some(new BlockResult(iterToReturn, DataReadMethod.Network, disaggData.size))
   }
 
   /**
