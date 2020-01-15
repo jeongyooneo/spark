@@ -241,9 +241,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 
   private def calcChildUncachedBlocks(rddNode: RDDNode, blockId: BlockId,
-                                      stageSet: mutable.HashSet[Int]): ListBuffer[BlockId] = {
+                                      stageSet: mutable.HashSet[Int],
+                                      visitedRdds: mutable.HashSet[Int]): ListBuffer[BlockId] = {
 
     val l: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]()
+
+    // logInfo(s"blockId: $blockId, " +
+    //  s"rddNode: ${rddNode.rddId}/${rddNode.stageId}, stageSet: $stageSet")
+
+    if (visitedRdds.contains(rddNode.rddId)) {
+      return l
+    } else {
+      visitedRdds.add(rddNode.rddId)
+    }
 
     for (childnode <- dag(rddNode)._1) {
       val childBlockId = getBlockId(childnode.rddId, blockId)
@@ -253,7 +263,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
           l.append(childBlockId)
           stageSet.add(childnode.stageId)
         }
-        l.appendAll(calcChildUncachedBlocks(childnode, blockId, stageSet))
+        l.appendAll(calcChildUncachedBlocks(childnode, blockId, stageSet, visitedRdds))
       }
     }
 
@@ -271,8 +281,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     costSum += (nodeCreatedTime - parentCachedBlockTime)
 
-    val childList = calcChildUncachedBlocks(rddNode, blockId, new mutable.HashSet[Int]())
+    // logInfo(s"parent blocks for $blockId: $parentBlocks")
+
+    val childList = calcChildUncachedBlocks(rddNode, blockId,
+      new mutable.HashSet[Int](), new mutable.HashSet[Int]())
+
     val uncachedChild = childList.size
+
+    // logInfo(s"child blocks for $blockId: $childList")
 
     if (costSum <= 0 || uncachedChild == 0) {
       logInfo(s"Cost of $blockId: $costSum * $uncachedChild, time: $nodeCreatedTime")

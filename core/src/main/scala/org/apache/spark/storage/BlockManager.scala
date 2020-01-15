@@ -588,7 +588,7 @@ private[spark] class BlockManager(
     } catch {
       case e: Exception =>
         e.printStackTrace()
-        throw new RuntimeException(s"Block id $blockId get exception...?")
+        throw new RuntimeException(s"Block id $blockId get exception...? $e")
     }
   }
 

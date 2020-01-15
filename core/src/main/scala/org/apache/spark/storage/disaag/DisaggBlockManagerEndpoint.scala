@@ -232,6 +232,8 @@ class DisaggBlockManagerEndpoint(
 
     rddJobDag.get.blockCreated(blockId)
 
+    // logInfo(s"Request $blockId, size $estimateSize")
+
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
       logInfo(s"Discard $blockId because it is already discarded")
@@ -240,6 +242,8 @@ class DisaggBlockManagerEndpoint(
     */
 
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
+
+    // logInfo(s"Request $blockId, size $estimateSize 222")
 
     if (putCost < 2000) {
       // it means that the discarding cost is greater than putting block
