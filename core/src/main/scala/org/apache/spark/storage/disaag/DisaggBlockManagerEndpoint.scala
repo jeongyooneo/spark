@@ -595,6 +595,7 @@ class DisaggBlockManagerEndpoint(
 
       val v = info.get
       v.size = size
+      v.createdTime = System.currentTimeMillis()
       v.writeDone = true
 
       if (blocksSizeToBeCreated.containsKey(blockId)) {
@@ -694,7 +695,7 @@ class CrailBlockInfo(blockId: BlockId,
   var read: Boolean = true
   val readCount: AtomicInteger = new AtomicInteger()
   var isRemoved = false
-  val createdTime = System.currentTimeMillis()
+  var createdTime = System.currentTimeMillis()
 
   override def toString: String = {
     s"<$bid/read:$read>"
