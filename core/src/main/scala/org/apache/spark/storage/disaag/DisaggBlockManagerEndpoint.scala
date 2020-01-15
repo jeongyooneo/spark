@@ -226,6 +226,8 @@ class DisaggBlockManagerEndpoint(
 
     val prevTime = prevDiscardTime.get()
 
+    rddJobDag.get.setCreatedTimeBlock(blockId)
+
     if (!prevCreatedBlocks.containsKey(blockId)) {
       prevCreatedBlocks.put(blockId, true)
     }
@@ -258,7 +260,6 @@ class DisaggBlockManagerEndpoint(
       }
       */
 
-      rddJobDag.get.setCreatedTimeBlock(blockId)
       return false
     }
 

@@ -183,6 +183,22 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
   }
 
+
+  private def getBlockIdFindIter(rddId: Int, childBlockId: BlockId): Option[Long] = {
+    val index = childBlockId.name.split("_")(2).toInt
+    RDDBlockId(rddId, index)
+
+    for (i <- 9 to index) {
+      val bid = RDDBlockId(rddId, i)
+      val time = blockCreatedTimes.get(bid)
+      if (time.isDefined) {
+        return time
+      }
+    }
+
+    return None
+  }
+
   private def dfsCachedParentTimeFind(childBlockId: BlockId):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
 
@@ -204,8 +220,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
           b.append(parentBlockId)
           l.append(time.get)
         } else {
-          throw new RuntimeException(s"Parent of ${childBlockId} " +
-            s"block ($parentBlockId) is not stored.. ")
+          getBlockIdFindIter(parent.rddId, childBlockId) match {
+            case None =>
+              dfsCachedParentTimeFind(parentBlockId)
+              // throw new RuntimeException(s"Parent of ${childBlockId} " +
+              //  s"block ($parentBlockId) is not stored.. ")
+            case Some(t) =>
+              b.append(parentBlockId)
+              l.append(time.get)
+          }
         }
 
         /*
