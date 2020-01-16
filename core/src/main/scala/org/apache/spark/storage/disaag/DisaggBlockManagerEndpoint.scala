@@ -154,6 +154,7 @@ class DisaggBlockManagerEndpoint(
       v.synchronized {
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
+          logInfo(s"file read disagg block $blockId")
           return 1
         } else {
           return 0
