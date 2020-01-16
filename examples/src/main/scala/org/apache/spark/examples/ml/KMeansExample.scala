@@ -41,7 +41,12 @@ object KMeansExample {
 
     // $example on$
     // Loads data.
-    val dataset = spark.read.format("libsvm").load("data/mllib/sample_kmeans_data.txt")
+    var input = "avazu_app"
+    if (args.length > 0) {
+      input = args(0)
+    }
+
+    val dataset = spark.read.format("libsvm").load("data/graphx/" + input)
 
     // Trains a k-means model.
     val kmeans = new KMeans().setK(2).setSeed(1L)

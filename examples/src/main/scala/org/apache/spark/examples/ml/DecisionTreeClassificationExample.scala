@@ -35,7 +35,15 @@ object DecisionTreeClassificationExample {
       .getOrCreate()
     // $example on$
     // Load the data stored in LIBSVM format as a DataFrame.
-    val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+
+    val prefix = "data/mllib/"
+    var input = "mnist8m"
+
+    if (args.length > 0) {
+      input = args(0)
+    }
+
+    val data = spark.read.format("libsvm").load(prefix + input)
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.

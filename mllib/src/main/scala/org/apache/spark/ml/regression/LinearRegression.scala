@@ -236,8 +236,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
       return lrModel
     }
 
-    val handlePersistence = dataset.storageLevel == StorageLevel.NONE
-    if (handlePersistence) instances.persist(StorageLevel.MEMORY_AND_DISK)
+    val handlePersistence = true
+    if (handlePersistence) instances.persist(StorageLevel.MEMORY_ONLY)
 
     val (featuresSummarizer, ySummarizer) = {
       val seqOp = (c: (MultivariateOnlineSummarizer, MultivariateOnlineSummarizer),
