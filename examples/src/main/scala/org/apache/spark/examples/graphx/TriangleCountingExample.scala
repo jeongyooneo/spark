@@ -47,7 +47,7 @@ object TriangleCountingExample {
       .getOrCreate()
     val sc = spark.sparkContext
 
-    var input = livejournal
+    var input = "livejournal"
     if (args.length > 0) {
       input = args(0)
     }
