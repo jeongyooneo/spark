@@ -223,7 +223,7 @@ class DisaggBlockManagerEndpoint(
 
   val recentlyRemoved: mutable.Set[BlockId] = new mutable.HashSet[BlockId]()
 
-  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
+  def storeBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
 
     val prevTime = prevDiscardTime.get()
 
@@ -235,7 +235,7 @@ class DisaggBlockManagerEndpoint(
 
     rddJobDag.get.blockCreated(blockId)
 
-    // logInfo(s"Request $blockId, size $estimateSize")
+    logInfo(s"Request $blockId, size $estimateSize, taskId: $taskId")
 
     /*
     if (prevDiscardedBlocks.containsKey(blockId)) {
@@ -669,7 +669,7 @@ class DisaggBlockManagerEndpoint(
       context.reply(discardBlocksIfNecessary(estimateSize))
 
     case StoreBlockOrNot(blockId, estimateSize, taskId) =>
-      context.reply(storeBlockOrNot(blockId, estimateSize))
+      context.reply(storeBlockOrNot(blockId, estimateSize, taskId))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
