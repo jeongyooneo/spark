@@ -48,6 +48,8 @@ class DisaggBlockManager(
   def read(blockId: BlockId) : Boolean = {
     val result = driverEndpoint.askSync[Int](FileRead(blockId))
 
+    logInfo(s"Read logging ... $blockId, result: $result")
+
     if (result == 1) {
       true
     } else if (result == 2) {
