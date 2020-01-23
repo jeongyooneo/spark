@@ -300,7 +300,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     var costSum = 0L
 
     val (parentBlocks, times) = dfsCachedParentTimeFind(blockId)
-    val parentCachedBlockTime = times.min
+    val parentCachedBlockTime = if (times.isEmpty) {
+      findRootStageStartTimes(rddNode, blockId)._2.min
+    } else {
+      times.min
+    }
 
     costSum += (nodeCreatedTime - parentCachedBlockTime)
 
