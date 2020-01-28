@@ -59,8 +59,8 @@ object GraphLoader extends Logging {
       path: String,
       canonicalOrientation: Boolean = false,
       numEdgePartitions: Int = -1,
-      edgeStorageLevel: StorageLevel = StorageLevel.DISAGG,
-      vertexStorageLevel: StorageLevel = StorageLevel.DISAGG)
+      edgeStorageLevel: StorageLevel = StorageLevel.DISK_ONLY,
+      vertexStorageLevel: StorageLevel = StorageLevel.DISK_ONLY)
     : Graph[Int, Int] =
   {
     val startTime = System.currentTimeMillis

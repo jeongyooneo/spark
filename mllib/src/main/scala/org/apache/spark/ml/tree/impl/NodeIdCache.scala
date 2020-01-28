@@ -116,7 +116,7 @@ private[spark] class NodeIdCache(
     }
 
     // Keep on persisting new ones.
-    nodeIdsForInstances.persist(StorageLevel.DISAGG)
+    nodeIdsForInstances.persist(StorageLevel.DISK_ONLY)
     rddUpdateCount += 1
 
     // Handle checkpointing if the directory is not None.
