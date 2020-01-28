@@ -85,6 +85,7 @@ class RDDCostBasedEvictionEndpoint(
 
     val putCost = rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
 
+
     // logInfo(s"Request $blockId, size $estimateSize 222")
 
     if (putCost < 2000) {
@@ -94,6 +95,9 @@ class RDDCostBasedEvictionEndpoint(
 
       return false
     }
+
+
+    val rddId = blockId.asRDDId.get.rddId
 
     synchronized {
       if (disaggBlockInfo.contains(blockId)) {
@@ -140,7 +144,7 @@ class RDDCostBasedEvictionEndpoint(
                   // do nothing
                   case Some(blockInfo) =>
                     if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid)) {
+                      && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
 
                       // gc !!
                       totalDiscardSize += blockInfo.size
@@ -171,7 +175,7 @@ class RDDCostBasedEvictionEndpoint(
                   // do nothing
                   case Some(blockInfo) =>
                     if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid)) {
+                      && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
 
                       // gc !!
                       totalDiscardSize += blockInfo.size
