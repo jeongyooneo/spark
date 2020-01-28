@@ -143,6 +143,7 @@ class LRUEvictionManagerEndpoint(
     }
 
     blocksSizeToBeCreated.put(blockId, estimateSize)
+    totalSize.addAndGet(estimateSize)
 
     blockRemoves(removeBlocks)
     true
