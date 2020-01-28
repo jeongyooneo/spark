@@ -254,7 +254,6 @@ abstract class DisaggBlockManagerEndpoint(
     // logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
 
-
     if (info.isEmpty) {
       logWarning(s"No disagg block for writing $blockId")
       throw new RuntimeException(s"no disagg block for writing $blockId")

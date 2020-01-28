@@ -142,6 +142,8 @@ class LRUEvictionManagerEndpoint(
       }
     }
 
+    blocksSizeToBeCreated.put(blockId, estimateSize)
+
     blockRemoves(removeBlocks)
     true
   }
