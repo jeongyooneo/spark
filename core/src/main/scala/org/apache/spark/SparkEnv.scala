@@ -364,7 +364,7 @@ object SparkEnv extends Logging {
         conf, isDriver)
 
       disaggBlockManagerEndpoint =
-        new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           blockManagerMasterEndpoint, thresholdMB)
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
@@ -379,7 +379,7 @@ object SparkEnv extends Logging {
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-        new DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath),
           thresholdMB)), conf)
     }
