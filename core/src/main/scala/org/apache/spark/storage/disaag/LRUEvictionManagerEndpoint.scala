@@ -119,14 +119,12 @@ class LRUEvictionManagerEndpoint(
 
           val lruSize = lruQueue.size
 
+          val currTime = System.currentTimeMillis();
+
           while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty && cnt < lruSize) {
             val candidateBlock: CrailBlockInfo = lruQueue.head
 
-            if (candidateBlock.bid.name.startsWith("rdd_2_")) {
-              // skip..
-              lruQueue -= candidateBlock
-              lruQueue.append(candidateBlock)
-            } else {
+            if (timeToRemove(candidateBlock.createdTime, currTime)) {
               totalDiscardSize += candidateBlock.size
               logInfo(s"Discarding ${candidateBlock.bid}.." +
                 s"pointer ${lruPointer} / ${lruQueue.size}" +
@@ -134,9 +132,9 @@ class LRUEvictionManagerEndpoint(
               removeBlocks.append((candidateBlock.bid, candidateBlock))
 
               lruQueue -= candidateBlock
-            }
 
-            cnt += 1
+              cnt += 1
+            }
           }
         }
       }
