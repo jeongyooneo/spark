@@ -835,8 +835,8 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
       implicitPrefs: Boolean = false,
       alpha: Double = 1.0,
       nonnegative: Boolean = false,
-      intermediateRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
-      finalRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
+      intermediateRDDStorageLevel: StorageLevel = StorageLevel.DISK_ONLY,
+      finalRDDStorageLevel: StorageLevel = StorageLevel.DISK_ONLY,
       checkpointInterval: Int = 10,
       seed: Long = 0L)(
       implicit ord: Ordering[ID]): (RDD[(ID, Array[Float])], RDD[(ID, Array[Float])]) = {

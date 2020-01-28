@@ -130,7 +130,7 @@ private[spark] object RandomForest extends Logging {
 
     val baggedInput = BaggedPoint
       .convertToBaggedRDD(treeInput, strategy.subsamplingRate, numTrees, withReplacement, seed)
-      .persist(StorageLevel.DISAGG)
+      .persist(StorageLevel.DISK_ONLY)
 
     // depth of the decision tree
     val maxDepth = strategy.maxDepth
