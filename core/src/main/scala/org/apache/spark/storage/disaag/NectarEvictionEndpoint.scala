@@ -76,7 +76,7 @@ class NectarEvictionEndpoint(
 
   private def calculateCost(blockInfo: CrailBlockInfo, ct: Long): Long = {
     val a = (blockInfo.size / 10000) * (ct - blockInfo.refTime)
-    val b = blockInfo.refCnt.get() * rddJobDag.get.blockCompTime(blockInfo.bid, ct)
+    val b = Math.max(1, blockInfo.refCnt.get()) * rddJobDag.get.blockCompTime(blockInfo.bid, ct)
     a / b
   }
 
