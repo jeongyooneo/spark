@@ -293,6 +293,23 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     l
   }
 
+  def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    var costSum = 0L
+
+    val (parentBlocks, times) = dfsCachedParentTimeFind(blockId)
+    val parentCachedBlockTime = if (times.isEmpty) {
+      findRootStageStartTimes(rddNode, blockId)._2.min
+    } else {
+      times.min
+    }
+
+    costSum += (nodeCreatedTime - parentCachedBlockTime)
+    costSum
+  }
+
   def calculateCostToBeStored(blockId: BlockId, nodeCreatedTime: Long): BlockCost = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)

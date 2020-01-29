@@ -363,6 +363,9 @@ class CrailBlockInfo(blockId: BlockId,
   val readCount: AtomicInteger = new AtomicInteger()
   var isRemoved = false
   var createdTime = System.currentTimeMillis()
+  var refTime = System.currentTimeMillis()
+  var refCnt: AtomicInteger = new AtomicInteger()
+  var nectarCost: Long = 0L
 
   override def toString: String = {
     s"<$bid/read:$read>"
@@ -386,7 +389,8 @@ object DisaggBlockManagerEndpoint {
       new RDDCostBasedEvictionEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
     } else if (policy.equals("Nectar")) {
-      throw new RuntimeException("Not supported nectar eviction")
+       new NectarEvictionEndpoint(rpcEnv, isLocal,
+        conf, listenerBus, blockManagerMaster, thresholdMB)
     } else if (policy.equals("None")) {
       new NoEvictionManagerEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
