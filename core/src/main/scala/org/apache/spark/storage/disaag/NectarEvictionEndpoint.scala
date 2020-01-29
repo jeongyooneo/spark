@@ -138,11 +138,14 @@ class NectarEvictionEndpoint(
         // for hard threshold
         while (iterator.hasNext && totalDiscardSize < removalSize) {
           val binfo = iterator.next()
-          totalDiscardSize += binfo.size
-          removeBlocks.append((binfo.bid, binfo))
 
-          logInfo(s"Try to remove: Cost: ${binfo.nectarCost} " +
-                  s"size: $totalDiscardSize/$removalSize, remove block: ${binfo.bid}")
+          if (ct - binfo.createdTime > 5000) {
+            totalDiscardSize += binfo.size
+            removeBlocks.append((binfo.bid, binfo))
+
+            logInfo(s"Try to remove: Cost: ${binfo.nectarCost} " +
+              s"size: $totalDiscardSize/$removalSize, remove block: ${binfo.bid}")
+          }
         }
       }
 
