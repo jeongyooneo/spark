@@ -97,13 +97,13 @@ class NectarEvictionEndpoint(
       }
 
       rddJobDag.get.blockCreated(blockId)
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+
 
       if (totalSize.get() + estimateSize < threshold) {
         logInfo(s"Storing $blockId" +
           s"size $estimateSize / $totalSize, threshold: $threshold")
-
-        blocksSizeToBeCreated.put(blockId, estimateSize)
-        totalSize.addAndGet(estimateSize)
         return true
       }
 
