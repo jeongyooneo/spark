@@ -91,7 +91,7 @@ class BlockManagerMasterEndpoint(
 
   val totalDisaggSize: AtomicLong = new AtomicLong(0)
 
-  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath)
+  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath, conf)
 
   if (rddJobDag.isDefined) {
     logInfo(rddJobDag.get.toString)

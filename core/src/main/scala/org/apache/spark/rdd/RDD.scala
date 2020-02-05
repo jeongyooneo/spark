@@ -19,17 +19,15 @@ package org.apache.spark.rdd
 
 import java.util.Random
 
-import scala.collection.{mutable, Map}
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Codec
 import scala.language.implicitConversions
-import scala.reflect.{classTag, ClassTag}
-
+import scala.reflect.{ClassTag, classTag}
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
 import org.apache.hadoop.io.{BytesWritable, NullWritable, Text}
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.TextOutputFormat
-
 import org.apache.spark._
 import org.apache.spark.Partitioner._
 import org.apache.spark.annotation.{DeveloperApi, Since}
@@ -42,8 +40,7 @@ import org.apache.spark.partial.PartialResult
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
-import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler,
-  SamplingUtils}
+import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler, SamplingUtils}
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -359,6 +356,12 @@ abstract class RDD[T: ClassTag](
   }
 
   private[spark] def createCachedAncestors: Seq[RDD[_]] = {
+    // In case there is a cycle, do not include the root itself
+    createAncestors.filterNot(_ == this)
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+  }
+
+  private[spark] def createAncestors: Seq[RDD[_]] = {
     val cachedAncestors = new mutable.HashSet[RDD[_]]
 
     def visit(rdd: RDD[_]) {
@@ -372,10 +375,7 @@ abstract class RDD[T: ClassTag](
     }
 
     visit(this)
-
-    // In case there is a cycle, do not include the root itself
-    cachedAncestors.filterNot(_ == this).toSeq
-      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+    cachedAncestors.toSeq
   }
 
   private[spark] def printAllCachedAncestors: Unit = {
@@ -400,6 +400,33 @@ abstract class RDD[T: ClassTag](
     ret.foreach(ancestor =>
       logInfo("jy: All cached ancestors of " + name + " " + id + ": "
         + ancestor.name + " " + ancestor.id))
+  }
+
+  // TODO
+  def setCachedRDDs(cachedRDDs: Iterable[Int], slevel: StorageLevel): Unit = {
+
+    logInfo(s"Cached RDDS: $cachedRDDs")
+
+    // 1: clear storage level
+    val allRDDs: Seq[RDD[_]] = createAncestors
+    allRDDs.foreach { rdd =>
+      rdd.storageLevel = StorageLevel.NONE
+    }
+
+    // 2: reset storage level
+    val cachedRDDSet = cachedRDDs.toSet
+
+    if (cachedRDDSet.contains(this.id)) {
+      this.storageLevel = slevel
+      logInfo(s"Caching $id RDD!!!")
+    }
+
+    allRDDs.foreach { rdd =>
+      if (cachedRDDSet.contains(rdd.id)) {
+        rdd.storageLevel = slevel
+        logInfo(s"Caching ${rdd.id} RDD!!!")
+      }
+    }
   }
 
   private[spark] def printNarrowAncestors: Unit = {

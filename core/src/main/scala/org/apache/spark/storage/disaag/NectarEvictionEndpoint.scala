@@ -44,7 +44,6 @@ class NectarEvictionEndpoint(
 
   val list: mutable.ListBuffer[CrailBlockInfo] = new mutable.ListBuffer[CrailBlockInfo]()
 
-  val rddJobDag = blockManagerMaster.rddJobDag
 
   override def taskStartedCall(taskId: String): Unit = {
     rddJobDag match {

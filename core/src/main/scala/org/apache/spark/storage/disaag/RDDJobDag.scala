@@ -20,6 +20,7 @@ package org.apache.spark.storage.disaag
 
 import java.util.concurrent.ConcurrentHashMap
 
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.disaag.RDDJobDag.BlockCost
 import org.apache.spark.storage.{BlockId, RDDBlockId}
@@ -32,7 +33,26 @@ import scala.util.parsing.json.JSON
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])],
                 val edges: ListBuffer[(Int, Int)],
-                val vertices: mutable.Map[Int, RDDNode]) extends Logging {
+                val vertices: mutable.Map[Int, RDDNode],
+                val autocaching: Boolean) extends Logging {
+
+  if (autocaching) {
+    // clear cached rdds
+    vertices.foreach { v =>
+      if (v._2.cached) {
+        logInfo(s"Prev cached RDD: ${v._1}")
+        v._2.cached = false
+      }
+    }
+
+    // re-set cached rdds
+    vertices.foreach { v =>
+      if (dag(v._2)._1.size > 1) {
+        logInfo(s"Num of children of RDD ${v._2.rddId}: ${dag(v._2)._1.size}, cache!!")
+        v._2.cached = true
+      }
+    }
+  }
 
   vertices.foreach { v =>
     val vertex = v._2
@@ -40,6 +60,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     vertex.setCachedChildren(RDDJobDag.findCachedChilds(vertex, dag))
     // logInfo(s"RDD $vertex cached parents ${vertex.cachedParents}")
     logInfo(s"RDD $vertex cached children ${vertex.cachedChildren}")
+  }
+
+  def getCachedRDDs(): Iterable[Int] = {
+    vertices.values.filter(node => node.cached).map(node => node.rddId)
   }
 
   val blockCost: concurrent.Map[BlockId, BlockCost] =
@@ -386,7 +410,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 }
 
 class RDDNode(val rddId: Int,
-              val cached: Boolean,
+              var cached: Boolean,
               val stageId: Int) {
 
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
@@ -431,7 +455,8 @@ class RDDNode(val rddId: Int,
 }
 
 object RDDJobDag extends Logging {
-  def apply(filePath: String): Option[RDDJobDag] = {
+  def apply(filePath: String,
+            sparkConf: SparkConf): Option[RDDJobDag] = {
 
     if (filePath.equals("??")) {
       Option.empty
@@ -492,7 +517,8 @@ object RDDJobDag extends Logging {
         dag(node) = (child, child_stage)
       }
 
-      Option(new RDDJobDag(dag, edges, vertices))
+      Option(new RDDJobDag(dag, edges, vertices,
+        sparkConf.getBoolean("spark.disagg.autocaching", true)))
     }
   }
 

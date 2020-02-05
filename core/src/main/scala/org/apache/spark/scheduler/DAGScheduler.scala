@@ -869,6 +869,15 @@ class DAGScheduler(
         return
     }
 
+    // TODO: re-cache the job RDD
+    disaggBlockManagerEndpoint.rddJobDag match {
+      case Some(rddJobDag) =>
+        logInfo(s"Re-setting cached rdds!!")
+        finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+      case None =>
+        logInfo(s"RDDJobDag is empty !!")
+    }
+
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
     logInfo("Got job %s (%s) with %d output partitions".format(

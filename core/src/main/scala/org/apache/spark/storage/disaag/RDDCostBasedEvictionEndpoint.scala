@@ -41,8 +41,6 @@ class RDDCostBasedEvictionEndpoint(
     rpcEnv, isLocal, conf, listenerBus, blockManagerMaster, thresholdMB) {
   logInfo("RDDCostBasedEvictionEndpoint up")
 
-  val rddJobDag = blockManagerMaster.rddJobDag
-
   override def taskStartedCall(taskId: String): Unit = {
     rddJobDag match {
       case None =>

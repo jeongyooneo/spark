@@ -59,6 +59,7 @@ abstract class DisaggBlockManagerEndpoint(
     fs.delete(rootDir, true).get().syncDir()
   }
 
+  val rddJobDag = blockManagerMaster.rddJobDag
 
   fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
     CrailLocationClass.DEFAULT, true).get().syncDir()
