@@ -518,7 +518,7 @@ object RDDJobDag extends Logging {
       }
 
       Option(new RDDJobDag(dag, edges, vertices,
-        sparkConf.getBoolean("spark.disagg.autocaching", true)))
+        sparkConf.getBoolean("spark.disagg.autocaching", false)))
     }
   }
 

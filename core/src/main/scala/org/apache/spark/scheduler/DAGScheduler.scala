@@ -870,12 +870,16 @@ class DAGScheduler(
     }
 
     // TODO: re-cache the job RDD
-    disaggBlockManagerEndpoint.rddJobDag match {
-      case Some(rddJobDag) =>
-        logInfo(s"Re-setting cached rdds!!")
-        finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
-      case None =>
-        logInfo(s"RDDJobDag is empty !!")
+    val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
+
+    if (autocaching) {
+      disaggBlockManagerEndpoint.rddJobDag match {
+        case Some(rddJobDag) =>
+          logInfo(s"Re-setting cached rdds!!")
+          finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+        case None =>
+          logInfo(s"RDDJobDag is empty !!")
+      }
     }
 
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
