@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution.joins
 
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
@@ -374,7 +373,6 @@ case class SortMergeJoinExec(
           throw new IllegalArgumentException(
             s"SortMergeJoin should not take $x as the JoinType")
       }
-
     }
   }
 

@@ -73,6 +73,8 @@ private[spark] class ResultTask[T, U](
   }
 
   override def runTask(context: TaskContext): U = {
+    @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+    val startTime = System.nanoTime
     // Deserialize the RDD and the func using the broadcast variables.
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTime = System.currentTimeMillis()
@@ -87,7 +89,11 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    func(context, rdd.iterator(partition, context))
+    val ret = func(context, rdd.iterator(partition, context))
+    val tct = System.nanoTime() - startTime
+    mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()
+      + " " + tct + " ns")
+    ret
   }
 
   // This is only callable on the driver side.

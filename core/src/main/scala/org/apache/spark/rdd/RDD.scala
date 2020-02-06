@@ -19,18 +19,18 @@ package org.apache.spark.rdd
 
 import java.util.Random
 
-import scala.collection.{mutable, Map}
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Codec
 import scala.language.implicitConversions
 import scala.reflect.{classTag, ClassTag}
 import scala.util.hashing
 
+import scala.reflect.{ClassTag, classTag}
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
 import org.apache.hadoop.io.{BytesWritable, NullWritable, Text}
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.TextOutputFormat
-
 import org.apache.spark._
 import org.apache.spark.Partitioner._
 import org.apache.spark.annotation.{DeveloperApi, Experimental, Since}
@@ -43,8 +43,7 @@ import org.apache.spark.partial.PartialResult
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
-import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler,
-  SamplingUtils}
+import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler, SamplingUtils}
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -213,7 +212,6 @@ abstract class RDD[T: ClassTag](
    * @return This RDD.
    */
   def unpersist(blocking: Boolean = true): this.type = {
-    logInfo("Removing RDD " + id + " from persistence list")
     sc.unpersistRDD(id, blocking)
     storageLevel = StorageLevel.NONE
     this
@@ -313,13 +311,186 @@ abstract class RDD[T: ClassTag](
     ancestors.filterNot(_ == this).toSeq
   }
 
+  private[spark] def printAllAncestors: Unit = {
+    val allAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(allAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        allAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = allAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor =>
+      if (ancestor.getStorageLevel != StorageLevel.NONE) {
+        logInfo("jy: All cached ancestors of " + name + " " + id + ": "
+          + ancestor.name + " " + ancestor.id)
+      })
+  }
+
+  private[spark] def createCachedAncestorsWithSize: OpenHashMap[RDD[_], Int] = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]()
+    val ret = new OpenHashMap[RDD[_], Int]()
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(cachedAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    cachedAncestors.filterNot(_ == this)
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+      .foreach(cachedAncestor => ret(cachedAncestor) = 0)
+    ret
+  }
+
+  private[spark] def createCachedAncestors: Seq[RDD[_]] = {
+    // In case there is a cycle, do not include the root itself
+    createAncestors.filterNot(_ == this)
+      .filter(ancestor => ancestor.getStorageLevel != StorageLevel.NONE)
+  }
+
+  private[spark] def createAncestors: Seq[RDD[_]] = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(cachedAncestors.contains)
+      parentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+    cachedAncestors.toSeq
+  }
+
+  private[spark] def printAllCachedAncestors: Unit = {
+    val allCachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val dependencies = rdd.dependencies
+      val parents = dependencies.map(_.rdd)
+      val parentsNotVisited = parents.filterNot(allCachedAncestors.contains)
+      val cachedAllParentsNotVisited =
+        parentsNotVisited.filter(parent => parent.getStorageLevel != StorageLevel.NONE)
+      cachedAllParentsNotVisited.foreach { parent =>
+        allCachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = allCachedAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor =>
+      logInfo("jy: All cached ancestors of " + name + " " + id + ": "
+        + ancestor.name + " " + ancestor.id))
+  }
+
+  // TODO
+  def setCachedRDDs(cachedRDDs: Iterable[Int], slevel: StorageLevel): Unit = {
+
+    logInfo(s"Cached RDDS: $cachedRDDs")
+
+    // 1: clear storage level
+    val allRDDs: Seq[RDD[_]] = createAncestors
+    allRDDs.foreach { rdd =>
+      rdd.storageLevel = StorageLevel.NONE
+    }
+
+    // 2: reset storage level
+    val cachedRDDSet = cachedRDDs.toSet
+
+    if (cachedRDDSet.contains(this.id)) {
+      this.storageLevel = slevel
+      logInfo(s"Caching $id RDD!!!")
+    }
+
+    allRDDs.foreach { rdd =>
+      if (cachedRDDSet.contains(rdd.id)) {
+        rdd.storageLevel = slevel
+        logInfo(s"Caching ${rdd.id} RDD!!!")
+      }
+    }
+  }
+
+  private[spark] def printNarrowAncestors: Unit = {
+    val ancestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val narrowDependencies = rdd.dependencies.filter(_.isInstanceOf[NarrowDependency[_]])
+      val narrowParents = narrowDependencies.map(_.rdd)
+      val narrowParentsNotVisited = narrowParents.filterNot(ancestors.contains)
+      narrowParentsNotVisited.foreach { parent =>
+        ancestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = ancestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor => logInfo("jy: Narrow ancestors of " + name + " " + id + ": "
+      + ancestor.name + " " + ancestor.id)
+    )
+  }
+
+  /**
+   * Return the cached ancestors of the given RDD that are related to it
+   * only through a sequence of narrow dependencies.
+   * This traverses the given RDD's dependency tree using DFS, but maintains
+   * no ordering on the RDDs returned.
+   */
+  private[spark] def printCachedAncestors: Unit = {
+    val cachedAncestors = new mutable.HashSet[RDD[_]]
+
+    def visit(rdd: RDD[_]) {
+      val narrowDependencies = rdd.dependencies.filter(_.isInstanceOf[NarrowDependency[_]])
+      val narrowParents = narrowDependencies.map(_.rdd)
+      val narrowParentsNotVisited = narrowParents.filterNot(cachedAncestors.contains)
+      val cachedNarrowParentsNotVisited =
+        narrowParentsNotVisited.filter(parent => parent.storageLevel != StorageLevel.NONE)
+      cachedNarrowParentsNotVisited.foreach { parent =>
+        cachedAncestors.add(parent)
+        visit(parent)
+      }
+    }
+
+    visit(this)
+
+    // In case there is a cycle, do not include the root itself
+    val ret = cachedAncestors.filterNot(_ == this).toSeq
+    ret.foreach(ancestor => logInfo("jy: Cached ancestors of " + name + " " + id + ": "
+      + ancestor.name + " " + ancestor.id)
+    )
+  }
+
   /**
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
    */
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
   {
     if (isCheckpointedAndMaterialized) {
-      firstParent[T].iterator(split, context)
+       firstParent[T].iterator(split, context)
     } else {
       compute(split, context)
     }
@@ -332,9 +503,16 @@ abstract class RDD[T: ClassTag](
     val blockId = RDDBlockId(id, partition.index)
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
-    SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
+    SparkEnv.get.blockManager.getOrElseUpdate(context,
+      blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
-      computeOrReadCheckpoint(partition, context)
+        try {
+          computeOrReadCheckpoint(partition, context)
+        } catch {
+          case e: Exception =>
+            e.printStackTrace()
+            throw new RuntimeException(s"Exception while computing rdd $blockId, " + e.getMessage)
+        }
     }) match {
       case Left(blockResult) =>
         if (readCachedBlock) {
@@ -342,8 +520,15 @@ abstract class RDD[T: ClassTag](
           existingMetrics.incBytesRead(blockResult.bytes)
           new InterruptibleIterator[T](context, blockResult.data.asInstanceOf[Iterator[T]]) {
             override def next(): T = {
-              existingMetrics.incRecordsRead(1)
-              delegate.next()
+              try {
+                existingMetrics.incRecordsRead(1)
+                delegate.next()
+              } catch {
+                case e: Exception =>
+                  e.printStackTrace()
+                  throw new RuntimeException(s"Exception while computing rdd $blockId, " +
+                    s"" + e.getMessage)
+              }
             }
           }
         } else {
@@ -932,6 +1117,7 @@ abstract class RDD[T: ClassTag](
    */
   def foreachPartition(f: Iterator[T] => Unit): Unit = withScope {
     val cleanF = sc.clean(f)
+    printCachedAncestors
     sc.runJob(this, (iter: Iterator[T]) => cleanF(iter))
   }
 

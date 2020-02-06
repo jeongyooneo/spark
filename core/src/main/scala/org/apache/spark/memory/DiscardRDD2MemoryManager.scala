@@ -27,7 +27,7 @@ import org.apache.spark.storage.BlockId
  * `spark.shuffle.memoryFraction` and `spark.storage.memoryFraction` respectively. The two
  * regions are cleanly separated such that neither usage can borrow memory from the other.
  */
-private[spark] class StaticMemoryManager(
+private[spark] class DiscardRDD2MemoryManager(
     conf: SparkConf,
     maxOnHeapExecutionMemory: Long,
     override val maxOnHeapStorageMemory: Long,
@@ -38,17 +38,17 @@ private[spark] class StaticMemoryManager(
     maxOnHeapStorageMemory,
     maxOnHeapExecutionMemory) {
 
-  logInfo("tg: StaticMemoryManager started")
+  logInfo("tg: DiscardRDD2MemoryManager started")
 
   def this(conf: SparkConf, numCores: Int) {
     this(
       conf,
-      StaticMemoryManager.getMaxExecutionMemory(conf),
-      StaticMemoryManager.getMaxStorageMemory(conf),
+      DiscardRDD2MemoryManager.getMaxExecutionMemory(conf),
+      DiscardRDD2MemoryManager.getMaxStorageMemory(conf),
       numCores)
   }
 
-  // The StaticMemoryManager does not support off-heap storage memory:
+  // The DiscardRDD2MemoryManager does not support off-heap storage memory:
   offHeapExecutionMemoryPool.incrementPoolSize(offHeapStorageMemoryPool.poolSize)
   offHeapStorageMemoryPool.decrementPoolSize(offHeapStorageMemoryPool.poolSize)
 
@@ -64,7 +64,13 @@ private[spark] class StaticMemoryManager(
       numBytes: Long,
       memoryMode: MemoryMode): Boolean = synchronized {
     require(memoryMode != MemoryMode.OFF_HEAP,
-      "StaticMemoryManager does not support off-heap storage memory")
+      "DiscardRDD2MemoryManager does not support off-heap storage memory")
+
+
+    if (blockId.name.startsWith("rdd_2_")) {
+      return false
+    }
+
     if (numBytes > maxOnHeapStorageMemory) {
       // Fail fast if the block simply won't fit
       logInfo(s"Will not store $blockId as the required space ($numBytes bytes) exceeds our " +
@@ -79,8 +85,14 @@ private[spark] class StaticMemoryManager(
       blockId: BlockId,
       numBytes: Long,
       memoryMode: MemoryMode): Boolean = synchronized {
+
+
+    if (blockId.name.startsWith("rdd_2_")) {
+      return false
+    }
+
     require(memoryMode != MemoryMode.OFF_HEAP,
-      "StaticMemoryManager does not support off-heap unroll memory")
+      "DiscardRDD2MemoryManager does not support off-heap unroll memory")
     val currentUnrollMemory = onHeapStorageMemoryPool.memoryStore.currentUnrollMemory
     val freeMemory = onHeapStorageMemoryPool.memoryFree
     // When unrolling, we will use all of the existing free memory, and, if necessary,
@@ -106,7 +118,8 @@ private[spark] class StaticMemoryManager(
 }
 
 
-private[spark] object StaticMemoryManager {
+
+private[spark] object DiscardRDD2MemoryManager {
 
   private val MIN_MEMORY_BYTES = 32 * 1024 * 1024
 

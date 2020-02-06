@@ -30,9 +30,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -44,6 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
+import org.apache.spark.storage.disaag.DisaggBlockManagerEndpoint
 import org.apache.spark.util._
 
 /**
@@ -118,6 +117,7 @@ private[spark] class DAGScheduler(
     listenerBus: LiveListenerBus,
     mapOutputTracker: MapOutputTrackerMaster,
     blockManagerMaster: BlockManagerMaster,
+    disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
     env: SparkEnv,
     clock: Clock = new SystemClock())
   extends Logging {
@@ -129,6 +129,7 @@ private[spark] class DAGScheduler(
       sc.listenerBus,
       sc.env.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster],
       sc.env.blockManager.master,
+      sc.env.disaggBlockManagerEndpoint,
       sc.env)
   }
 
@@ -232,6 +233,9 @@ private[spark] class DAGScheduler(
    */
   def taskStarted(task: Task[_], taskInfo: TaskInfo) {
     eventProcessLoop.post(BeginEvent(task, taskInfo))
+    val taskId = s"${task.stageId}-" +
+      s"${task.partitionId}-${taskInfo.attemptNumber}"
+    disaggBlockManagerEndpoint.taskStarted(taskId)
   }
 
   /**
@@ -688,6 +692,27 @@ private[spark] class DAGScheduler(
     }
 
     val jobId = nextJobId.getAndIncrement()
+    sc.perJobDisaggLineage += (jobId -> rdd.createCachedAncestors)
+    sc.perJobDisaggLineage.foreach(entry => {
+      val jobId = entry._1
+      val seq = entry._2
+      seq.foreach(cachedAncestor =>
+        logInfo(s"jy: All cached ancestors of Job $jobId(${rdd.name} ${rdd.id}): "
+          + cachedAncestor.name + " " + cachedAncestor.id))
+    })
+
+    sc.perJobDisaggLineageWithSize += (jobId -> rdd.createCachedAncestorsWithSize)
+    sc.perJobDisaggLineageWithSize.foreach(entry => {
+      val jobId = entry._1
+      val map = entry._2
+      map.foreach(sizeEntry => {
+        val cachedAncestor = sizeEntry._1
+        val size = sizeEntry._2
+        logInfo(s"jy: All cached ancestors of Job $jobId(${rdd.name} ${rdd.id}): "
+          + cachedAncestor.name + " " + cachedAncestor.id + " " + size)
+      })
+    })
+
     if (partitions.size == 0) {
       // Return immediately if the job is running 0 tasks
       return new JobWaiter[U](this, jobId, 0, resultHandler)
@@ -994,6 +1019,19 @@ private[spark] class DAGScheduler(
     // Job submitted, clear internal data.
     barrierJobIdToNumTasksCheckFailures.remove(jobId)
 
+    // TODO: re-cache the job RDD
+    val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
+
+    if (autocaching) {
+      disaggBlockManagerEndpoint.rddJobDag match {
+        case Some(rddJobDag) =>
+          logInfo(s"Re-setting cached rdds!!")
+          finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+        case None =>
+          logInfo(s"RDDJobDag is empty !!")
+      }
+    }
+
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
     logInfo("Got job %s (%s) with %d output partitions".format(
@@ -1074,6 +1112,8 @@ private[spark] class DAGScheduler(
           waitingStages += stage
         }
       }
+
+      disaggBlockManagerEndpoint.stageSubmitted(stage.id)
     } else {
       abortStage(stage, "No active job for stage " + stage.id, None)
     }
@@ -1854,7 +1894,12 @@ private[spark] class DAGScheduler(
     if (!willRetry) {
       outputCommitCoordinator.stageEnd(stage.id)
     }
+
     listenerBus.post(SparkListenerStageCompleted(stage.latestInfo))
+
+    // send it to disagg block manager endpoint
+    disaggBlockManagerEndpoint.stageCompleted(stage.latestInfo.stageId)
+
     runningStages -= stage
   }
 

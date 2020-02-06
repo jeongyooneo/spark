@@ -86,6 +86,8 @@ private[spark] class MemoryStore(
     blockEvictionHandler: BlockEvictionHandler)
   extends Logging {
 
+  @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 
@@ -441,7 +443,7 @@ private[spark] class MemoryStore(
       val rddToAdd = blockId.flatMap(getRddId)
       val selectedBlocks = new ArrayBuffer[BlockId]
       def blockIsEvictable(blockId: BlockId, entry: MemoryEntry[_]): Boolean = {
-        entry.memoryMode == memoryMode && (rddToAdd.isEmpty || rddToAdd != getRddId(blockId))
+          entry.memoryMode == memoryMode && (rddToAdd.isEmpty || rddToAdd != getRddId(blockId))
       }
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
@@ -748,6 +750,14 @@ private[storage] class PartiallyUnrolledIterator[T](
     unrolled = null
   }
 
+  override def duplicate: (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = {
+    val (it1, it2) = unrolled.duplicate
+    val (it3, it4) = rest.duplicate
+
+    (new PartiallyUnrolledIterator[T](memoryStore, memoryMode, unrollMemory, it1, it3),
+      new PartiallyUnrolledIterator[T](memoryStore, memoryMode, unrollMemory, it2, it4))
+  }
+
   override def hasNext: Boolean = {
     if (unrolled == null) {
       rest.hasNext
@@ -818,7 +828,7 @@ private[storage] class PartiallySerializedBlock[T](
     rest: Iterator[T],
     classTag: ClassTag[T]) {
 
-  private lazy val unrolledBuffer: ChunkedByteBuffer = {
+  lazy val unrolledBuffer: ChunkedByteBuffer = {
     bbos.close()
     bbos.toChunkedByteBuffer
   }

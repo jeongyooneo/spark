@@ -21,27 +21,27 @@ import java.io.File
 import java.net.Socket
 import java.util.Locale
 
-import scala.collection.mutable
-import scala.util.Properties
-
 import com.google.common.collect.MapMaker
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.python.PythonWorkerFactory
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
-import org.apache.spark.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
+import org.apache.spark.memory.MemoryManager
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.network.netty.NettyBlockTransferService
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
-import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
+import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
+import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggBlockManagerEndpoint}
 import org.apache.spark.util.{RpcUtils, Utils}
+
+import scala.collection.mutable
+import scala.util.Properties
 
 /**
  * :: DeveloperApi ::
@@ -64,6 +64,7 @@ class SparkEnv (
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
     val blockManager: BlockManager,
+    val disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
     val securityManager: SecurityManager,
     val metricsSystem: MetricsSystem,
     val memoryManager: MemoryManager,
@@ -78,6 +79,7 @@ class SparkEnv (
   private[spark] val hadoopJobMetadata = new MapMaker().softValues().makeMap[String, Any]()
 
   private[spark] var driverTmpDir: Option[String] = None
+
 
   private[spark] def stop() {
 
@@ -322,13 +324,16 @@ object SparkEnv extends Logging {
       shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase(Locale.ROOT), shuffleMgrName)
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
 
+    val memoryManager: MemoryManager = MemoryManager(conf, numUsableCores)
+
+    /*
     val useLegacyMemoryManager = conf.getBoolean("spark.memory.useLegacyMode", false)
-    val memoryManager: MemoryManager =
       if (useLegacyMemoryManager) {
         new StaticMemoryManager(conf, numUsableCores)
       } else {
         UnifiedMemoryManager(conf, numUsableCores)
       }
+      */
 
     val blockManagerPort = if (isDriver) {
       conf.get(DRIVER_BLOCK_MANAGER_PORT)
@@ -336,19 +341,51 @@ object SparkEnv extends Logging {
       conf.get(BLOCK_MANAGER_PORT)
     }
 
+    val thresholdMB = conf.get(DISAGG_THRESHOLD_MB)
+    val dagPath = conf.get(JOB_DAG_PATH)
+
     val blockTransferService =
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
         blockManagerPort, numUsableCores)
 
-    val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
-      BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-      new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
-      conf, isDriver)
+    var blockManagerMaster: BlockManagerMaster = null
+    var disaggBlockManager: DisaggBlockManager = null
+
+    var disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint = null
+
+    if (isDriver) {
+      val blockManagerMasterEndpoint =
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)
+
+      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
+        BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
+        conf, isDriver)
+
+      disaggBlockManagerEndpoint =
+        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+          blockManagerMasterEndpoint, thresholdMB)
+
+      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+        DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
+
+
+    } else {
+      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
+       BlockManagerMaster.DRIVER_ENDPOINT_NAME,
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)),
+       conf, isDriver)
+
+      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
+        DisaggBlockManager.DRIVER_ENDPOINT_NAME,
+        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath),
+          thresholdMB)), conf)
+    }
 
     // NB: blockManager is not valid until initialize() is called later.
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
-      serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
-      blockTransferService, securityManager, numUsableCores)
+      disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker,
+      shuffleManager, blockTransferService, securityManager, numUsableCores)
 
     val metricsSystem = if (isDriver) {
       // Don't start metrics system right now for Driver.
@@ -382,6 +419,7 @@ object SparkEnv extends Logging {
       shuffleManager,
       broadcastManager,
       blockManager,
+      disaggBlockManagerEndpoint,
       securityManager,
       metricsSystem,
       memoryManager,

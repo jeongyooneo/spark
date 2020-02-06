@@ -21,9 +21,11 @@ import org.mockito.Matchers
 import org.mockito.Mockito._
 import org.scalatest.mockito.MockitoSugar
 
+
 import org.apache.spark.SparkFunSuite
 import org.apache.spark.memory.MemoryMode.ON_HEAP
-import org.apache.spark.storage.memory.{MemoryStore, PartiallyUnrolledIterator}
+import org.apache.spark.storage.disaag.PartiallyUnrolledIterator
+import org.apache.spark.storage.memory.MemoryStore
 
 class PartiallyUnrolledIteratorSuite extends SparkFunSuite with MockitoSugar {
   test("join two iterators") {

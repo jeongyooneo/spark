@@ -38,6 +38,12 @@
       <artifactId>paranamer</artifactId>
     </dependency>
     <dependency>
+      <artifactId>crail-client</artifactId>
+      <groupId>org.apache.crail</groupId>
+      <version>1.2-incubating-SNAPSHOT</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
       <groupId>org.apache.avro</groupId>
       <artifactId>avro</artifactId>
     </dependency>

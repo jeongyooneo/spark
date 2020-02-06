@@ -156,11 +156,11 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
   }
 
   test("StorageLevel object caching") {
-    val level1 = StorageLevel(false, false, false, 3)
+    val level1 = StorageLevel(false, false, false, false, 3)
     // this should return the same object as level1
-    val level2 = StorageLevel(false, false, false, 3)
+    val level2 = StorageLevel(false, false, false, false, 3)
     // this should return a different object
-    val level3 = StorageLevel(false, false, false, 2)
+    val level3 = StorageLevel(false, false, false, false, 2)
     assert(level2 === level1, "level2 is not same as level1")
     assert(level2.eq(level1), "level2 is not the same object as level1")
     assert(level3 != level1, "level3 is same as level1")
@@ -579,6 +579,7 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     testInMemoryLRUStorage(StorageLevel(
       useDisk = false,
       useMemory = true,
+      useDisagg = false,
       useOffHeap = true,
       deserialized = false, replication = 1))
   }
@@ -1227,8 +1228,8 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
 
   test("remove block if a read fails due to missing DiskStore files (SPARK-15736)") {
     val storageLevels = Seq(
-      StorageLevel(useDisk = true, useMemory = false, deserialized = false),
-      StorageLevel(useDisk = true, useMemory = false, deserialized = true))
+      StorageLevel(useDisk = true, useMemory = false, useDisagg = false, deserialized = false),
+      StorageLevel(useDisk = true, useMemory = false, useDisagg = false, deserialized = true))
     val readMethods = Map[String, BlockManager => Option[_]](
       "getLocalBytes" -> ((m: BlockManager) => m.getLocalBytes("blockId")),
       "getLocalValues" -> ((m: BlockManager) => m.getLocalValues("blockId"))

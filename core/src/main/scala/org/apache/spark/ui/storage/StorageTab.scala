@@ -26,4 +26,5 @@ private[ui] class StorageTab(parent: SparkUI, store: AppStatusStore)
 
   attachPage(new StoragePage(this, store))
   attachPage(new RDDPage(this, store))
+
 }

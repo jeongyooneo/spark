@@ -310,6 +310,14 @@ package object config {
     .intConf
     .createWithDefault(0)
 
+  private[spark] val DISAGG_THRESHOLD_MB = ConfigBuilder("spark.disagg.threshold")
+    .bytesConf(ByteUnit.MiB)
+    .createWithDefaultString("0g")
+
+  private[spark] val JOB_DAG_PATH = ConfigBuilder("spark.disagg.dagpath")
+    .stringConf
+    .createWithDefault("??")
+
   private[spark] val DRIVER_BLOCK_MANAGER_PORT = ConfigBuilder("spark.driver.blockManager.port")
     .doc("Port to use for the block manager on the driver.")
     .fallbackConf(BLOCK_MANAGER_PORT)

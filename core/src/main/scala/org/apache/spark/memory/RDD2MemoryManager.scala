@@ -44,7 +44,7 @@ import org.apache.spark.storage.BlockId
  *                          it if necessary. Cached blocks can be evicted only if actual
  *                          storage memory usage exceeds this region.
  */
-private[spark] class UnifiedMemoryManager private[memory] (
+private[spark] class RDD2MemoryManager private[memory] (
     conf: SparkConf,
     val maxHeapMemory: Long,
     onHeapStorageRegionSize: Long,
@@ -55,7 +55,8 @@ private[spark] class UnifiedMemoryManager private[memory] (
     onHeapStorageRegionSize,
     maxHeapMemory - onHeapStorageRegionSize) {
 
-  logInfo("UnifiedMemoryManager is created")
+  logInfo("RDD2MemoryManager is created")
+
 
   private def assertInvariants(): Unit = {
     assert(onHeapExecutionMemoryPool.poolSize + onHeapStorageMemoryPool.poolSize == maxHeapMemory)
@@ -145,7 +146,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
     }
 
     executionPool.acquireMemory(
-      numBytes, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
+      numBytes, taskAttemptId, maybeGrowExecutionPool, computeMaxExecutionPoolSize)
   }
 
   override def acquireStorageMemory(
@@ -163,6 +164,11 @@ private[spark] class UnifiedMemoryManager private[memory] (
         offHeapExecutionMemoryPool,
         offHeapStorageMemoryPool,
         maxOffHeapStorageMemory)
+    }
+
+
+    if (!(blockId.name.startsWith("rdd_2_") || !blockId.isRDD)) {
+      return false
     }
 
     if (numBytes > maxMemory) {
@@ -190,7 +196,10 @@ private[spark] class UnifiedMemoryManager private[memory] (
   }
 }
 
-object UnifiedMemoryManager {
+
+
+
+object RDD2MemoryManager {
 
   // Set aside a fixed amount of memory for non-storage, non-execution purposes.
   // This serves a function similar to `spark.memory.fraction`, but guarantees that we reserve
@@ -198,13 +207,13 @@ object UnifiedMemoryManager {
   // the memory used for execution and storage will be (1024 - 300) * 0.6 = 434MB by default.
   private val RESERVED_SYSTEM_MEMORY_BYTES = 300 * 1024 * 1024
 
-  def apply(conf: SparkConf, numCores: Int): UnifiedMemoryManager = {
+  def apply(conf: SparkConf, numCores: Int): RDD2MemoryManager = {
     val maxMemory = getMaxMemory(conf)
-    new UnifiedMemoryManager(
+    new RDD2MemoryManager(
       conf,
       maxHeapMemory = maxMemory,
       onHeapStorageRegionSize =
-        (maxMemory * conf.getDouble("spark.memory.storageFraction", 0.5)).toLong,
+        (maxMemory * conf.getDouble("spark.memory.storageFraction", 0.6)).toLong,
       numCores = numCores)
   }
 

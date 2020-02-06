@@ -44,7 +44,7 @@ import org.apache.spark.storage.BlockId
  *                          it if necessary. Cached blocks can be evicted only if actual
  *                          storage memory usage exceeds this region.
  */
-private[spark] class UnifiedMemoryManager private[memory] (
+private[spark] class OnlyDisaggMemoryManager private[memory] (
     conf: SparkConf,
     val maxHeapMemory: Long,
     onHeapStorageRegionSize: Long,
@@ -55,7 +55,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
     onHeapStorageRegionSize,
     maxHeapMemory - onHeapStorageRegionSize) {
 
-  logInfo("UnifiedMemoryManager is created")
+  logInfo("OnlyDisaggMemoryManager is created")
 
   private def assertInvariants(): Unit = {
     assert(onHeapExecutionMemoryPool.poolSize + onHeapStorageMemoryPool.poolSize == maxHeapMemory)
@@ -145,7 +145,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
     }
 
     executionPool.acquireMemory(
-      numBytes, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
+      numBytes, taskAttemptId, maybeGrowExecutionPool, computeMaxExecutionPoolSize)
   }
 
   override def acquireStorageMemory(
@@ -163,6 +163,11 @@ private[spark] class UnifiedMemoryManager private[memory] (
         offHeapExecutionMemoryPool,
         offHeapStorageMemoryPool,
         maxOffHeapStorageMemory)
+    }
+
+    if (blockId.isRDD) {
+      logInfo(s"RDD cannot be stored in memory $blockId")
+      return false
     }
 
     if (numBytes > maxMemory) {
@@ -190,7 +195,9 @@ private[spark] class UnifiedMemoryManager private[memory] (
   }
 }
 
-object UnifiedMemoryManager {
+
+
+object OnlyDisaggMemoryManager {
 
   // Set aside a fixed amount of memory for non-storage, non-execution purposes.
   // This serves a function similar to `spark.memory.fraction`, but guarantees that we reserve
@@ -198,9 +205,9 @@ object UnifiedMemoryManager {
   // the memory used for execution and storage will be (1024 - 300) * 0.6 = 434MB by default.
   private val RESERVED_SYSTEM_MEMORY_BYTES = 300 * 1024 * 1024
 
-  def apply(conf: SparkConf, numCores: Int): UnifiedMemoryManager = {
+  def apply(conf: SparkConf, numCores: Int): OnlyDisaggMemoryManager = {
     val maxMemory = getMaxMemory(conf)
-    new UnifiedMemoryManager(
+    new OnlyDisaggMemoryManager(
       conf,
       maxHeapMemory = maxMemory,
       onHeapStorageRegionSize =

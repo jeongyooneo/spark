@@ -69,7 +69,14 @@ object SparkLR {
       .getOrCreate()
 
     val numSlices = if (args.length > 0) args(0).toInt else 2
-    val points = spark.sparkContext.parallelize(generateData, numSlices).cache()
+
+    // SPILL(EVICTION) due to skew
+    // MEMORY_ONLY: Gone -> Fetch again from HDFS
+    // MEMORY_AND_DISK: Spilled to a local disk --> Fetch from the local disk
+    // JEONGYOON: ALL in remote memory
+
+    // TODO: JEONGYOON
+    val points = spark.sparkContext.parallelize(generateData, numSlices).persist()
 
     // Initialize w to a random value
     val w = DenseVector.fill(D) {2 * rand.nextDouble - 1}
