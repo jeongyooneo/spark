@@ -6,6 +6,10 @@ libraryDependencies += "com.puppycrawl.tools" % "checkstyle" % "8.23"
 // checkstyle uses guava 23.0.
 libraryDependencies += "com.google.guava" % "guava" % "23.0"
 
+
+libraryDependencies += "io.netty" % "netty-all" % "4.1.17.Final"
+libraryDependencies += "io.netty" % "netty" % "3.9.9.Final"
+
 // need to make changes to uptake sbt 1.0 support in "com.eed3si9n" % "sbt-assembly" % "1.14.5"
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.11.2")
 
@@ -31,6 +35,9 @@ addSbtPlugin("io.spray" % "sbt-revolver" % "0.9.1")
 libraryDependencies += "org.ow2.asm"  % "asm" % "5.1"
 
 libraryDependencies += "org.ow2.asm"  % "asm-commons" % "5.1"
+
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.17.Final"
+dependencyOverrides += "io.netty" % "netty" % "3.9.9.Final"
 
 // sbt 1.0.0 support: https://github.com/ihji/sbt-antlr4/issues/14
 addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.7.11")

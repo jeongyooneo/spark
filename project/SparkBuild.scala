@@ -471,7 +471,8 @@ object DockerIntegrationTests {
 object DependencyOverrides {
   lazy val settings = Seq(
     dependencyOverrides += "com.google.guava" % "guava" % "14.0.1",
-    dependencyOverrides += "jline" % "jline" % "2.14.6")
+    dependencyOverrides += "jline" % "jline" % "2.14.6",
+    dependencyOverrides += "io.netty" % "nettty-all" % "4.1.17.Final")
 }
 
 /**

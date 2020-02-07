@@ -27,8 +27,8 @@ import org.apache.spark.storage.{BlockId, RDDBlockId}
 import org.mortbay.util.ajax.JSON
 
 import scala.collection.convert.decorateAsScala._
-import scala.collection.{mutable, _}
 import scala.collection.mutable.ListBuffer
+import scala.collection.{mutable, _}
 import scala.io.Source
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])],
@@ -469,28 +469,33 @@ object RDDJobDag extends Logging {
       for (line <- Source.fromFile(filePath).getLines) {
         val l = line.stripLineEnd
         // parse
-        val jsonMap = JSON.parse(l).asInstanceOf[Map[String, Any]]
+        val jsonMap = JSON.parse(l).asInstanceOf[java.util.Map[String, Any]]
 
-        if (jsonMap("Event").equals("SparkListenerStageCompleted")) {
-          val stageInfo = jsonMap("Stage Info").asInstanceOf[Map[Any, Any]]
-          logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
-          val rdds = stageInfo("RDD Info").asInstanceOf[List[Map[Any, Any]]]
-          val stageId = stageInfo("Stage ID").asInstanceOf[Double].toInt
+        if (jsonMap.get("Event").equals("SparkListenerStageCompleted")) {
+          val stageInfo = jsonMap.get("Stage Info").asInstanceOf[java.util.Map[Any, Any]]
+          logInfo(s"Stage parsing ${stageInfo.get("Stage ID")}")
+          val rdds = stageInfo.get("RDD Info").asInstanceOf[Array[Object]].toIterator
+            // .asSc.java.util.List[java.util.Map[Any, Any]]].asScala
+
+          rdds.length
+
+          val stageId = stageInfo.get("Stage ID").asInstanceOf[Long].toInt
 
           // add vertices
-          for (rdd <- rdds) {
-            val rdd_id = rdd("RDD ID").asInstanceOf[Double].toInt
-            val numCachedPartitions = rdd("Number of Cached Partitions")
-              .asInstanceOf[Double].toInt
+          for (rdd_ <- rdds) {
+            val rdd: java.util.Map[Any, Any] = rdd_.asInstanceOf[java.util.Map[Any, Any]]
+            val rdd_id = rdd.get("RDD ID").asInstanceOf[Long].toInt
+            val numCachedPartitions = rdd.get("Number of Cached Partitions")
+              .asInstanceOf[Long].toInt
             val cached = numCachedPartitions > 0
-            val parents = rdd("Parent IDs").asInstanceOf[List[Double]]
+            val parents = rdd.get("Parent IDs").asInstanceOf[Array[Object]].toIterator
             val rdd_object = new RDDNode(rdd_id, cached, stageId)
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
               dag(rdd_object) = (new mutable.HashSet(), new mutable.HashSet())
-              for (parent_id: Double <- parents) {
-                edges.append((parent_id.toInt, rdd_id))
+              for (parent_id <- parents) {
+                edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
               }
             }
           }
