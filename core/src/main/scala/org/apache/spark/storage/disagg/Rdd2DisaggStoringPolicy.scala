@@ -15,17 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.spark.storage._
 
 /**
 * This policy does not cache the data into memory.
 */
-class NoStoringEvictBlockDPolicy()
+class Rdd2DisaggStoringPolicy()
                  extends DisaggStoringPolicy {
 
   override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
-    false
+    blockId.name.startsWith("rdd_2_")
   }
 }

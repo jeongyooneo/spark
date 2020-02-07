@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
@@ -40,10 +40,6 @@ class NectarEvictionEndpoint(
    extends DisaggBlockManagerEndpoint(
     rpcEnv, isLocal, conf, listenerBus, blockManagerMaster, thresholdMB) {
   logInfo("NectarEvictionEndPoint up")
-
-
-  val list: mutable.ListBuffer[CrailBlockInfo] = new mutable.ListBuffer[CrailBlockInfo]()
-
 
   override def taskStartedCall(taskId: String): Unit = {
     rddJobDag match {
@@ -73,56 +69,46 @@ class NectarEvictionEndpoint(
     }
   }
 
-  private def calculateCost(blockInfo: CrailBlockInfo, ct: Long): Long = {
-    val a = (blockInfo.size / 10000) * (ct - blockInfo.refTime)
-    val b = Math.max(1, blockInfo.refCnt.get()) * rddJobDag.get.blockCompTime(blockInfo.bid, ct)
-    a / b
+  // Calculate OSDI10 Nectar's CostBenefitRatio in eviction policy.
+  private def calculateCostBenefitRatio(blockInfo: CrailBlockInfo, ct: Long): Long = {
+    val cost = (blockInfo.size / 10000) * (ct - blockInfo.refTime)
+    val benefit = Math.max(1, blockInfo.refCnt.get()) *
+      rddJobDag.get.blockCompTime(blockInfo.bid, ct)
+    cost / benefit
   }
 
-  override def storeBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
-
-    val prevTime = prevDiscardTime.get()
-
-
-    if (!prevCreatedBlocks.containsKey(blockId)) {
-      prevCreatedBlocks.put(blockId, true)
-    }
-
-    val rddId = blockId.asRDDId.get.rddId
-
+  override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
     synchronized {
       if (disaggBlockInfo.contains(blockId)) {
         return false
       }
 
-      rddJobDag.get.blockCreated(blockId)
+      rddJobDag.get.setBlockCreatedTime(blockId)
       blocksSizeToBeCreated.put(blockId, estimateSize)
       totalSize.addAndGet(estimateSize)
 
-
+      // If we have enough space in disagg memory, cache it
       if (totalSize.get() + estimateSize < threshold) {
         logInfo(s"Storing $blockId" +
           s"size $estimateSize / $totalSize, threshold: $threshold")
         return true
       }
 
-      // discard!!
-      var totalCost = 0L
+      // Else, select a victim to evict
       var totalDiscardSize = 0L
 
-      val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+      val blocksToRemove: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
+      val prevTime = prevDiscardTime.get()
       val ct = System.currentTimeMillis()
       if (ct - prevDiscardTime.get() > 1000 &&
         prevDiscardTime.compareAndSet(prevTime, ct)) {
-        // cost calculation
-
         val storedBlocks = disaggBlockInfo.values.toList
 
         val sortedBlocks = storedBlocks.sortWith((b1, b2) => {
-          b1.nectarCost = calculateCost(b1, ct)
-          b2.nectarCost = calculateCost(b2, ct)
+          b1.nectarCost = calculateCostBenefitRatio(b1, ct)
+          b2.nectarCost = calculateCostBenefitRatio(b2, ct)
           b1.nectarCost > b2.nectarCost
         })
 
@@ -131,25 +117,24 @@ class NectarEvictionEndpoint(
         val removalSize = Math.max(estimateSize,
           totalSize.get() + estimateSize - threshold)
 
-        val currTime = System.currentTimeMillis()
-
         // remove blocks til threshold without considering cost
         // for hard threshold
         while (iterator.hasNext && totalDiscardSize < removalSize) {
-          val binfo = iterator.next()
+          val bInfo = iterator.next()
 
-          if (ct - binfo.createdTime > 5000) {
-            totalDiscardSize += binfo.size
-            removeBlocks.append((binfo.bid, binfo))
+          if (ct - bInfo.createdTime > 5000) {
+            totalDiscardSize += bInfo.size
+            blocksToRemove.append((bInfo.bid, bInfo))
 
-            logInfo(s"Try to remove: Cost: ${binfo.nectarCost} " +
-              s"size: $totalDiscardSize/$removalSize, remove block: ${binfo.bid}")
+            logInfo(s"Try to evict a block: Cost: ${bInfo.nectarCost} " +
+              s"size: $totalDiscardSize/$removalSize, remove block: ${bInfo.bid}")
           }
         }
       }
 
-      blockRemoves(removeBlocks)
-      removeBlocks.foreach { t =>
+      evictBlocks(blocksToRemove)
+      // ??????????
+      blocksToRemove.foreach { t =>
         rddJobDag.get.removingBlock(blockId)
       }
     }
@@ -166,7 +151,6 @@ class NectarEvictionEndpoint(
   }
 
   override def fileReadCall(blockInfo: CrailBlockInfo): Unit = {
-    // do nothing
     disaggBlockInfo.get(blockInfo.bid) match {
       case None =>
         // do nothing

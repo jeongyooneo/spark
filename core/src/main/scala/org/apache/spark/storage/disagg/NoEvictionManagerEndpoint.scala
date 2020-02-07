@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
@@ -65,7 +65,7 @@ class NoEvictionManagerEndpoint(
 
   }
 
-  override def storeBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
+  override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
     true
   }
 }

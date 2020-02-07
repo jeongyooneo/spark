@@ -26,7 +26,7 @@ import org.scalatest._
 import org.apache.spark._
 import org.apache.spark.memory.{MemoryMode, StaticMemoryManager}
 import org.apache.spark.serializer.{KryoSerializer, SerializerManager}
-import org.apache.spark.storage.disaag.BlockEvictionHandler
+import org.apache.spark.storage.disagg.BlockEvictionHandler
 import org.apache.spark.storage.memory.{MemoryStore, PartiallySerializedBlock, PartiallyUnrolledIterator}
 import org.apache.spark.util._
 import org.apache.spark.util.io.ChunkedByteBuffer
@@ -130,7 +130,7 @@ class MemoryStoreSuite
     def putIteratorAsValues[T](
         blockId: BlockId,
         iter: Iterator[T],
-        classTag: ClassTag[T]): Either[disaag.PartiallyUnrolledIterator[T], Long] = {
+        classTag: ClassTag[T]): Either[disagg.PartiallyUnrolledIterator[T], Long] = {
       assert(blockInfoManager.lockNewBlockForWriting(
         blockId,
         new BlockInfo(StorageLevel.MEMORY_ONLY, classTag, tellMaster = false)))
@@ -185,7 +185,7 @@ class MemoryStoreSuite
     def putIteratorAsValues[T](
         blockId: BlockId,
         iter: Iterator[T],
-        classTag: ClassTag[T]): Either[disaag.PartiallyUnrolledIterator[T], Long] = {
+        classTag: ClassTag[T]): Either[disagg.PartiallyUnrolledIterator[T], Long] = {
       assert(blockInfoManager.lockNewBlockForWriting(
         blockId,
         new BlockInfo(StorageLevel.MEMORY_ONLY, classTag, tellMaster = false)))
@@ -249,7 +249,7 @@ class MemoryStoreSuite
     def putIteratorAsBytes[T](
         blockId: BlockId,
         iter: Iterator[T],
-        classTag: ClassTag[T]): Either[disaag.PartiallySerializedBlock[T], Long] = {
+        classTag: ClassTag[T]): Either[disagg.PartiallySerializedBlock[T], Long] = {
       assert(blockInfoManager.lockNewBlockForWriting(
         blockId,
         new BlockInfo(StorageLevel.MEMORY_ONLY_SER, classTag, tellMaster = false)))
@@ -353,7 +353,7 @@ class MemoryStoreSuite
 
     def putIteratorAsValues(
         blockId: BlockId,
-        iter: Iterator[Any]): Either[disaag.PartiallyUnrolledIterator[Any], Long] = {
+        iter: Iterator[Any]): Either[disagg.PartiallyUnrolledIterator[Any], Long] = {
        memoryStore.putIteratorAsValues(blockId, iter, ClassTag.Any)
     }
 

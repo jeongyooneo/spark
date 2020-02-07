@@ -42,7 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
-import org.apache.spark.storage.disaag.DisaggBlockManagerEndpoint
+import org.apache.spark.storage.disagg.DisaggBlockManagerEndpoint
 import org.apache.spark.util._
 
 /**

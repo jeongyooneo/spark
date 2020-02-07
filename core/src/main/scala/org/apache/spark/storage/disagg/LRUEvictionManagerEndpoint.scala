@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
@@ -90,7 +90,7 @@ class LRUEvictionManagerEndpoint(
 
   }
 
-  override def storeBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
+  override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
 
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
@@ -143,7 +143,7 @@ class LRUEvictionManagerEndpoint(
     blocksSizeToBeCreated.put(blockId, estimateSize)
     totalSize.addAndGet(estimateSize)
 
-    blockRemoves(removeBlocks)
+    evictBlocks(removeBlocks)
     true
   }
 }

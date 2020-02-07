@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.crail._
 import org.apache.spark.{SparkConf, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
-import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
+import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.util.ThreadUtils
 import org.apache.spark.util.io.ChunkedByteBuffer
@@ -37,7 +37,7 @@ class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
   }
 
-  def storeBlockOrNot(blockId: BlockId, estimateSize: Long): Boolean = {
+  def cachingDecision(blockId: BlockId, estimateSize: Long): Boolean = {
 
     val taskContext = TaskContext.get()
     val taskId = s"${taskContext.stageId()}-" +
@@ -120,7 +120,6 @@ class DisaggBlockManager(
       case e: Exception =>
         e.printStackTrace()
         throw new RuntimeException(e)
-
     }
   }
 
@@ -137,9 +136,7 @@ class DisaggBlockManager(
 }
 
 abstract class DisaggStoringPolicy() extends Logging {
-
   def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean
-
 }
 
 object DisaggStoringPolicy {
@@ -154,10 +151,7 @@ object DisaggStoringPolicy {
   }
 }
 
-abstract class DisaggCachingPolicy(
-           memoryStore: MemoryStore) extends Logging{
-
-
+abstract class DisaggCachingPolicy(memoryStore: MemoryStore) extends Logging{
   /**
    * Attempts to cache spilled values read from disagg into the MemoryStore in order to speed up
    * subsequent reads. This method requires the caller to hold a read lock on the block.
@@ -185,8 +179,6 @@ abstract class DisaggCachingPolicy(
       blockId: BlockId,
       level: StorageLevel,
       disaggData: BlockData): Option[ChunkedByteBuffer]
-
-
 }
 
 object DisaggCachingPolicy {

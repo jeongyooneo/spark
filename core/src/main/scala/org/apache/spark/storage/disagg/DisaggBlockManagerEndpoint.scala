@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
@@ -25,7 +25,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
-import org.apache.spark.storage.disaag.DisaggBlockManagerMessages._
+import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 import org.apache.spark.util.ThreadUtils
 
@@ -41,25 +41,35 @@ import scala.concurrent.ExecutionContext
  */
 private[spark]
 abstract class DisaggBlockManagerEndpoint(
-    override val rpcEnv: RpcEnv,
-    val isLocal: Boolean,
-    conf: SparkConf,
-    listenerBus: LiveListenerBus,
-    blockManagerMaster: BlockManagerMasterEndpoint,
-    thresholdMB: Long)
+                                           override val rpcEnv: RpcEnv,
+                                           val isLocal: Boolean,
+                                           conf: SparkConf,
+                                           listenerBus: LiveListenerBus,
+                                           blockManagerMaster: BlockManagerMasterEndpoint,
+                                           disaggCapacityMB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
-  val threshold: Long = thresholdMB * (1000 * 1000)
+  val threshold: Long = disaggCapacityMB * (1000 * 1000)
+  val rddJobDag = blockManagerMaster.rddJobDag
+  val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
+    new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
+  val totalSize: AtomicLong = new AtomicLong(0)
+  private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
+  private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
+  val executor: ExecutorService = Executors.newCachedThreadPool()
+  // TODO: which blocks to remove ?
+  val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
+  val blocksRemovedByMaster: ConcurrentHashMap[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]()
+  val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
+    new ConcurrentHashMap[BlockId, Long]()
+  val recentlyRemoved: mutable.Set[BlockId] = new mutable.HashSet[BlockId]()
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
-
-  logInfo("creating main dir " + rootDir)
   if (baseDirExists) {
     fs.delete(rootDir, true).get().syncDir()
   }
-
-  val rddJobDag = blockManagerMaster.rddJobDag
 
   fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
     CrailLocationClass.DEFAULT, true).get().syncDir()
@@ -83,10 +93,6 @@ abstract class DisaggBlockManagerEndpoint(
     CrailLocationClass.DEFAULT, true).get().syncDir()
   logInfo("creating main dir done " + rootDir)
 
-  // disagg block size info
-  val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
-    new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
-
   /*
   private val sizePriorityQueue: PriorityQueue[(BlockId, CrailBlockInfo)] =
     new PriorityQueue[(BlockId, CrailBlockInfo)](new Comparator[(BlockId, CrailBlockInfo)] {
@@ -95,13 +101,7 @@ abstract class DisaggBlockManagerEndpoint(
     })
   */
 
-  private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
-  private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
-
-  val totalSize: AtomicLong = new AtomicLong(0)
-
   logInfo("DisaggBlockManagerEndpoint up")
-
 
   // abstract method definition
   // abstract method definition
@@ -115,36 +115,36 @@ abstract class DisaggBlockManagerEndpoint(
   def stageCompletedCall(stageId: Int): Unit
   def stageSubmittedCall(stageId: Int): Unit
 
-  def storeBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String): Boolean
+  def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean
 
   // abstract method definition
   // abstract method definition
   // abstract method definition
 
-  def blockRemoves(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = {
-    removeBlocks.foreach { t =>
-      blocksRemovedByMaster.put(t._1, true)
-      totalSize.addAndGet(-t._2.size)
+  def evictBlocks(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = {
+    removeBlocks.foreach { b =>
+      blocksRemovedByMaster.put(b._1, true)
+      totalSize.addAndGet(-b._2.size)
 
       executor.submit(new Runnable {
         override def run(): Unit = {
-          if (disaggBlockInfo.get(t._1).isDefined) {
-            val info = disaggBlockInfo.get(t._1).get
+          if (disaggBlockInfo.get(b._1).isDefined) {
+            val info = disaggBlockInfo.get(b._1).get
 
             while (!info.isRemoved) {
               while (info.readCount.get() > 0) {
                 // waiting...
                 Thread.sleep(1000)
-                logInfo(s"Waiting for deleting ${t._1}, count: ${info.readCount}")
+                logInfo(s"Waiting for deleting ${b._1}, count: ${info.readCount}")
               }
 
               info.synchronized {
                 if (info.readCount.get() == 0) {
                   info.isRemoved = true
-                  recentlyRemoved.add(t._1)
+                  recentlyRemoved.add(b._1)
 
-                  logInfo(s"Remove block from worker ${t._1}")
-                  blockManagerMaster.removeBlockFromWorkers(t._1)
+                  logInfo(s"Remove block from worker ${b._1}")
+                  blockManagerMaster.removeBlockFromWorkers(b._1)
 
                 }
               }
@@ -156,11 +156,11 @@ abstract class DisaggBlockManagerEndpoint(
   }
 
   def fileCreated(blockId: BlockId): Boolean = {
-    logInfo(s"Disagg endpoint: file created: $blockId")
     if (disaggBlockInfo.contains(blockId)) {
       // logInfo(s"tg: Disagg block is already created $blockId")
       false
     } else {
+      logInfo(s"Disagg endpoint: file created: $blockId")
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
         fileCreatedCall(blockInfo)
@@ -202,19 +202,6 @@ abstract class DisaggBlockManagerEndpoint(
     }
   }
 
-  val executor: ExecutorService = Executors.newCachedThreadPool()
-
-  // TODO: which blocks to remove ?
-  val prevDiscardTime: AtomicLong = new AtomicLong(System.currentTimeMillis())
-
-  val blocksRemovedByMaster: ConcurrentHashMap[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]()
-
-  val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
-    new ConcurrentHashMap[BlockId, Long]()
-
-  val prevCreatedBlocks: ConcurrentHashMap[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]()
 
   def taskStarted(taskId: String): Unit = {
     logInfo(s"Handling task ${taskId} started")
@@ -234,8 +221,6 @@ abstract class DisaggBlockManagerEndpoint(
   def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
     currTime - blockCreatedTime > 8 * 1000
   }
-
-  val recentlyRemoved: mutable.Set[BlockId] = new mutable.HashSet[BlockId]()
 
   def fileRemoved(blockId: BlockId): Boolean = {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
@@ -259,8 +244,6 @@ abstract class DisaggBlockManagerEndpoint(
       logWarning(s"No disagg block for writing $blockId")
       throw new RuntimeException(s"no disagg block for writing $blockId")
     } else {
-
-
       val v = info.get
       v.size = size
       v.createdTime = System.currentTimeMillis()
@@ -317,8 +300,6 @@ abstract class DisaggBlockManagerEndpoint(
     }
   }
 
-
-
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case FileCreated(blockId) =>
       context.reply(fileCreated(blockId))
@@ -336,7 +317,7 @@ abstract class DisaggBlockManagerEndpoint(
       throw new RuntimeException("not supported")
 
     case StoreBlockOrNot(blockId, estimateSize, taskId) =>
-      context.reply(storeBlockOrNot(blockId, estimateSize, taskId))
+      context.reply(cachingDecision(blockId, estimateSize, taskId))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
