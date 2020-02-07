@@ -19,7 +19,6 @@ package org.apache.spark.network.util;
 
 import io.netty.channel.FileRegion;
 import io.netty.util.AbstractReferenceCounted;
-import io.netty.util.ReferenceCounted;
 
 public abstract class AbstractFileRegion extends AbstractReferenceCounted implements FileRegion {
 
@@ -48,7 +47,7 @@ public abstract class AbstractFileRegion extends AbstractReferenceCounted implem
   }
 
   @Override
-  public AbstractFileRegion touch(ReferenceCounted o) {
+  public AbstractFileRegion touch(Object o) {
     return this;
   }
 }

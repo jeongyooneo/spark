@@ -27,7 +27,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.FileRegion;
 import io.netty.util.ReferenceCountUtil;
 
-import io.netty.util.ReferenceCounted;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.util.AbstractFileRegion;
 
@@ -164,7 +163,7 @@ class MessageWithHeader extends AbstractFileRegion {
   }
 
   @Override
-  public MessageWithHeader touch(ReferenceCounted o) {
+  public MessageWithHeader touch(Object o) {
     super.touch(o);
     header.touch(o);
     ReferenceCountUtil.touch(body, o);
