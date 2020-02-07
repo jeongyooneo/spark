@@ -469,26 +469,25 @@ object RDDJobDag extends Logging {
       for (line <- Source.fromFile(filePath).getLines) {
         val l = line.stripLineEnd
         // parse
-        val jsonMap = JSON.parse(l).asInstanceOf[java.util.Map[String, Any]]
+        val jsonMap = JSON.parse(l).asInstanceOf[java.util.Map[String, Any]].asScala
 
-        if (jsonMap.get("Event").equals("SparkListenerStageCompleted")) {
-          val stageInfo = jsonMap.get("Stage Info").asInstanceOf[java.util.Map[Any, Any]]
-          logInfo(s"Stage parsing ${stageInfo.get("Stage ID")}")
-          val rdds = stageInfo.get("RDD Info").asInstanceOf[Array[Object]].toIterator
+        if (jsonMap("Event").equals("SparkListenerStageCompleted")) {
+          val stageInfo = jsonMap("Stage Info").asInstanceOf[java.util.Map[Any, Any]].asScala
+          logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
+          val rdds = stageInfo("RDD Info").asInstanceOf[Array[Object]].toIterator
             // .asSc.java.util.List[java.util.Map[Any, Any]]].asScala
 
-          rdds.length
-
-          val stageId = stageInfo.get("Stage ID").asInstanceOf[Long].toInt
+          logInfo(s"rdds: $rdds")
+          val stageId = stageInfo("Stage ID").asInstanceOf[Long].toInt
 
           // add vertices
           for (rdd_ <- rdds) {
-            val rdd: java.util.Map[Any, Any] = rdd_.asInstanceOf[java.util.Map[Any, Any]]
-            val rdd_id = rdd.get("RDD ID").asInstanceOf[Long].toInt
-            val numCachedPartitions = rdd.get("Number of Cached Partitions")
+            val rdd = rdd_.asInstanceOf[java.util.Map[Any, Any]].asScala
+            val rdd_id = rdd("RDD ID").asInstanceOf[Long].toInt
+            val numCachedPartitions = rdd("Number of Cached Partitions")
               .asInstanceOf[Long].toInt
             val cached = numCachedPartitions > 0
-            val parents = rdd.get("Parent IDs").asInstanceOf[Array[Object]].toIterator
+            val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
             val rdd_object = new RDDNode(rdd_id, cached, stageId)
 
             if (!dag.contains(rdd_object)) {
