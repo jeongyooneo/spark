@@ -251,7 +251,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
               //  s"block ($parentBlockId) is not stored.. ")
             case Some(t) =>
               b.append(parentBlockId)
-              l.append(time.get)
+              l.append(t)
           }
         }
 
