@@ -55,7 +55,7 @@ import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler.ExecutorCacheTaskLocation
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
-import org.apache.spark.storage.disaag.{DisaggBlockManager, DisaggCachingPolicy, DisaggStore, DisaggStoringPolicy}
+import org.apache.spark.storage.disagg.{DisaggBlockManager, DisaggCachingPolicy, DisaggStore, DisaggStoringPolicy}
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._

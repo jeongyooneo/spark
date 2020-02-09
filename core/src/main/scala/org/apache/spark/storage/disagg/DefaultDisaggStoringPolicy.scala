@@ -15,33 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import org.apache.spark.storage._
-import org.apache.spark.storage.memory.MemoryStore
-import org.apache.spark.util.io.ChunkedByteBuffer
 
- /**
- * This policy does not cache the data into memory.
- */
-class NoCachingPolicy(memoryStore: MemoryStore)
-                  extends DisaggCachingPolicy(memoryStore) {
+/**
+* This policy does not cache the data into memory.
+*/
+class DefaultDisaggStoringPolicy()
+                 extends DisaggStoringPolicy {
 
-  override def maybeCacheDisaggValuesInMemory[T](
-                 blockInfo: BlockInfo,
-                 blockId: BlockId,
-                 level: StorageLevel,
-                 disaggIterator: Iterator[T]): Iterator[T] = {
-    // do nothing
-    disaggIterator
+  override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
+    true
   }
-
-  override def maybeCacheDisaggBytesInMemory(
-                 blockInfo: BlockInfo,
-                 blockId: BlockId,
-                 level: StorageLevel,
-                 disaggData: BlockData): Option[ChunkedByteBuffer] = {
-    // do nothing
-    None
-  }
- }
+}

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disaag
+package org.apache.spark.storage.disagg
 
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -62,7 +62,7 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    if (!disaggManager.storeBlockOrNot(blockId, estimateSize)) {
+    if (!disaggManager.cachingDecision(blockId, estimateSize)) {
       return false
     }
 

@@ -28,7 +28,7 @@ import org.scalatest.{BeforeAndAfterEach, PrivateMethodTester}
 import org.apache.spark.{SparkConf, SparkFunSuite, TaskContext, TaskContextImpl}
 import org.apache.spark.memory.MemoryMode
 import org.apache.spark.serializer.{JavaSerializer, SerializationStream, SerializerManager}
-import org.apache.spark.storage.disaag.RedirectableOutputStream
+import org.apache.spark.storage.disagg.RedirectableOutputStream
 import org.apache.spark.storage.memory.{MemoryStore, PartiallySerializedBlock}
 import org.apache.spark.util.{ByteBufferInputStream, ByteBufferOutputStream}
 import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStream}
@@ -54,7 +54,7 @@ class PartiallySerializedBlockSuite
 
   private def partiallyUnroll[T: ClassTag](
       iter: Iterator[T],
-      numItemsToBuffer: Int): disaag.PartiallySerializedBlock[T] = {
+      numItemsToBuffer: Int): disagg.PartiallySerializedBlock[T] = {
 
     val bbos: ChunkedByteBufferOutputStream = {
       val spy = Mockito.spy(new ChunkedByteBufferOutputStream(128, ByteBuffer.allocate))
@@ -78,7 +78,7 @@ class PartiallySerializedBlockSuite
     }
 
     val unrollMemory = bbos.size
-    new disaag.PartiallySerializedBlock[T](
+    new disagg.PartiallySerializedBlock[T](
       memoryStore,
       serializerManager,
       blockId,
