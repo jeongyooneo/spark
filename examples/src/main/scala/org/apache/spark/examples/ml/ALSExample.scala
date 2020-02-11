@@ -88,10 +88,10 @@ object ALSExample {
     val movies = ratings.select(als.getItemCol).distinct().limit(3)
     val movieSubSetRecs = model.recommendForItemSubset(movies, 10)
     // $example off$
-    userRecs.show()
-    movieRecs.show()
-    userSubsetRecs.show()
-    movieSubSetRecs.show()
+    // userRecs.show()
+    // movieRecs.show()
+    // userSubsetRecs.show()
+    // movieSubSetRecs.show()
 
     spark.stop()
   }
