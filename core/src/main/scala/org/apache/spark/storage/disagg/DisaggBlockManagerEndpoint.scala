@@ -40,8 +40,7 @@ import scala.concurrent.ExecutionContext
  * of all slaves' block managers.
  */
 private[spark]
-abstract class DisaggBlockManagerEndpoint(
-                                           override val rpcEnv: RpcEnv,
+abstract class DisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv,
                                            val isLocal: Boolean,
                                            conf: SparkConf,
                                            listenerBus: LiveListenerBus,
@@ -50,7 +49,7 @@ abstract class DisaggBlockManagerEndpoint(
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
   val threshold: Long = disaggCapacityMB * (1000 * 1000)
-  val rddJobDag = blockManagerMaster.rddJobDag
+  val rddLineage = blockManagerMaster.rddLineage
   val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
   val totalSize: AtomicLong = new AtomicLong(0)
@@ -103,10 +102,6 @@ abstract class DisaggBlockManagerEndpoint(
 
   logInfo("DisaggBlockManagerEndpoint up")
 
-  // abstract method definition
-  // abstract method definition
-  // abstract method definition
-
   def fileCreatedCall(blockInfo: CrailBlockInfo): Unit
   def fileReadCall(blockInfo: CrailBlockInfo): Unit
   def fileRemovedCall(blockInfo: CrailBlockInfo): Unit
@@ -116,10 +111,6 @@ abstract class DisaggBlockManagerEndpoint(
   def stageSubmittedCall(stageId: Int): Unit
 
   def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean
-
-  // abstract method definition
-  // abstract method definition
-  // abstract method definition
 
   def evictBlocks(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = {
     removeBlocks.foreach { b =>

@@ -92,10 +92,10 @@ object ALSExample {
     val movieSubSetRecs = model.recommendForItemSubset(movies, 10)
     // $example off$
 
-    // userRecs.show()
-    // movieRecs.show()
-
-    // Thread.sleep(1000000)
+    userRecs.show()
+    movieRecs.show()
+    userSubsetRecs.show()
+    movieSubSetRecs.show()
 
     spark.stop()
     val jct = (System.nanoTime() - startTime) / 1000000

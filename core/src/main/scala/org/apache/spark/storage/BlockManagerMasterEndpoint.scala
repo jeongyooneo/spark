@@ -24,7 +24,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.RDDJobDag
+import org.apache.spark.storage.disagg.RDDLineage
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import java.util.concurrent.atomic.AtomicLong
@@ -92,16 +92,15 @@ class BlockManagerMasterEndpoint(
 
   val totalDisaggSize: AtomicLong = new AtomicLong(0)
 
-  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath, conf)
+  val rddLineage: Option[RDDLineage] = RDDLineage(dagPath, conf)
 
-  if (rddJobDag.isDefined) {
-    logInfo(rddJobDag.get.toString)
+  if (rddLineage.isDefined) {
+    logInfo("jy: App-wide RDD lineage: " + rddLineage.get.toString)
   }
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
     def run(): Unit = {
-
       // MB
       var memSize = 0L
       var diskSize = 0L
@@ -111,11 +110,11 @@ class BlockManagerMasterEndpoint(
       val unit = 1000000
 
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
-      builder.append("------- stat logging start ------\n")
+      builder.append("\n------- stat logging start ------\n")
 
-      if (rddJobDag.isDefined &&
+      if (rddLineage.isDefined &&
         conf.get("spark.disagg.evictpolicy", "None").equals("DRDD")) {
-        rddJobDag.get.updateCostAndSort
+        rddLineage.get.updateCostAndSort
       }
 
       blockManagerInfo.foreach {
@@ -125,7 +124,6 @@ class BlockManagerMasterEndpoint(
           var diskSizeForManager = 0L
 
           v.blocks.values.foreach {
-
             stat: BlockStatus =>
               memSizeForManager += stat.memSize
               diskSizeForManager += stat.diskSize
@@ -135,11 +133,9 @@ class BlockManagerMasterEndpoint(
               disaggSize += stat.disaggSize
           }
 
-
           builder.append(s"BlockManager ${k.host}: memory ${memSizeForManager/unit}, " +
             s"disk ${diskSizeForManager/unit}\n")
       }
-
 
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")

@@ -330,7 +330,7 @@ abstract class RDD[T: ClassTag](
     val ret = allAncestors.filterNot(_ == this).toSeq
     ret.foreach(ancestor =>
       if (ancestor.getStorageLevel != StorageLevel.NONE) {
-        logInfo("jy: All cached ancestors of " + name + " " + id + ": "
+        logInfo("All cached ancestors of " + name + " " + id + ": "
           + ancestor.name + " " + ancestor.id)
       })
   }
@@ -405,28 +405,52 @@ abstract class RDD[T: ClassTag](
         + ancestor.name + " " + ancestor.id))
   }
 
-  // TODO
-  def setCachedRDDs(cachedRDDs: Iterable[Int], slevel: StorageLevel): Unit = {
+  def autoCachingWithJobWideLineage(sLevel: StorageLevel): Seq[RDD[_]] = {
+    // 1: Clear storage level
+    // jobRDDLineage + this(finalRDD) = job-wide lineage completed
+    val jobRDDLineage: Seq[RDD[_]] = createAncestors
+    jobRDDLineage.foreach { rdd =>
+      logInfo(s"jy: job-wide lineage: RDD ${rdd.id}: ")
+    }
 
+    /*
+    jobRDDLineage.foreach { rdd =>
+      rdd.storageLevel = StorageLevel.NONE
+    }
+
+    // Re-set cached RDDs: cache RDDs with multiple children
+    jobRDDLineage.foreach { rdd =>
+      if (lineage(rdd._2)._1.size > 1) {
+        logInfo(s"# Children of ${rdd._2.rddId}: ${lineage(rdd._2)._1.size}, auto-cached!!")
+        rdd._2.cached = true
+        rdd.storageLevel = sLevel
+        logInfo(s"Caching ${rdd.id} RDD!!!")
+      }
+    }
+    */
+    jobRDDLineage
+  }
+
+  def autoCachingWithAppWideLineage(cachedRDDs: Iterable[Int], sLevel: StorageLevel): Unit = {
     logInfo(s"Cached RDDS: $cachedRDDs")
 
     // 1: clear storage level
-    val allRDDs: Seq[RDD[_]] = createAncestors
-    allRDDs.foreach { rdd =>
+    val ancestorRDDs: Seq[RDD[_]] = createAncestors
+    ancestorRDDs.foreach { rdd =>
       rdd.storageLevel = StorageLevel.NONE
     }
 
     // 2: reset storage level
     val cachedRDDSet = cachedRDDs.toSet
 
+    // See if Set this RDD as cached
     if (cachedRDDSet.contains(this.id)) {
-      this.storageLevel = slevel
-      logInfo(s"Caching $id RDD!!!")
+      this.storageLevel = sLevel
     }
 
-    allRDDs.foreach { rdd =>
+    ancestorRDDs.foreach { rdd =>
       if (cachedRDDSet.contains(rdd.id)) {
-        rdd.storageLevel = slevel
+        rdd.storageLevel = sLevel
         logInfo(s"Caching ${rdd.id} RDD!!!")
       }
     }
@@ -717,7 +741,7 @@ abstract class RDD[T: ClassTag](
    * Internal method exposed for Random Splits in DataFrames. Samples an RDD given a probability
    * range.
    * @param lb lower bound to use for the Bernoulli sampler
-   * @param ub upper bound to use for the Bernoulli sampler
+   * @param ub upper 0bound to use for the Bernoulli sampler
    * @param seed the seed for the Random number generator
    * @return A random sub-sample of the RDD without replacement.
    */

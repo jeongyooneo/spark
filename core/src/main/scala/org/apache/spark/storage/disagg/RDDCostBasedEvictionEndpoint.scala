@@ -42,7 +42,7 @@ class RDDCostBasedEvictionEndpoint(
   logInfo("RDDCostBasedEvictionEndpoint up")
 
   override def taskStartedCall(taskId: String): Unit = {
-    rddJobDag match {
+    rddLineage match {
       case None =>
         // do nothing
       case Some(dag) =>
@@ -51,7 +51,7 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   override def stageCompletedCall(stageId: Int): Unit = {
-    rddJobDag match {
+    rddLineage match {
       case None =>
       // do nothing
       case Some(dag) =>
@@ -61,7 +61,7 @@ class RDDCostBasedEvictionEndpoint(
 
   override def stageSubmittedCall(stageId: Int): Unit = {
     logInfo(s"Stage submitted ${stageId}")
-    rddJobDag match {
+    rddLineage match {
       case None =>
       // do nothing
       case Some(dag) =>
@@ -72,11 +72,11 @@ class RDDCostBasedEvictionEndpoint(
   override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
     val prevTime = prevDiscardTime.get()
 
-    rddJobDag.get.setStoredBlocksCreatedTime(blockId)
-    rddJobDag.get.setBlockCreatedTime(blockId)
+    rddLineage.get.setStoredBlocksCreatedTime(blockId)
+    rddLineage.get.setBlockCreatedTime(blockId)
 
     val storingCost =
-      rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
+      rddLineage.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
 
     // logInfo(s"Request $blockId, size $estimateSize 222")
 
@@ -102,7 +102,7 @@ class RDDCostBasedEvictionEndpoint(
 
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
-        rddJobDag.get.storingBlock(blockId)
+        rddLineage.get.storingBlock(blockId)
 
         return true
       }
@@ -116,7 +116,7 @@ class RDDCostBasedEvictionEndpoint(
 
       if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
 
-        rddJobDag.get.sortedBlockCost match {
+        rddLineage.get.sortedBlockCost match {
           case None =>
             None
           case Some(l) =>
@@ -189,7 +189,7 @@ class RDDCostBasedEvictionEndpoint(
 
       evictBlocks(removeBlocks)
       removeBlocks.foreach { t =>
-        rddJobDag.get.removingBlock(blockId)
+        rddLineage.get.removingBlock(blockId)
       }
 
       if (totalDiscardSize < estimateSize) {
@@ -197,14 +197,14 @@ class RDDCostBasedEvictionEndpoint(
         // we won't store it
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
-        rddJobDag.get.setStoredBlocksCreatedTime(blockId)
+        rddLineage.get.setStoredBlocksCreatedTime(blockId)
 
         false
       } else {
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
-        rddJobDag.get.storingBlock(blockId)
+        rddLineage.get.storingBlock(blockId)
 
         true
       }
@@ -212,7 +212,7 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   override def fileRemovedCall(blockInfo: CrailBlockInfo): Unit = {
-    rddJobDag.get.removingBlock(blockInfo.bid)
+    rddLineage.get.removingBlock(blockInfo.bid)
   }
 
   override def fileCreatedCall(blockInfo: CrailBlockInfo): Unit = {

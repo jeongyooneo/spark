@@ -42,7 +42,7 @@ class NectarEvictionEndpoint(
   logInfo("NectarEvictionEndPoint up")
 
   override def taskStartedCall(taskId: String): Unit = {
-    rddJobDag match {
+    rddLineage match {
       case None =>
       // do nothing
       case Some(dag) =>
@@ -51,7 +51,7 @@ class NectarEvictionEndpoint(
   }
 
   override def stageCompletedCall(stageId: Int): Unit = {
-    rddJobDag match {
+    rddLineage match {
       case None =>
       // do nothing
       case Some(dag) =>
@@ -61,7 +61,7 @@ class NectarEvictionEndpoint(
 
   override def stageSubmittedCall(stageId: Int): Unit = {
     logInfo(s"Stage submitted ${stageId}")
-    rddJobDag match {
+    rddLineage match {
       case None =>
       // do nothing
       case Some(dag) =>
@@ -73,7 +73,7 @@ class NectarEvictionEndpoint(
   private def calculateCostBenefitRatio(blockInfo: CrailBlockInfo, ct: Long): Long = {
     val cost = (blockInfo.size / 10000) * (ct - blockInfo.refTime)
     val benefit = Math.max(1, blockInfo.refCnt.get()) *
-      rddJobDag.get.blockCompTime(blockInfo.bid, ct)
+      rddLineage.get.blockCompTime(blockInfo.bid, ct)
     cost / benefit
   }
 
@@ -83,7 +83,7 @@ class NectarEvictionEndpoint(
         return false
       }
 
-      rddJobDag.get.setBlockCreatedTime(blockId)
+      rddLineage.get.setBlockCreatedTime(blockId)
       blocksSizeToBeCreated.put(blockId, estimateSize)
       totalSize.addAndGet(estimateSize)
 
@@ -135,7 +135,7 @@ class NectarEvictionEndpoint(
       evictBlocks(blocksToRemove)
       // ??????????
       blocksToRemove.foreach { t =>
-        rddJobDag.get.removingBlock(blockId)
+        rddLineage.get.removingBlock(blockId)
       }
     }
 
@@ -143,7 +143,7 @@ class NectarEvictionEndpoint(
   }
 
   override def fileRemovedCall(blockInfo: CrailBlockInfo): Unit = {
-    rddJobDag.get.removingBlock(blockInfo.bid)
+    rddLineage.get.removingBlock(blockInfo.bid)
   }
 
   override def fileCreatedCall(blockInfo: CrailBlockInfo): Unit = {

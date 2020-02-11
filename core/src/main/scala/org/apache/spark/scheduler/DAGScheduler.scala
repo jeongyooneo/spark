@@ -163,6 +163,9 @@ private[spark] class DAGScheduler(
 
   private[scheduler] val activeJobs = new HashSet[ActiveJob]
 
+  // Map of job id : RDD lineage of the job
+  private[scheduler] var perJobRDDLineages = new HashMap[Int, Seq[RDD[_]]]
+
   /**
    * Contains the locations that each RDD's partitions are cached on.  This map's keys are RDD ids
    * and its values are arrays indexed by partition numbers. Each array value is the set of
@@ -704,10 +707,10 @@ private[spark] class DAGScheduler(
     sc.perJobDisaggLineageWithSize += (jobId -> rdd.createCachedAncestorsWithSize)
     sc.perJobDisaggLineageWithSize.foreach(entry => {
       val jobId = entry._1
-      val map = entry._2
-      map.foreach(sizeEntry => {
-        val cachedAncestor = sizeEntry._1
-        val size = sizeEntry._2
+      val rddToSizeMap = entry._2
+      rddToSizeMap.foreach(e => {
+        val cachedAncestor = e._1
+        val size = e._2
         logInfo(s"jy: All cached ancestors of Job $jobId(${rdd.name} ${rdd.id}): "
           + cachedAncestor.name + " " + cachedAncestor.id + " " + size)
       })
@@ -1019,16 +1022,18 @@ private[spark] class DAGScheduler(
     // Job submitted, clear internal data.
     barrierJobIdToNumTasksCheckFailures.remove(jobId)
 
-    // TODO: re-cache the job RDD
     val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
 
     if (autocaching) {
-      disaggBlockManagerEndpoint.rddJobDag match {
+      disaggBlockManagerEndpoint.rddLineage match {
         case Some(rddJobDag) =>
-          logInfo(s"Re-setting cached rdds!!")
-          finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+          logInfo(s"Autocaching RDDs")
+          finalRDD.autoCachingWithAppWideLineage(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+          finalRDD.autoCachingWithJobWideLineage(StorageLevel.DISAGG)
         case None =>
-          logInfo(s"RDDJobDag is empty !!")
+          logInfo(s"Using job-wide RDD lineages...")
+          val jobRDDLineage = finalRDD.autoCachingWithJobWideLineage(StorageLevel.DISAGG)
+          perJobRDDLineages += (jobId -> jobRDDLineage)
       }
     }
 
