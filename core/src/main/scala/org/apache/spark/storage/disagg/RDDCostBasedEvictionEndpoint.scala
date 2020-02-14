@@ -127,7 +127,7 @@ class RDDCostBasedEvictionEndpoint(
 
             val currTime = System.currentTimeMillis()
 
-            if (removalSize == estimateSize) {
+            if (removalSize <= estimateSize) {
               while (iterator.hasNext && totalDiscardSize < removalSize) {
                 val (bid, discardBlockCost) = iterator.next()
                 val discardCost = discardBlockCost.cost
@@ -135,10 +135,11 @@ class RDDCostBasedEvictionEndpoint(
                   case None =>
                   // do nothing
                   case Some(blockInfo) =>
+                    // timeToRemove: prevent immediate eviction of the cached block
                     if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
+                      // GC 0 cost blocks
 
-                      // evict the victim
                       totalDiscardSize += blockInfo.size
                       removeBlocks.append((bid, blockInfo))
                       logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
@@ -187,10 +188,6 @@ class RDDCostBasedEvictionEndpoint(
         }
       }
 
-      evictBlocks(removeBlocks)
-      removeBlocks.foreach { t =>
-        rddJobDag.get.removingBlock(blockId)
-      }
 
       if (totalDiscardSize < estimateSize) {
         // the cost due to discarding >  cost to store
@@ -201,6 +198,12 @@ class RDDCostBasedEvictionEndpoint(
 
         false
       } else {
+
+        evictBlocks(removeBlocks)
+        removeBlocks.foreach { t =>
+          rddJobDag.get.removingBlock(blockId)
+        }
+
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)

@@ -413,6 +413,7 @@ abstract class RDD[T: ClassTag](
     // 1: clear storage level
     val allRDDs: Seq[RDD[_]] = createAncestors
     allRDDs.foreach { rdd =>
+      logInfo(s"Setting RDD $rdd NONE")
       rdd.storageLevel = StorageLevel.NONE
     }
 
