@@ -45,10 +45,14 @@ object ConnectedComponentsExample {
       .appName(s"${this.getClass.getSimpleName}")
       .getOrCreate()
     val sc = spark.sparkContext
+    var input = "data/graphx/followers.txt"
+    if (args.length > 0) {
+      input = args(0)
+    }
 
     // $example on$
     // Load the graph as in the PageRank example
-    val graph = GraphLoader.edgeListFile(sc, "data/graphx/followers.txt")
+    val graph = GraphLoader.edgeListFile(sc, input)
     // Find the connected components
     val cc = graph.connectedComponents().vertices
     // Join the connected components with the usernames
