@@ -19,6 +19,7 @@ package org.apache.spark.storage
 
 import java.io.IOException
 import java.util.{HashMap => JHashMap}
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -46,7 +47,7 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
-  private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
+  private val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
 
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
@@ -71,6 +72,48 @@ class BlockManagerMasterEndpoint(
   val proactivelyReplicate = conf.get("spark.storage.replication.proactive", "false").toBoolean
 
   logInfo("BlockManagerMasterEndpoint up")
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+      // MB
+      var memSize = 0L
+      var diskSize = 0L
+
+      // MB
+      val unit = 1000000
+
+      val builder: mutable.StringBuilder = new mutable.StringBuilder()
+      builder.append("\n------- stat logging start ------\n")
+
+      blockManagerInfo.foreach {
+        case (k: BlockManagerId, v: BlockManagerInfo) =>
+
+          var memSizeForManager = 0L
+          var diskSizeForManager = 0L
+
+          v.blocks.values.forEach {
+            stat: BlockStatus =>
+              memSizeForManager += stat.memSize
+              diskSizeForManager += stat.diskSize
+
+              memSize += stat.memSize
+              diskSize += stat.diskSize
+          }
+
+          builder.append(s"BlockManager ${k.host}: memory ${memSizeForManager/unit}, " +
+            s"disk ${diskSizeForManager/unit}\n")
+      }
+
+      builder.append(s"Total size memory: ${memSize/unit}, " +
+        s"disk: ${diskSize/unit}\n")
+
+      builder.append("------- stat logging end ------\n")
+
+      logInfo(builder.toString())
+    }
+  }
+  scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
