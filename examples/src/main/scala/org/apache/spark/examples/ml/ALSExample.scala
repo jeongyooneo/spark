@@ -43,6 +43,9 @@ object ALSExample {
   // $example off$
 
   def main(args: Array[String]) {
+    @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+    val startTime = System.nanoTime
+
     val spark = SparkSession
       .builder
       .appName("ALSExample")
@@ -94,6 +97,8 @@ object ALSExample {
     // movieSubSetRecs.show()
 
     spark.stop()
+    val jct = (System.nanoTime() - startTime) / 1000000
+    mylogger.info("Vanilla ALS JCT: " + jct + " ms")
   }
 }
 // scalastyle:on println

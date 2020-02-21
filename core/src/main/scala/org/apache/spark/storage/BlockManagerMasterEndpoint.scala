@@ -100,7 +100,7 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager ${k.host}: memory ${memSizeForManager/unit}, " +
+          builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
             s"disk ${diskSizeForManager/unit}\n")
       }
 
