@@ -101,7 +101,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       }
     }
 
-    logInfo(s"SortedBlockCost: ${sortedBlockCost}")
+    // logInfo(s"SortedBlockCost: ${sortedBlockCost}")
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
   }
 
@@ -346,7 +346,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     // logInfo(s"child blocks for $blockId: $uncachedChildList")
 
     if (cost <= 0 || uncachedChildNum == 0) {
-      logInfo(s"Cost of $blockId: $cost * $uncachedChildNum, time: $nodeCreatedTime")
+      // logInfo(s"Cost of $blockId: $cost * $uncachedChildNum, time: $nodeCreatedTime")
     }
 
     new BlockCost(

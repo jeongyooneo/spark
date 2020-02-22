@@ -136,8 +136,8 @@ class BlockManagerMasterEndpoint(
           }
 
 
-          builder.append(s"BlockManager ${k.host}: memory ${memSizeForManager/unit}, " +
-            s"disk ${diskSizeForManager/unit}\n")
+          builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
+            s"disk ${diskSizeForManager/unit} disagg: ${disaggSize/unit}\n")
       }
 
 

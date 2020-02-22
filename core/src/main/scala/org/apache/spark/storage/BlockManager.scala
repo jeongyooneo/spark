@@ -1291,9 +1291,13 @@ private[spark] class BlockManager(
 
   private def estimateIteratorSize[T](iter: Iterator[T],
                                       classTag: ClassTag[T]): Long = {
+    logInfo("jy: Not size-track iterators and just put them to disagg")
+    /*
     var vector = new SizeTrackingVector[T]()(classTag)
     iter.foreach(vector += _)
     vector.estimateSize()
+    */
+    0L
   }
 
   /**
