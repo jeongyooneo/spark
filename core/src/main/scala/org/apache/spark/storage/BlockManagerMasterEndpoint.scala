@@ -83,7 +83,6 @@ class BlockManagerMasterEndpoint(
       val unit = 1000000
 
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
-      builder.append("\n------- stat logging start ------\n")
 
       blockManagerInfo.foreach {
         case (k: BlockManagerId, v: BlockManagerInfo) =>
@@ -107,9 +106,7 @@ class BlockManagerMasterEndpoint(
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}\n")
 
-      builder.append("------- stat logging end ------\n")
-
-      logInfo(builder.toString())
+      // logInfo(builder.toString())
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
