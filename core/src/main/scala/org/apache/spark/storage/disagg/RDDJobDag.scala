@@ -338,10 +338,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     // logInfo(s"parent blocks for $blockId: $parentBlocks")
 
-    val uncachedChildList = collectUncachedChildBlocks(rddNode, blockId,
+    val uncachedChildNum = collectUncachedChildBlocks(rddNode, blockId,
       new mutable.HashSet[Int](), new mutable.HashSet[Int]())
-
-    val uncachedChildNum = uncachedChildList.size
 
     // logInfo(s"child blocks for $blockId: $uncachedChildList")
 
@@ -353,21 +351,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       cost * uncachedChildNum,
       nodeCreatedTime,
       parentBlocks,
-      times,
-      uncachedChildList)
+      times)
   }
 
   private def collectUncachedChildBlocks(rddNode: RDDNode, blockId: BlockId,
                                       stageSet: mutable.HashSet[Int],
-                                      visitedRdds: mutable.HashSet[Int]): ListBuffer[BlockId] = {
+                                      visitedRdds: mutable.HashSet[Int]): Int = {
 
-    val l: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]()
+    var cnt = 0
 
     // logInfo(s"blockId: $blockId, " +
     //  s"rddNode: ${rddNode.rddId}/${rddNode.stageId}, stageSet: $stageSet")
 
     if (visitedRdds.contains(rddNode.rddId)) {
-      return l
+      return cnt
     } else {
       visitedRdds.add(rddNode.rddId)
     }
@@ -377,14 +374,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       if (!childnode.currentStoredBlocks.contains(childBlockId)) {
         if (!stageSet.contains(childnode.stageId) &&
           !completedStages.contains(childnode.stageId)) {
-          l.append(childBlockId)
+          cnt += 1
           stageSet.add(childnode.stageId)
         }
-        l.appendAll(collectUncachedChildBlocks(childnode, blockId, stageSet, visitedRdds))
+        cnt += collectUncachedChildBlocks(childnode, blockId, stageSet, visitedRdds)
       }
     }
 
-    l
+    cnt
   }
 
   def taskStarted(taskId: String): Unit = synchronized {
@@ -586,8 +583,7 @@ object RDDJobDag extends Logging {
   class BlockCost(val cost: Long,
                   val createTime: Long,
                   val rootParentBlock: ListBuffer[BlockId],
-                  val rootParentStartTime: ListBuffer[Long],
-                  val childBlocks: ListBuffer[BlockId]) {
+                  val rootParentStartTime: ListBuffer[Long]) {
 
     override def toString: String = {
       s"$cost"
