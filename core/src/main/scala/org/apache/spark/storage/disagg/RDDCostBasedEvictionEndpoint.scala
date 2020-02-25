@@ -256,7 +256,6 @@ class RDDCostBasedEvictionEndpoint(
                     if (timeToRemove(blockInfo.createdTime, currTime)) {
                       removeBlocks.append((blockId, blockInfo))
                     }
-                }
                   case None =>
                 }
               }
