@@ -17,6 +17,8 @@
 
 package org.apache.spark.storage.disagg
 
+import java.util.Random
+
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
@@ -70,6 +72,15 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
+    /*
+    val r = scala.util.Random
+
+    if (taskId.contains("rdd_2_")) {
+      true
+    } else {
+      false
+    }
+    */
     val prevTime = prevDiscardTime.get()
 
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)
@@ -77,8 +88,6 @@ class RDDCostBasedEvictionEndpoint(
 
     val storingCost =
       rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
-
-    // logInfo(s"Request $blockId, size $estimateSize 222")
 
     if (storingCost < 2000) {
       // the cost due to discarding >  cost to store
@@ -226,3 +235,4 @@ class RDDCostBasedEvictionEndpoint(
     // do nothing
   }
 }
+

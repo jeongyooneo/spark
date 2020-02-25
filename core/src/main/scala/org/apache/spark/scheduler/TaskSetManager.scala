@@ -851,6 +851,7 @@ private[spark] class TaskSetManager(
           // If the task result wasn't serializable, there's no point in trying to re-execute it.
           logError("Task %s in stage %s (TID %d) had a not serializable result: %s; not retrying"
             .format(info.id, taskSet.id, tid, ef.description))
+          logError(ef.className + ef.fullStackTrace)
           abort("Task %s in stage %s (TID %d) had a not serializable result: %s".format(
             info.id, taskSet.id, tid, ef.description))
           return

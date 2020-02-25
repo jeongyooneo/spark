@@ -111,7 +111,6 @@ class BlockManagerMasterEndpoint(
       val unit = 1000000
 
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
-      builder.append("------- stat logging start ------\n")
 
       if (rddJobDag.isDefined &&
         conf.get("spark.disagg.evictpolicy", "None").equals("DRDD")) {
@@ -140,11 +139,8 @@ class BlockManagerMasterEndpoint(
             s"disk ${diskSizeForManager/unit} disagg: ${disaggSize/unit}\n")
       }
 
-
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")
-
-      builder.append("------- stat logging end ------\n")
 
       logInfo(builder.toString())
     }

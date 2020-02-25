@@ -34,8 +34,18 @@ object DecisionTreeClassificationExample {
       .appName("DecisionTreeClassificationExample")
       .getOrCreate()
     // $example on$
+
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
+    var isCacheSet = false
+
+    if (args.length > 1) {
+      isCacheSet = args(0).toBoolean
+      path = args(1)
+    }
+
     // Load the data stored in LIBSVM format as a DataFrame.
-    val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+    val data = spark.read.format("libsvm").load(prefix + path)
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
@@ -57,6 +67,7 @@ object DecisionTreeClassificationExample {
     val dt = new DecisionTreeClassifier()
       .setLabelCol("indexedLabel")
       .setFeaturesCol("indexedFeatures")
+      .setCacheNodeIds(isCacheSet)
 
     // Convert indexed labels back to original labels.
     val labelConverter = new IndexToString()
@@ -93,3 +104,4 @@ object DecisionTreeClassificationExample {
   }
 }
 // scalastyle:on println
+
