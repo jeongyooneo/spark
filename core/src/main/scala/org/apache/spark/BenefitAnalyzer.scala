@@ -49,6 +49,7 @@ class BenefitAnalyzer()
       consecutive += 1
     }
 
+
     if (consecutive == 3 && System.currentTimeMillis() - prevEvictTime >=
       TimeUnit.SECONDS.toMillis(10)) {
 
@@ -61,5 +62,7 @@ class BenefitAnalyzer()
         case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
       }
     }
+
+    prevBenefitVal = (compReduction, totalSize)
   }
 }
