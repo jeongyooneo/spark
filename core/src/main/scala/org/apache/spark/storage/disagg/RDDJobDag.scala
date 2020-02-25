@@ -112,6 +112,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       }
     }
 
+    totalSize /= 1000 // KB
+    totalSize = Math.max(1, totalSize)
+
     logInfo(s"SortedBlockCost: ${sortedBlockCost}")
     logInfo(s"Benefit: ${totalImportance/totalSize}, importance $totalImportance, size: $totalSize")
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
