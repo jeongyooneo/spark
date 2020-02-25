@@ -37,14 +37,62 @@ class BenefitAnalyzer()
   var consecutive = 0
   var prevEvictTime = System.currentTimeMillis()
 
+  val windowSize: Int = 10
+
+
+  private def findMax: (Int, (Long, Long)) = {
+    var maxIndex = 0
+    var maxVal: (Long, Long) = (0L, 1L)
+    var cnt = 0
+    window.foreach(v => {
+      if (maxVal._1.toDouble / maxVal._2 < v._1.toDouble / v._2) {
+        maxVal = v
+        maxIndex = cnt
+      }
+      cnt += 1
+    })
+
+    (maxIndex, maxVal)
+  }
 
   def analyze(compReduction: Long,
               totalSize: Long): Unit = {
 
+    /*
     disaggBlockManagerEndpoint match {
       case None =>
       case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
     }
+    */
+
+    logInfo(s"$window")
+
+    // delta
+    if (window.size < windowSize) {
+      window.append((compReduction, totalSize))
+    } else {
+      // find max
+      val (index, maxVal) = findMax
+
+      // find delta
+      val timeElapsed = (windowSize - index) * 2
+
+      val delta = ((maxVal._1.toDouble / maxVal._2)
+        - (compReduction.toDouble / totalSize)) / timeElapsed
+
+      if (delta > 0.35 / 20) {
+        // reduce size !!
+        logInfo(s"Delta for benefit $delta")
+        disaggBlockManagerEndpoint match {
+          case None =>
+          case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
+        }
+      }
+
+      window.remove(0)
+      window.append((compReduction, totalSize))
+    }
+
 
     /*
     val currBenefit = compReduction.toDouble / totalSize
