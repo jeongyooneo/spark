@@ -247,16 +247,16 @@ class RDDCostBasedEvictionEndpoint(
                 (totalSize - benefit.totalSize)
 
               if (adjustBenefit >= prevBenefit * 0.8) {
-
+                logInfo(s"Remove block for " +
+                  s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
+                  s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
 
                 disaggBlockInfo.get(blockId) match {
                   case Some(blockInfo) =>
                     if (timeToRemove(blockInfo.createdTime, currTime)) {
-                      logInfo(s"Remove block for " +
-                        s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
-                        s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
                       removeBlocks.append((blockId, blockInfo))
                     }
+                }
                   case None =>
                 }
               }
