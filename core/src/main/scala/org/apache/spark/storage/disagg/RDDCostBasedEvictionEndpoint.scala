@@ -96,18 +96,21 @@ class RDDCostBasedEvictionEndpoint(
       }
 
       // If we have enough space in disagg memory, cache it
-      if (totalSize.get() + estimateSize < threshold) {
-        logInfo(s"Storing $blockId, cost: $storingCost, " +
-          s"size $estimateSize / $totalSize, threshold: $threshold")
 
-        blocksSizeToBeCreated.put(blockId, estimateSize)
-        totalSize.addAndGet(estimateSize)
-        rddJobDag.get.storingBlock(blockId, estimateSize)
+     // if (totalSize.get() + estimateSize < threshold) {
+      logInfo(s"Storing $blockId, cost: $storingCost, " +
+        s"size $estimateSize / $totalSize, threshold: $threshold")
 
-        return true
-      }
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+      rddJobDag.get.storingBlock(blockId, estimateSize)
+
+      return true
+      // }
 
       // Else, select a victim to evict
+
+      /*
       var totalCost = 0L
       var totalDiscardSize = 0L
 
@@ -211,11 +214,14 @@ class RDDCostBasedEvictionEndpoint(
 
         true
       }
+      */
     }
   }
 
   override def evictBlocksToIncreaseBenefit(
                 totalCompReduction: Long, totalSize: Long): Unit = synchronized {
+
+    logInfo("Call evictBlocksToIncrease benefit...")
     // do sth !!
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
@@ -226,7 +232,36 @@ class RDDCostBasedEvictionEndpoint(
         jobDag.sortedBlockByBenefit match {
           case None =>
           case Some(sortedBlocks) =>
-            // TODO: evict blocks !!
+            val prevBenefit = totalCompReduction.toDouble / totalSize
+            val iterator = sortedBlocks.iterator
+            var rmCompReduction: Long = 0L
+            var rmSize: Long = 0L
+
+            while (iterator.hasNext) {
+              val tuple = iterator.next()
+              val blockId = tuple._1
+              val benefit = tuple._2
+
+              rmCompReduction += benefit.totalReduction
+              rmSize += benefit.totalSize
+
+              val adjustBenefit = (totalCompReduction - rmCompReduction).toDouble /
+                (totalSize - rmSize)
+
+              logInfo(s"Adjusted benefit: $adjustBenefit/$benefit, " +
+                s"for block $blockId, $rmCompReduction, $rmSize")
+
+              if (adjustBenefit > prevBenefit) {
+                disaggBlockInfo.get(blockId) match {
+                  case Some(blockInfo) =>
+                    removeBlocks.append((blockId, blockInfo))
+                  case None =>
+                }
+              } else {
+                rmCompReduction -= benefit.totalReduction
+                rmSize -= benefit.totalSize
+              }
+            }
         }
     }
 
