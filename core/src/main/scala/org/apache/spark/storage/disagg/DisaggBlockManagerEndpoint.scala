@@ -236,6 +236,8 @@ abstract class DisaggBlockManagerEndpoint(
     true
   }
 
+  def fileWriteEndCall(blockId: BlockId, size: Long): Unit
+
   def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
     // logInfo(s"Disagg endpoint: file write end: $blockId, size $size")
     val info = disaggBlockInfo.get(blockId)
@@ -267,6 +269,7 @@ abstract class DisaggBlockManagerEndpoint(
       */
 
       logInfo(s"Storing file writing $blockId, total: $totalSize")
+      fileWriteEndCall(blockId, size)
       true
     }
   }

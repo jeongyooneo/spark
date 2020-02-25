@@ -142,6 +142,10 @@ class NectarEvictionEndpoint(
     true
   }
 
+  override def fileWriteEndCall(blockId: BlockId, size: Long): Unit = {
+
+  }
+
   override def fileRemovedCall(blockInfo: CrailBlockInfo): Unit = {
     rddJobDag.get.removingBlock(blockInfo.bid)
   }

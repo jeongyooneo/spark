@@ -89,19 +89,31 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     logInfo(s"BlockCost: ${blockCost}")
   }
 
+  // Return benefit = (total importance/total size)
   def updateCostAndSort: Unit = {
     val l: mutable.ListBuffer[(BlockId, BlockCost)] = new mutable.ListBuffer[(BlockId, BlockCost)]()
 
+    var totalImportance: Long = 0L
+    var totalSize: Long = 0L
+
     vertices.foreach { v =>
       val vertex = v._2
-      vertex.currentStoredBlocks.keys.foreach { key: BlockId =>
-        val cost = calculateCost(key)
-        blockCost.put(key, cost)
-        l.append((key, cost))
+      vertex.currentStoredBlocks.foreach { entry: (BlockId, Long) =>
+        val blockId = entry._1
+        val size = entry._2
+
+        val cost = calculateCost(blockId)
+        blockCost.put(blockId, cost)
+
+        l.append((blockId, cost))
+
+        totalImportance += cost.cost
+        totalSize += size
       }
     }
 
     logInfo(s"SortedBlockCost: ${sortedBlockCost}")
+    logInfo(s"Benefit: ${totalImportance/totalSize}, importance $totalImportance, size: $totalSize")
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
   }
 
@@ -124,11 +136,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
   }
 
-  def storingBlock(blockId: BlockId): Unit = {
+  def storingBlock(blockId: BlockId, size: Long): Unit = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    rddNode.currentStoredBlocks.put(blockId, true)
+    rddNode.currentStoredBlocks.put(blockId, size)
     if (!rddNode.storedBlocksCreatedTime.contains(blockId)) {
       rddNode.storedBlocksCreatedTime.put(blockId, System.currentTimeMillis())
     }
@@ -416,8 +428,11 @@ class RDDNode(val rddId: Int,
   val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
   var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
   var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
-  val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]().asScala
+
+  // <blockId, size>
+  val currentStoredBlocks: concurrent.Map[BlockId, Long] =
+    new ConcurrentHashMap[BlockId, Long]().asScala
+
   val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]().asScala
 

@@ -41,6 +41,10 @@ class NoEvictionManagerEndpoint(
   logInfo("LRUEvictionManagerEndpoint up")
 
 
+  override def fileWriteEndCall(blockId: BlockId, size: Long): Unit = {
+
+  }
+
   override def fileCreatedCall(blockInfo: CrailBlockInfo): Unit = {
 
   }

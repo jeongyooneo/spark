@@ -102,7 +102,7 @@ class RDDCostBasedEvictionEndpoint(
 
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
-        rddJobDag.get.storingBlock(blockId)
+        rddJobDag.get.storingBlock(blockId, estimateSize)
 
         return true
       }
@@ -207,11 +207,15 @@ class RDDCostBasedEvictionEndpoint(
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
-        rddJobDag.get.storingBlock(blockId)
+        rddJobDag.get.storingBlock(blockId, estimateSize)
 
         true
       }
     }
+  }
+
+  override def fileWriteEndCall(blockId: BlockId, size: Long): Unit = {
+    rddJobDag.get.storingBlock(blockId, size)
   }
 
   override def fileRemovedCall(blockInfo: CrailBlockInfo): Unit = {

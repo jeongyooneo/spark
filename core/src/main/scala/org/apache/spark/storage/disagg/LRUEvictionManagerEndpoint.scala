@@ -78,6 +78,10 @@ class LRUEvictionManagerEndpoint(
     lruPointer
   }
 
+  override def fileWriteEndCall(blockId: BlockId, size: Long): Unit = {
+
+  }
+
   override def taskStartedCall(taskId: String): Unit = {
 
   }
