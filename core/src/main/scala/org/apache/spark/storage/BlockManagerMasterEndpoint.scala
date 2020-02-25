@@ -19,9 +19,10 @@ package org.apache.spark.storage
 
 import java.io.IOException
 import java.util.{HashMap => JHashMap}
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 
+import scala.collection.{concurrent, mutable}
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 
@@ -46,8 +47,7 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
-  private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
-
+  private val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
@@ -72,12 +72,52 @@ class BlockManagerMasterEndpoint(
 
   logInfo("BlockManagerMasterEndpoint up")
 
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+      // MB
+      var memSize = 0L
+      var diskSize = 0L
+
+      // MB
+      val unit = 1000000
+
+      val builder: mutable.StringBuilder = new mutable.StringBuilder()
+
+      blockManagerInfo.foreach {
+        case (k: BlockManagerId, v: BlockManagerInfo) =>
+
+          var memSizeForManager = 0L
+          var diskSizeForManager = 0L
+
+          v.blocks.values.foreach {
+            stat: BlockStatus =>
+              memSizeForManager += stat.memSize
+              diskSizeForManager += stat.diskSize
+
+              memSize += stat.memSize
+              diskSize += stat.diskSize
+          }
+
+          builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
+            s"disk ${diskSizeForManager/unit}\n")
+      }
+
+      builder.append(s"Total size memory: ${memSize/unit}, " +
+        s"disk: ${diskSize/unit}\n")
+
+      // logInfo(builder.toString())
+    }
+  }
+  scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
       context.reply(register(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint))
 
     case _updateBlockInfo @
-        UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
+        UpdateBlockInfo(blockManagerId, blockId, storageLevel,
+        deserializedSize, size) =>
       context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
 
@@ -268,7 +308,7 @@ class BlockManagerMasterEndpoint(
 
   // Remove a block from the slaves that have it. This can only be used to remove
   // blocks that the master knows about.
-  private def removeBlockFromWorkers(blockId: BlockId) {
+  def removeBlockFromWorkers(blockId: BlockId) {
     val locations = blockLocations.get(blockId)
     if (locations != null) {
       locations.foreach { blockManagerId: BlockManagerId =>
@@ -293,7 +333,7 @@ class BlockManagerMasterEndpoint(
   private def storageStatus: Array[StorageStatus] = {
     blockManagerInfo.map { case (blockManagerId, info) =>
       new StorageStatus(blockManagerId, info.maxMem, Some(info.maxOnHeapMem),
-        Some(info.maxOffHeapMem), info.blocks.asScala)
+        Some(info.maxOffHeapMem), info.blocks)
     }.toArray
   }
 
@@ -343,7 +383,7 @@ class BlockManagerMasterEndpoint(
           if (askSlaves) {
             info.slaveEndpoint.ask[Seq[BlockId]](getMatchingBlockIds)
           } else {
-            Future { info.blocks.asScala.keys.filter(filter).toSeq }
+            Future { info.blocks.keys.filter(filter).toSeq }
           }
         future
       }
@@ -478,17 +518,21 @@ class BlockManagerMasterEndpoint(
 
   override def onStop(): Unit = {
     askThreadPool.shutdownNow()
+    scheduler.shutdownNow()
   }
 }
 
 @DeveloperApi
-case class BlockStatus(storageLevel: StorageLevel, memSize: Long, diskSize: Long) {
+case class BlockStatus(storageLevel: StorageLevel,
+                       memSize: Long,
+                       diskSize: Long) {
   def isCached: Boolean = memSize + diskSize > 0
 }
 
 @DeveloperApi
 object BlockStatus {
-  def empty: BlockStatus = BlockStatus(StorageLevel.NONE, memSize = 0L, diskSize = 0L)
+  def empty: BlockStatus = BlockStatus(
+    StorageLevel.NONE, memSize = 0L, diskSize = 0L)
 }
 
 private[spark] class BlockManagerInfo(
@@ -505,12 +549,13 @@ private[spark] class BlockManagerInfo(
   private var _remainingMem: Long = maxMem
 
   // Mapping from block id to its status.
-  private val _blocks = new JHashMap[BlockId, BlockStatus]
+  private val _blocks: concurrent.Map[BlockId, BlockStatus] =
+    new ConcurrentHashMap[BlockId, BlockStatus]().asScala
 
   // Cached blocks held by this BlockManager. This does not include broadcast blocks.
   private val _cachedBlocks = new mutable.HashSet[BlockId]
 
-  def getStatus(blockId: BlockId): Option[BlockStatus] = Option(_blocks.get(blockId))
+  def getStatus(blockId: BlockId): Option[BlockStatus] = _blocks.get(blockId)
 
   def updateLastSeenMs() {
     _lastSeenMs = System.currentTimeMillis()
@@ -524,14 +569,14 @@ private[spark] class BlockManagerInfo(
 
     updateLastSeenMs()
 
-    val blockExists = _blocks.containsKey(blockId)
+    val blockExists = _blocks.contains(blockId)
     var originalMemSize: Long = 0
     var originalDiskSize: Long = 0
     var originalLevel: StorageLevel = StorageLevel.NONE
 
     if (blockExists) {
       // The block exists on the slave already.
-      val blockStatus: BlockStatus = _blocks.get(blockId)
+      val blockStatus: BlockStatus = _blocks.get(blockId).get
       originalLevel = blockStatus.storageLevel
       originalMemSize = blockStatus.memSize
       originalDiskSize = blockStatus.diskSize
@@ -554,15 +599,18 @@ private[spark] class BlockManagerInfo(
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
         if (blockExists) {
-          logInfo(s"Updated $blockId in memory on ${blockManagerId.hostPort}" +
+          logInfo(s"Updated $blockId in memory on " +
+            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(memSize)}," +
             s" original size: ${Utils.bytesToString(originalMemSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         } else {
-          logInfo(s"Added $blockId in memory on ${blockManagerId.hostPort}" +
+          logInfo(s"Added $blockId in memory on " +
+            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
+
       }
       if (storageLevel.useDisk) {
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
@@ -596,8 +644,9 @@ private[spark] class BlockManagerInfo(
   }
 
   def removeBlock(blockId: BlockId) {
-    if (_blocks.containsKey(blockId)) {
-      _remainingMem += _blocks.get(blockId).memSize
+    if (_blocks.contains(blockId)) {
+      val status: BlockStatus = _blocks.get(blockId).get
+      _remainingMem += status.memSize
       _blocks.remove(blockId)
     }
     _cachedBlocks -= blockId
@@ -607,7 +656,7 @@ private[spark] class BlockManagerInfo(
 
   def lastSeenMs: Long = _lastSeenMs
 
-  def blocks: JHashMap[BlockId, BlockStatus] = _blocks
+  def blocks: concurrent.Map[BlockId, BlockStatus] = _blocks
 
   // This does not include broadcast blocks.
   def cachedBlocks: collection.Set[BlockId] = _cachedBlocks
