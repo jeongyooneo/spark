@@ -226,6 +226,8 @@ class RDDCostBasedEvictionEndpoint(
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
+    val currTime = System.currentTimeMillis()
+
     rddJobDag match {
       case None =>
       case Some(jobDag) =>
@@ -244,14 +246,17 @@ class RDDCostBasedEvictionEndpoint(
                 benefit.totalReduction).toDouble /
                 (totalSize - benefit.totalSize)
 
-              if (adjustBenefit >= prevBenefit) {
-                logInfo(s"Remove block for " +
-                  s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
-                  s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
+              if (adjustBenefit >= prevBenefit * 0.8) {
+
 
                 disaggBlockInfo.get(blockId) match {
                   case Some(blockInfo) =>
-                    removeBlocks.append((blockId, blockInfo))
+                    if (timeToRemove(blockInfo.createdTime, currTime)) {
+                      logInfo(s"Remove block for " +
+                        s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
+                        s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
+                      removeBlocks.append((blockId, blockInfo))
+                    }
                   case None =>
                 }
               }
