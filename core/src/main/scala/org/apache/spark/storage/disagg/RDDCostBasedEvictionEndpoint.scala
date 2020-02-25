@@ -248,10 +248,12 @@ class RDDCostBasedEvictionEndpoint(
               val adjustBenefit = (totalCompReduction - rmCompReduction).toDouble /
                 (totalSize - rmSize)
 
-              logInfo(s"Adjusted benefit: $adjustBenefit/$benefit, " +
-                s"for block $blockId, $rmCompReduction, $rmSize")
 
               if (adjustBenefit > prevBenefit) {
+                logInfo(s"Remove block for " +
+                  s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
+                  s"for block $blockId, $rmCompReduction, $rmSize")
+
                 disaggBlockInfo.get(blockId) match {
                   case Some(blockInfo) =>
                     removeBlocks.append((blockId, blockInfo))
