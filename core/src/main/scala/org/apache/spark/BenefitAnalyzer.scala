@@ -17,8 +17,6 @@
 
 package org.apache.spark
 
-import java.util.concurrent.TimeUnit
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.disagg.DisaggBlockManagerEndpoint
 
@@ -42,6 +40,13 @@ class BenefitAnalyzer()
 
   def analyze(compReduction: Long,
               totalSize: Long): Unit = {
+
+    disaggBlockManagerEndpoint match {
+      case None =>
+      case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
+    }
+
+    /*
     val currBenefit = compReduction.toDouble / totalSize
     val prevBenefit = prevBenefitVal._1.toDouble / prevBenefitVal._2
 
@@ -65,5 +70,6 @@ class BenefitAnalyzer()
     }
 
     prevBenefitVal = (compReduction, totalSize)
+    */
   }
 }

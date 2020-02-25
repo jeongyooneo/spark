@@ -109,7 +109,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       val vertex = v._2
       vertex.currentStoredBlocks.foreach { entry: (BlockId, Long) =>
         val blockId = entry._1
-        val size = entry._2
+        val size = entry._2 / 1000
 
         val cost = calculateCost(blockId)
         blockCost.put(blockId, cost)
@@ -123,12 +123,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       }
     }
 
-    totalSize /= 1000 // KB
+    totalSize /= 1000 // MB
     totalSize = Math.max(1, totalSize)
 
-    logInfo(s"SortedBlockCost: ${sortedBlockCost}")
+    // logInfo(s"SortedBlockCost: ${sortedBlockCost}")
+    logInfo(s"SortedBenefit: $sortedBlockByBenefit")
     logInfo(s"Benefit: ${totalImportance.toDouble/totalSize}," +
-      s" importance $totalImportance, size: ${totalSize/1000} MB")
+      s" importance $totalImportance, size: ${totalSize} MB")
 
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
     sortedBlockByBenefit = Some(blockBenefitList.sortWith(_._2.getVal < _._2.getVal))
@@ -627,6 +628,10 @@ object RDDJobDag extends Logging {
                 val totalSize: Long) {
     def getVal: Double = {
       totalReduction.toDouble / totalSize
+    }
+
+    override def toString: String = {
+      s"${getVal}/($totalReduction,$totalSize)"
     }
   }
 }
