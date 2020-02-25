@@ -81,7 +81,7 @@ object LinearRegressionExample {
       opt[String]("dataFormat")
         .text("data format: libsvm (default), dense (deprecated in Spark v1.1)")
         .action((x, c) => c.copy(dataFormat = x))
-      arg[String]("<input>")
+      arg[String]("input")
         .text("input path to labeled examples")
         .required()
         .action((x, c) => c.copy(input = x))

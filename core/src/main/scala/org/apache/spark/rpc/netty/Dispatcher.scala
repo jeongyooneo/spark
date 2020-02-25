@@ -225,6 +225,7 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
         }
       } catch {
         case _: InterruptedException => // exit
+        case oom: VirtualMachineError => logError(oom.getMessage, oom)
         case t: Throwable =>
           try {
             // Re-submit a MessageLoop so that Dispatcher will still work if
