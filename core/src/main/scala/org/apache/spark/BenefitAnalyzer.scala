@@ -58,13 +58,8 @@ class BenefitAnalyzer()
   def analyze(compReduction: Long,
               totalSize: Long): Unit = {
 
-    /*
-    disaggBlockManagerEndpoint match {
-      case None =>
-      case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
-    }
-    */
 
+    /*
     logInfo(s"$window")
 
     // delta
@@ -78,11 +73,12 @@ class BenefitAnalyzer()
       val timeElapsed = (windowSize - index) * 2
 
       val delta = ((maxVal._1.toDouble / maxVal._2)
-        - (compReduction.toDouble / totalSize)) / timeElapsed
+        - (compReduction.toDouble / totalSize))
 
-      if (delta > 0.35 / 20) {
+      if (delta > 0.35) {
         // reduce size !!
-        logInfo(s"Delta for benefit $delta")
+        logInfo(s"Delta for benefit $delta, max: ${maxVal._1.toDouble / maxVal._2}" +
+          s", curr: ${compReduction.toDouble / totalSize}")
         disaggBlockManagerEndpoint match {
           case None =>
           case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
@@ -92,33 +88,43 @@ class BenefitAnalyzer()
       window.remove(0)
       window.append((compReduction, totalSize))
     }
+    */
 
 
-    /*
     val currBenefit = compReduction.toDouble / totalSize
     val prevBenefit = prevBenefitVal._1.toDouble / prevBenefitVal._2
+
+    window.append((compReduction, totalSize))
 
     if (prevBenefit > currBenefit) {
       consecutive += 1
     } else {
       consecutive = 0
+      window.clear()
     }
 
-    if (consecutive == 3 && System.currentTimeMillis() - prevEvictTime >=
-      TimeUnit.SECONDS.toMillis(10)) {
+    if (consecutive >= 3) {
+      val (index, maxVal) = findMax
 
-      // evict !!
-      prevEvictTime = System.currentTimeMillis()
-      logInfo(s"Start evicting to increase benefit!! ${compReduction}, $totalSize")
-      consecutive = 0
-      disaggBlockManagerEndpoint match {
-        case None =>
-        case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
+      val delta = ((maxVal._1.toDouble / maxVal._2)
+        - (compReduction.toDouble / totalSize))
+
+      if (delta > 0.5) {
+        // evict !!
+        prevEvictTime = System.currentTimeMillis()
+        logInfo(s"Start evicting to increase benefit!! ${compReduction}, $totalSize")
+
+        disaggBlockManagerEndpoint match {
+          case None =>
+          case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
+        }
       }
+
+      consecutive = 0
+      window.clear()
     }
 
     prevBenefitVal = (compReduction, totalSize)
-    */
   }
 }
 
