@@ -263,7 +263,7 @@ class RDDCostBasedEvictionEndpoint(
                     }
                   case None =>
                 }
-              } els e{
+              } else {
                 rmComp -= benefit.totalReduction
                 rmComp -= benefit.totalSize
               }
