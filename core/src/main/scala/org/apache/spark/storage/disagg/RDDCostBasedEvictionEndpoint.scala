@@ -237,16 +237,21 @@ class RDDCostBasedEvictionEndpoint(
             val prevBenefit = totalCompReduction.toDouble / totalSize
             val iterator = sortedBlocks.iterator
 
+            var rmComp: Long = 0L
+            var rmSize: Long = 0L
+
             while (iterator.hasNext) {
               val tuple = iterator.next()
               val blockId = tuple._1
               val benefit = tuple._2
 
+              rmComp += benefit.totalReduction
+              rmSize += benefit.totalSize
               val adjustBenefit = (totalCompReduction -
-                benefit.totalReduction).toDouble /
-                (totalSize - benefit.totalSize)
+                rmComp).toDouble /
+                (totalSize - rmSize)
 
-              if (adjustBenefit >= prevBenefit * 0.8) {
+              if (adjustBenefit >= prevBenefit) {
                 logInfo(s"Remove block for " +
                   s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
                   s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
@@ -258,6 +263,9 @@ class RDDCostBasedEvictionEndpoint(
                     }
                   case None =>
                 }
+              } els e{
+                rmComp -= benefit.totalReduction
+                rmComp -= benefit.totalSize
               }
             }
         }
