@@ -53,7 +53,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
   val benefitAnalyzer: BenefitAnalyzer = new BenefitAnalyzer
 
-  var globalBenefit: Benefit = None
+  var globalBenefit: Option[Benefit] = None
 
   if (autocaching) {
     // clear cached rdds
@@ -127,7 +127,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
 
     totalSize = Math.max(1, totalSize)
-    globalBenefit = new Benefit(totalImportance, totalSize)
+    globalBenefit = Some(new Benefit(totalImportance, totalSize))
 
     // logInfo(s"SortedBlockCost: ${sortedBlockCost}")
     logInfo(s"SortedBenefit: $sortedBlockByBenefit")
