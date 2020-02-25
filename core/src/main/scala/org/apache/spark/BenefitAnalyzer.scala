@@ -47,8 +47,9 @@ class BenefitAnalyzer()
 
     if (prevBenefit > currBenefit) {
       consecutive += 1
+    } else {
+      consecutive = 0
     }
-
 
     if (consecutive == 3 && System.currentTimeMillis() - prevEvictTime >=
       TimeUnit.SECONDS.toMillis(10)) {
