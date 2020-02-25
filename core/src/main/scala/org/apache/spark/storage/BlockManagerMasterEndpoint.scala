@@ -18,6 +18,10 @@
 package org.apache.spark.storage
 
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
+import java.util.{HashMap => JHashMap}
+
 import org.apache.spark.SparkConf
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
@@ -27,9 +31,6 @@ import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.storage.disagg.RDDJobDag
 import org.apache.spark.util.{ThreadUtils, Utils}
 
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
-import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConverters._
 import scala.collection.{concurrent, mutable}
 import scala.concurrent.{ExecutionContext, Future}
@@ -99,6 +100,8 @@ class BlockManagerMasterEndpoint(
   }
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
+
+
   val task = new Runnable {
     def run(): Unit = {
 
@@ -117,6 +120,8 @@ class BlockManagerMasterEndpoint(
         conf.get("spark.disagg.evictpolicy", "None").equals("DRDD")) {
         rddJobDag.get.updateCostAndSort
       }
+
+
 
       blockManagerInfo.foreach {
         case (k: BlockManagerId, v: BlockManagerInfo) =>

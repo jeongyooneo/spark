@@ -154,6 +154,10 @@ class NectarEvictionEndpoint(
 
   }
 
+  override def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit = {
+
+  }
+
   override def fileReadCall(blockInfo: CrailBlockInfo): Unit = {
     disaggBlockInfo.get(blockInfo.bid) match {
       case None =>

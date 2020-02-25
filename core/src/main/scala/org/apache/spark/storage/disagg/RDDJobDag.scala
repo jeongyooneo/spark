@@ -20,9 +20,9 @@ package org.apache.spark.storage.disagg
 
 import java.util.concurrent.ConcurrentHashMap
 
-import org.apache.spark.SparkConf
+import org.apache.spark.{BenefitAnalyzer, SparkConf}
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.disagg.RDDJobDag.BlockCost
+import org.apache.spark.storage.disagg.RDDJobDag.{Benefit, BlockCost}
 import org.apache.spark.storage.{BlockId, RDDBlockId}
 import org.mortbay.util.ajax.JSON
 
@@ -40,12 +40,18 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     new ConcurrentHashMap[BlockId, BlockCost]().asScala
   @volatile
   var sortedBlockCost: Option[mutable.ListBuffer[(BlockId, BlockCost)]] = None
+
+  // For benefit
+  var sortedBlockByBenefit: Option[mutable.ListBuffer[(BlockId, Benefit)]] = None
+
   val blockCreatedTimes: concurrent.Map[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]().asScala
   val stageStartTime: concurrent.Map[Int, Long] =
     new ConcurrentHashMap[Int, Long]().asScala
   val taskStartTime: concurrent.Map[String, Long] = new ConcurrentHashMap[String, Long]().asScala
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
+
+  val benefitAnalyzer: BenefitAnalyzer = new BenefitAnalyzer
 
   if (autocaching) {
     // clear cached rdds
@@ -93,6 +99,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   def updateCostAndSort: Unit = {
     val l: mutable.ListBuffer[(BlockId, BlockCost)] = new mutable.ListBuffer[(BlockId, BlockCost)]()
 
+    val blockBenefitList: mutable.ListBuffer[(BlockId, Benefit)] =
+      new mutable.ListBuffer[(BlockId, Benefit)]()
+
     var totalImportance: Long = 0L
     var totalSize: Long = 0L
 
@@ -107,6 +116,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
         l.append((blockId, cost))
 
+        blockBenefitList.append((blockId, new Benefit(cost.cost, size)))
+
         totalImportance += cost.cost
         totalSize += size
       }
@@ -117,8 +128,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     logInfo(s"SortedBlockCost: ${sortedBlockCost}")
     logInfo(s"Benefit: ${totalImportance.toDouble/totalSize}," +
-      s" importance $totalImportance, size: $totalSize")
+      s" importance $totalImportance, size: ${totalSize/1000} MB")
+
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
+    sortedBlockByBenefit = Some(blockBenefitList.sortWith(_._2.getVal < _._2.getVal))
+    benefitAnalyzer.analyze(totalImportance, totalSize)
   }
 
   override def toString: String = {
@@ -606,6 +620,13 @@ object RDDJobDag extends Logging {
 
     override def toString: String = {
       s"$cost"
+    }
+  }
+
+  class Benefit(val totalReduction: Long,
+                val totalSize: Long) {
+    def getVal: Double = {
+      totalReduction.toDouble / totalSize
     }
   }
 }

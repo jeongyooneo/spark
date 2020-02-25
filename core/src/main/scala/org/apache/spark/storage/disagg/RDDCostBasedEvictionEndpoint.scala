@@ -201,7 +201,7 @@ class RDDCostBasedEvictionEndpoint(
 
         evictBlocks(removeBlocks)
         removeBlocks.foreach { t =>
-          rddJobDag.get.removingBlock(blockId)
+          rddJobDag.get.removingBlock(t._1)
         }
 
         logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
@@ -211,6 +211,28 @@ class RDDCostBasedEvictionEndpoint(
 
         true
       }
+    }
+  }
+
+  override def evictBlocksToIncreaseBenefit(
+                totalCompReduction: Long, totalSize: Long): Unit = synchronized {
+    // do sth !!
+    val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+      new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+
+    rddJobDag match {
+      case None =>
+      case Some(jobDag) =>
+        jobDag.sortedBlockByBenefit match {
+          case None =>
+          case Some(sortedBlocks) =>
+            // TODO: evict blocks !!
+        }
+    }
+
+    evictBlocks(removeBlocks)
+    removeBlocks.foreach { t =>
+      rddJobDag.get.removingBlock(t._1)
     }
   }
 

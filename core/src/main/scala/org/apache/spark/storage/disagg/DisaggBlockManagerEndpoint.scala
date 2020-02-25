@@ -51,6 +51,11 @@ abstract class DisaggBlockManagerEndpoint(
 
   val threshold: Long = disaggCapacityMB * (1000 * 1000)
   val rddJobDag = blockManagerMaster.rddJobDag
+  rddJobDag match {
+    case Some(dag) => dag.benefitAnalyzer.setDisaggBlockManagerEndpoint(this)
+    case None =>
+  }
+
   val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
   val totalSize: AtomicLong = new AtomicLong(0)
@@ -116,6 +121,7 @@ abstract class DisaggBlockManagerEndpoint(
   def stageSubmittedCall(stageId: Int): Unit
 
   def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean
+  def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit
 
   // abstract method definition
   // abstract method definition
@@ -154,6 +160,7 @@ abstract class DisaggBlockManagerEndpoint(
       })
     }
   }
+
 
   def fileCreated(blockId: BlockId): Boolean = {
     if (disaggBlockInfo.contains(blockId)) {

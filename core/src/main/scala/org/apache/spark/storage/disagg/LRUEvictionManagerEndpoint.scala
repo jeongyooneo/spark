@@ -94,6 +94,10 @@ class LRUEvictionManagerEndpoint(
 
   }
 
+  override def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit = {
+
+  }
+
   override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
 
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =

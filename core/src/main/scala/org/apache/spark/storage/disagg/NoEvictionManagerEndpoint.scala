@@ -57,6 +57,10 @@ class NoEvictionManagerEndpoint(
 
   }
 
+  override def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit = {
+
+  }
+
   override def taskStartedCall(taskId: String): Unit = {
 
   }
