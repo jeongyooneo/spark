@@ -17,9 +17,12 @@
 
 package org.apache.spark.storage.disagg
 
+import java.util.concurrent.TimeUnit
+
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
+import org.apache.spark.storage.disagg.RDDJobDag.BlockCost
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 
 import scala.collection.mutable
@@ -218,8 +221,29 @@ class RDDCostBasedEvictionEndpoint(
     }
   }
 
+  private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
+    val percent = 5
+    val index = blocks.size * (0.01 * percent)
+    var compSum = 0L
+    var sizeSum = 0L
+
+    for (i <- 0 until index) {
+      compSum += blocks(i)._2.cost
+      val s = disaggBlockInfo.get(blocks(i)._1) match {
+        case None => 0L
+        case Some(info) => info.size
+      }
+
+      sizeSum += s
+    }
+  }
+
   override def evictBlocksToIncreaseBenefit(
                 totalCompReduction: Long, totalSize: Long): Unit = synchronized {
+
+    // compute histogram
+    // max: 5% computation
+
 
     logInfo("Call evictBlocksToIncrease benefit...")
     // do sth !!
@@ -231,20 +255,35 @@ class RDDCostBasedEvictionEndpoint(
     rddJobDag match {
       case None =>
       case Some(jobDag) =>
-        jobDag.sortedBlockByBenefit match {
+        jobDag.sortedBlockCost match {
           case None =>
           case Some(sortedBlocks) =>
+
             val prevBenefit = totalCompReduction.toDouble / totalSize
             val iterator = sortedBlocks.iterator
 
             var rmComp: Long = 0L
             var rmSize: Long = 0L
 
+
+
             while (iterator.hasNext) {
               val tuple = iterator.next()
               val blockId = tuple._1
               val benefit = tuple._2
 
+              disaggBlockInfo.get(blockId) match {
+                case Some(blockInfo) =>
+                  if (timeToRemove(blockInfo.createdTime, currTime) &&
+                    benefit.totalReduction <= TimeUnit.SECONDS.toMillis(2)) {
+                    logInfo(s"Remove block for decreasing comp benefit " +
+                      s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
+                    removeBlocks.append((blockId, blockInfo))
+                  }
+                case None =>
+              }
+
+              /*
               rmComp += benefit.totalReduction
               rmSize += benefit.totalSize
               val adjustBenefit = (totalCompReduction -
@@ -267,6 +306,7 @@ class RDDCostBasedEvictionEndpoint(
                 rmComp -= benefit.totalReduction
                 rmComp -= benefit.totalSize
               }
+              */
             }
         }
     }
