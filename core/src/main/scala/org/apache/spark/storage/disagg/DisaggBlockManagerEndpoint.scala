@@ -331,6 +331,8 @@ abstract class DisaggBlockManagerEndpoint(
       } else if (!disaggBlockInfo.get(blockId).get.writeDone) {
         throw new RuntimeException(s"disagg block size is 0.. not write done $blockId")
       } else {
+        val size = disaggBlockInfo.get(blockId).get.size
+        logInfo(s"Disagg Size of $blockId : $size")
         context.reply(disaggBlockInfo.get(blockId).get.size)
       }
   }
