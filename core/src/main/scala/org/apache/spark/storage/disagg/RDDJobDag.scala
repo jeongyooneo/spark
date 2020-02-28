@@ -138,7 +138,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     sortedBlockByBenefit = Some(blockBenefitList.sortWith(_._2.getVal < _._2.getVal))
     try {
       benefitAnalyzer.analyze(totalImportance, totalSize)
-    } catch{
+    } catch {
       case x: Exception =>
         logWarning(s"Exception at benefitAnalyzer!!")
         x.printStackTrace()
