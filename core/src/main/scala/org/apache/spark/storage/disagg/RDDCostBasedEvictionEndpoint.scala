@@ -226,7 +226,7 @@ class RDDCostBasedEvictionEndpoint(
                   val sizeRatio: Double) {
 
     override def toString: String = {
-      s"($percentage, $compRatio, $sizeRatio"
+      s"($percentage, $compRatio, $sizeRatio)"
     }
 
     def sizeCompRatio: Double = {
@@ -268,8 +268,10 @@ class RDDCostBasedEvictionEndpoint(
         toAdd = true
       }
 
-      histogram.append(new HistoInfo(percentage.toInt, i,
-        compSum.toDouble / totalCost, sizeSum.toDouble / totalSize))
+      if (toAdd) {
+        histogram.append(new HistoInfo(percentage.toInt, i,
+          compSum.toDouble / totalCost, sizeSum.toDouble / totalSize))
+      }
     }
 
     histogram
@@ -342,7 +344,8 @@ class RDDCostBasedEvictionEndpoint(
             System.currentTimeMillis() - prevEvictTime >= 6000) {
               prevEvictTime = System.currentTimeMillis()
               val percent = maxSizeCompRatio.percentage
-              logInfo(s"Start to evict ${percent} blocks for histogram... ${maxSizeCompRatio}")
+              logInfo(s"Start to evict ${percent/maxSizeCompRatio.index}" +
+                s" blocks for histogram... ${maxSizeCompRatio}")
               removeBlocks.appendAll(removePercent(sortedBlocks, maxSizeCompRatio.index))
             }
 
