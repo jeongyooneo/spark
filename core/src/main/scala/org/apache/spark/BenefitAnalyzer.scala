@@ -93,7 +93,6 @@ class BenefitAnalyzer()
       window.remove(0)
       window.append((compReduction, totalSize))
     }
-    */
 
 
     val currBenefit = compReduction.toDouble / totalSize
@@ -130,6 +129,7 @@ class BenefitAnalyzer()
     }
 
     prevBenefitVal = (compReduction, totalSize)
+    */
   }
 }
 

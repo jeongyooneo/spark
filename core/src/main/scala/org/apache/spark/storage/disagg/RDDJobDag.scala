@@ -136,7 +136,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
     sortedBlockByBenefit = Some(blockBenefitList.sortWith(_._2.getVal < _._2.getVal))
-    benefitAnalyzer.analyze(totalImportance, totalSize)
+    try {
+      benefitAnalyzer.analyze(totalImportance, totalSize)
+    } catch{
+      case x: Exception =>
+        logWarning(s"Exception at benefitAnalyzer!!")
+        x.printStackTrace()
+        throw new RuntimeException(x)
+    }
   }
 
   override def toString: String = {
