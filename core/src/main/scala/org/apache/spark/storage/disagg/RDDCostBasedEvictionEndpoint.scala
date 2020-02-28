@@ -235,7 +235,7 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
-    val percents = List(1, 3, 5, 7, 10)
+    val percents = List(0.5, 1, 1.5, 2)
     val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
 
     var compSum = 0L
@@ -342,11 +342,11 @@ class RDDCostBasedEvictionEndpoint(
             logInfo(s"histogram: $histogram\n maxSizeCompRatio for histogram: $maxSizeCompRatio")
 
             // sizeReduction / compReduction >= 2
-            if (maxSizeCompRatio.sizeCompRatio >= 3 &&
-            System.currentTimeMillis() - prevEvictTime >= 6000) {
+            if (maxSizeCompRatio.sizeCompRatio >= 5 &&
+            System.currentTimeMillis() - prevEvictTime >= 10000) {
               prevEvictTime = System.currentTimeMillis()
               val percent = maxSizeCompRatio.percentage
-              logInfo(s"Start to evict ${percent/maxSizeCompRatio.index}" +
+              logInfo(s"Start to evict ${percent/maxSizeCompRatio.index/sortedBlocks.size}" +
                 s" blocks for histogram... ${maxSizeCompRatio}")
               removeBlocks.appendAll(removePercent(sortedBlocks, maxSizeCompRatio.index))
             }
