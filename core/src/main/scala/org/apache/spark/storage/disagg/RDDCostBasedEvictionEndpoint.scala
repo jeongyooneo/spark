@@ -340,7 +340,7 @@ class RDDCostBasedEvictionEndpoint(
             logInfo(s"histogram: $histogram\n maxSizeCompRatio for histogram: $maxSizeCompRatio")
 
             // sizeReduction / compReduction >= 2
-            if (maxSizeCompRatio.sizeCompRatio >= 2 &&
+            if (maxSizeCompRatio.sizeCompRatio >= 3 &&
             System.currentTimeMillis() - prevEvictTime >= 6000) {
               prevEvictTime = System.currentTimeMillis()
               val percent = maxSizeCompRatio.percentage

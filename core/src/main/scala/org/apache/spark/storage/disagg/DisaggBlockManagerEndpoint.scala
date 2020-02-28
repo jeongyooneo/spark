@@ -226,7 +226,7 @@ abstract class DisaggBlockManagerEndpoint(
   }
 
   def timeToRemove(blockCreatedTime: Long, currTime: Long): Boolean = {
-    currTime - blockCreatedTime > 8 * 1000
+    currTime - blockCreatedTime > 12 * 1000
   }
 
   def fileRemoved(blockId: BlockId): Boolean = {
