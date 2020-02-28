@@ -17,8 +17,6 @@
 
 package org.apache.spark.storage.disagg
 
-import java.util.concurrent.TimeUnit
-
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
@@ -26,6 +24,7 @@ import org.apache.spark.storage.disagg.RDDJobDag.BlockCost
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 
 /**
@@ -222,21 +221,73 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
-    val percent = 5
-    val index = blocks.size * (0.01 * percent)
+    val percents = List(1, 3, 5, 7, 10)
+    val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
+
     var compSum = 0L
     var sizeSum = 0L
+    val histogram: mutable.ListBuffer[(Int, (Long, Long))] =
+      new ListBuffer[(Int, (Long, Long))]
 
-    for (i <- 0 until index) {
-      compSum += blocks(i)._2.cost
+    for (i <- blocks.indices) {
+
       val s = disaggBlockInfo.get(blocks(i)._1) match {
         case None => 0L
         case Some(info) => info.size
       }
 
+      compSum += blocks(i)._2.cost
       sizeSum += s
+
+      if (indices.contains(i)) {
+        val percentIndex = indices.indexOf(i)
+        histogram.append((percents(percentIndex), (compSum, sizeSum)))
+      }
     }
+
+    histogram.map(t => {
+      val percent = t._1
+      val (comp, size) = t._2
+      (percent, (100 * (comp.toDouble / compSum), 100 * (size.toDouble / sizeSum)))
+    })
   }
+
+  private def findMaxSizeCompRatio(
+                histogram: ListBuffer[(Int, (Double, Double))]) = {
+    var maxVal: (Int, (Double, Double)) = (0, (1, 0))
+
+    histogram.foreach(x => {
+      if (maxVal._2._2 / maxVal._2._1 < x._2._2 / x._2._1) {
+        maxVal = x
+      }
+    })
+
+    maxVal
+  }
+
+  private def removePercent(blocks: mutable.ListBuffer[(BlockId, BlockCost)],
+                            percent: Int) = {
+    val currTime = System.currentTimeMillis()
+    val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+      new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+
+    for (i <- 0  until (blocks.size * 0.01 * percent).toInt) {
+      disaggBlockInfo.get(blocks(i)._1) match {
+        case None =>
+        case Some(blockInfo) =>
+          if (timeToRemove(blockInfo.createdTime, currTime)) {
+            logInfo(s"Remove block for histogram " +
+              s"for block ${blockInfo.bid}, ${blocks(i)._2.cost}, ${blockInfo.size}")
+            removeBlocks.append((blockInfo.bid, blockInfo))
+          }
+      }
+    }
+
+    removeBlocks
+  }
+
+
+  var prevEvictTime = System.currentTimeMillis()
 
   override def evictBlocksToIncreaseBenefit(
                 totalCompReduction: Long, totalSize: Long): Unit = synchronized {
@@ -259,57 +310,69 @@ class RDDCostBasedEvictionEndpoint(
           case None =>
           case Some(sortedBlocks) =>
 
-            val prevBenefit = totalCompReduction.toDouble / totalSize
-            val iterator = sortedBlocks.iterator
+            val histogram = calculateHistogram(sortedBlocks)
+            logInfo(s"histogram: $histogram")
+            val maxSizeCompRatio = findMaxSizeCompRatio(histogram)
 
-            var rmComp: Long = 0L
-            var rmSize: Long = 0L
+            // sizeReduction / compReduction >= 2
+            if (maxSizeCompRatio._2._2 / maxSizeCompRatio._2._1 >= 2 &&
+            System.currentTimeMillis() - prevEvictTime >= 6000) {
+              prevEvictTime = System.currentTimeMillis()
+              val percent = maxSizeCompRatio._1
+              logInfo(s"Start to evict ${percent} blocks for histogram... ${maxSizeCompRatio}")
+              removeBlocks.appendAll(removePercent(sortedBlocks, percent))
+            }
+
+          /*
+        val prevBenefit = totalCompReduction.toDouble / totalSize
+        val iterator = sortedBlocks.iterator
+
+        var rmComp: Long = 0L
+        var rmSize: Long = 0L
 
 
 
-            while (iterator.hasNext) {
-              val tuple = iterator.next()
-              val blockId = tuple._1
-              val benefit = tuple._2
+        while (iterator.hasNext) {
+          val tuple = iterator.next()
+          val blockId = tuple._1
+          val benefit = tuple._2
 
-              disaggBlockInfo.get(blockId) match {
-                case Some(blockInfo) =>
-                  if (timeToRemove(blockInfo.createdTime, currTime) &&
-                    benefit.totalReduction <= TimeUnit.SECONDS.toMillis(2)) {
-                    logInfo(s"Remove block for decreasing comp benefit " +
-                      s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
-                    removeBlocks.append((blockId, blockInfo))
-                  }
-                case None =>
-              }
-
-              /*
-              rmComp += benefit.totalReduction
-              rmSize += benefit.totalSize
-              val adjustBenefit = (totalCompReduction -
-                rmComp).toDouble /
-                (totalSize - rmSize)
-
-              if (adjustBenefit >= prevBenefit) {
-                logInfo(s"Remove block for " +
-                  s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
+          disaggBlockInfo.get(blockId) match {
+            case Some(blockInfo) =>
+              if (timeToRemove(blockInfo.createdTime, currTime) &&
+                benefit.totalReduction <= TimeUnit.SECONDS.toMillis(2)) {
+                logInfo(s"Remove block for decreasing comp benefit " +
                   s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
-
-                disaggBlockInfo.get(blockId) match {
-                  case Some(blockInfo) =>
-                    if (timeToRemove(blockInfo.createdTime, currTime)) {
-                      removeBlocks.append((blockId, blockInfo))
-                    }
-                  case None =>
-                }
-              } else {
-                rmComp -= benefit.totalReduction
-                rmComp -= benefit.totalSize
+                removeBlocks.append((blockId, blockInfo))
               }
-              */
+            case None =>
+          }
+
+          rmComp += benefit.totalReduction
+          rmSize += benefit.totalSize
+          val adjustBenefit = (totalCompReduction -
+            rmComp).toDouble /
+            (totalSize - rmSize)
+
+          if (adjustBenefit >= prevBenefit) {
+            logInfo(s"Remove block for " +
+              s"adjusted benefit: $adjustBenefit/$prevBenefit, " +
+              s"for block $blockId, ${benefit.totalReduction}, ${benefit.totalSize}")
+
+            disaggBlockInfo.get(blockId) match {
+              case Some(blockInfo) =>
+                if (timeToRemove(blockInfo.createdTime, currTime)) {
+                  removeBlocks.append((blockId, blockInfo))
+                }
+              case None =>
+            }
+          } else {
+            rmComp -= benefit.totalReduction
+            rmComp -= benefit.totalSize
+          }
+          */
             }
         }
-    }
 
     evictBlocks(removeBlocks)
     removeBlocks.foreach { t =>
