@@ -220,15 +220,36 @@ class RDDCostBasedEvictionEndpoint(
     }
   }
 
+  class HistoInfo(val percentage: Int,
+                  val index: Int,
+                  val compRatio: Double,
+                  val sizeRatio: Double) {
+
+    override def toString: String = {
+      s"($percentage, $compRatio, $sizeRatio"
+    }
+
+    def sizeCompRatio: Double = {
+      sizeRatio / compRatio
+    }
+  }
+
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
     val percents = List(1, 3, 5, 7, 10)
     val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
 
     var compSum = 0L
     var sizeSum = 0L
-    val histogram: mutable.ListBuffer[(Int, (Long, Long))] =
-      new ListBuffer[(Int, (Long, Long))]
+    val histogram: mutable.ListBuffer[HistoInfo] =
+      new ListBuffer[HistoInfo]
 
+    val totalCost = blocks.map(block => block._2.cost).sum
+    val totalSize = blocks.map(block => disaggBlockInfo.get(block._1) match {
+      case None => 0L
+      case Some(info) => info.size
+    }).sum
+
+    var percentIndex = 0
     for (i <- blocks.indices) {
 
       val s = disaggBlockInfo.get(blocks(i)._1) match {
@@ -239,25 +260,27 @@ class RDDCostBasedEvictionEndpoint(
       compSum += blocks(i)._2.cost
       sizeSum += s
 
-      if (indices.contains(i)) {
-        val percentIndex = indices.indexOf(i)
-        histogram.append((percents(percentIndex), (compSum, sizeSum)))
+      // find index
+      val percentage = 100 * compSum.toDouble / totalCost
+      var toAdd = false
+      while (percentIndex < percents.size && percentage >= percents(percentIndex)) {
+        percentIndex += 1
+        toAdd = true
       }
+
+      histogram.append(new HistoInfo(percentage.toInt, i,
+        compSum.toDouble / totalCost, sizeSum.toDouble / totalSize))
     }
 
-    histogram.map(t => {
-      val percent = t._1
-      val (comp, size) = t._2
-      (percent, (100 * (comp.toDouble / compSum), 100 * (size.toDouble / sizeSum)))
-    })
+    histogram
   }
 
   private def findMaxSizeCompRatio(
-                histogram: ListBuffer[(Int, (Double, Double))]) = {
-    var maxVal: (Int, (Double, Double)) = (0, (1, 0))
+                histogram: ListBuffer[HistoInfo]) = {
+    var maxVal: HistoInfo = new HistoInfo(0, 0, 1, 0)
 
     histogram.foreach(x => {
-      if (maxVal._2._2 / maxVal._2._1 < x._2._2 / x._2._1) {
+      if (maxVal.sizeCompRatio < x.sizeCompRatio) {
         maxVal = x
       }
     })
@@ -266,12 +289,12 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   private def removePercent(blocks: mutable.ListBuffer[(BlockId, BlockCost)],
-                            percent: Int) = {
+                            index: Int) = {
     val currTime = System.currentTimeMillis()
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
-    for (i <- 0  until (blocks.size * 0.01 * percent).toInt) {
+    for (i <- 0  until index) {
       disaggBlockInfo.get(blocks(i)._1) match {
         case None =>
         case Some(blockInfo) =>
@@ -311,16 +334,16 @@ class RDDCostBasedEvictionEndpoint(
           case Some(sortedBlocks) =>
 
             val histogram = calculateHistogram(sortedBlocks)
-            logInfo(s"histogram: $histogram")
             val maxSizeCompRatio = findMaxSizeCompRatio(histogram)
+            logInfo(s"histogram: $histogram\n maxSizeCompRatio for histogram: $maxSizeCompRatio")
 
             // sizeReduction / compReduction >= 2
-            if (maxSizeCompRatio._2._2 / maxSizeCompRatio._2._1 >= 2 &&
+            if (maxSizeCompRatio.sizeCompRatio >= 2 &&
             System.currentTimeMillis() - prevEvictTime >= 6000) {
               prevEvictTime = System.currentTimeMillis()
-              val percent = maxSizeCompRatio._1
+              val percent = maxSizeCompRatio.percentage
               logInfo(s"Start to evict ${percent} blocks for histogram... ${maxSizeCompRatio}")
-              removeBlocks.appendAll(removePercent(sortedBlocks, percent))
+              removeBlocks.appendAll(removePercent(sortedBlocks, maxSizeCompRatio.index))
             }
 
           /*
