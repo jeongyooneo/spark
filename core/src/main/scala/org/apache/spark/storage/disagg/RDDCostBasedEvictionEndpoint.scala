@@ -261,14 +261,16 @@ class RDDCostBasedEvictionEndpoint(
       sizeSum += s
 
       // find index
-      val percentage = 100 * compSum.toDouble / totalCost
+      val percentage = 100 * compSum.toDouble / Math.max(1, totalCost)
       var toAdd = false
       while (percentIndex < percents.size && percentage >= percents(percentIndex)) {
         percentIndex += 1
         toAdd = true
       }
 
-      if (toAdd) {
+      if (toAdd && percentage <= percents.last
+        // prevent zero division
+        && totalSize > 500 && totalCost > 10) {
         histogram.append(new HistoInfo(percentage.toInt, i,
           compSum.toDouble / totalCost, sizeSum.toDouble / totalSize))
       }
