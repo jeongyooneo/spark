@@ -220,7 +220,7 @@ class RDDCostBasedEvictionEndpoint(
     }
   }
 
-  class HistoInfo(val percentage: Int,
+  class HistoInfo(val percentage: Double,
                   val index: Int,
                   val compRatio: Double,
                   val sizeRatio: Double) {
@@ -271,7 +271,7 @@ class RDDCostBasedEvictionEndpoint(
       if (toAdd && percentage <= percents.last
         // prevent zero division
         && totalSize > 500 && totalCost > 10) {
-        histogram.append(new HistoInfo(percentage.toInt, i,
+        histogram.append(new HistoInfo(percentage, i,
           compSum.toDouble / totalCost, sizeSum.toDouble / totalSize))
       }
     }
