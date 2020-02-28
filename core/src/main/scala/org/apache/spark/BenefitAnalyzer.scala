@@ -59,7 +59,6 @@ class BenefitAnalyzer()
               totalSize: Long): Unit = {
 
 
-
     disaggBlockManagerEndpoint match {
       case None =>
       case Some(manager) => manager.evictBlocksToIncreaseBenefit(compReduction, totalSize)
@@ -97,7 +96,6 @@ class BenefitAnalyzer()
     */
 
 
-    /*
     val currBenefit = compReduction.toDouble / totalSize
     val prevBenefit = prevBenefitVal._1.toDouble / prevBenefitVal._2
 
@@ -132,6 +130,6 @@ class BenefitAnalyzer()
     }
 
     prevBenefitVal = (compReduction, totalSize)
-    */
   }
 }
+
