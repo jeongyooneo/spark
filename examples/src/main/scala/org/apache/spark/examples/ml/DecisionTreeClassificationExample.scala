@@ -37,15 +37,24 @@ object DecisionTreeClassificationExample {
 
     val prefix = "data/mllib/"
     var path = "sample_libsvm_data.txt"
+    var train_path = ""
+    var test_path = ""
     var isCacheSet = false
 
-    if (args.length > 1) {
-      isCacheSet = args(0).toBoolean
-      path = args(1)
+    if (args.length > 2) {
+      train_path = args(0)
+      test_path = args(1)
+    } else if (args.length > 1) {
+      path = args(0)
     }
 
-    // Load the data stored in LIBSVM format as a DataFrame.
     val data = spark.read.format("libsvm").load(prefix + path)
+    var Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
+
+    if (args.length > 2) {
+      trainingData = spark.read.format("libsvm").load(prefix + train_path)
+      testData = spark.read.format("libsvm").load(prefix + test_path)
+    }
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
@@ -59,9 +68,6 @@ object DecisionTreeClassificationExample {
       .setOutputCol("indexedFeatures")
       .setMaxCategories(4) // features with > 4 distinct values are treated as continuous.
       .fit(data)
-
-    // Split the data into training and test sets (30% held out for testing).
-    val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
 
     // Train a DecisionTree model.
     val dt = new DecisionTreeClassifier()
