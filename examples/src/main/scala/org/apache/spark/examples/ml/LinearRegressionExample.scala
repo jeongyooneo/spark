@@ -51,6 +51,7 @@ object LinearRegressionExample {
       fracTest: Double = 0.2) extends AbstractParams[Params]
 
   def main(args: Array[String]) {
+    /*
     val defaultParams = Params()
 
     val parser = new OptionParser[Params]("LinearRegressionExample") {
@@ -98,27 +99,30 @@ object LinearRegressionExample {
       case Some(params) => run(params)
       case _ => sys.exit(1)
     }
+    */
+    run(args)
   }
 
-  def run(params: Params): Unit = {
+  def run(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder
-      .appName(s"LinearRegressionExample with $params")
+      .appName(s"LinearRegressionExample")
       .getOrCreate()
 
-    println(s"LinearRegressionExample with parameters:\n$params")
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
 
-    // Load training and test data and cache it.
-    val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
-      params.dataFormat, params.testInput, "regression", params.fracTest)
+    if (args.length > 0) {
+      path = args(0)
+    }
+
+    // Load the data stored in LIBSVM format as a DataFrame.
+    val data = spark.read.format("libsvm").load(prefix + path)
+    val Array(training, test) = data.randomSplit(Array(0.7, 0.3))
 
     val lir = new LinearRegression()
       .setFeaturesCol("features")
       .setLabelCol("label")
-      .setRegParam(params.regParam)
-      .setElasticNetParam(params.elasticNetParam)
-      .setMaxIter(params.maxIter)
-      .setTol(params.tol)
 
     // Train the model
     val startTime = System.nanoTime()
@@ -138,3 +142,4 @@ object LinearRegressionExample {
   }
 }
 // scalastyle:on println
+
