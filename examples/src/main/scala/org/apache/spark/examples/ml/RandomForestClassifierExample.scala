@@ -37,13 +37,20 @@ object RandomForestClassifierExample {
     var path = "sample_libsvm_data.txt"
     var train_path = ""
     var test_path = ""
-    var isCacheSet = false
 
-    if (args.length > 2) {
-      train_path = args(0)
-      test_path = args(1)
-    } else if (args.length > 1) {
-      path = args(0)
+    var numCategories: Int = 4
+    var numTrees = 10
+    val isCacheSet = false
+
+    if (args.length == 4) {
+      numCategories = args(0).toInt
+      numTrees = args(1).toInt
+      train_path = args(2)
+      test_path = args(3)
+    } else if (args.length == 3) {
+      numCategories = args(0).toInt
+      numTrees = args(1).toInt
+      path = args(2)
     }
 
     // Load and parse the data file, converting it to a DataFrame.
@@ -60,14 +67,14 @@ object RandomForestClassifierExample {
     val labelIndexer = new StringIndexer()
       .setInputCol("label")
       .setOutputCol("indexedLabel")
-      .fit(data)
+      .fit(trainingData)
     // Automatically identify categorical features, and index them.
     // Set maxCategories so features with > 4 distinct values are treated as continuous.
     val featureIndexer = new VectorIndexer()
       .setInputCol("features")
       .setOutputCol("indexedFeatures")
       .setMaxCategories(numCategories)
-      .fit(data)
+      .fit(trainingData)
 
     // Train a RandomForest model.
     val rf = new RandomForestClassifier()
