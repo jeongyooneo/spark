@@ -106,7 +106,7 @@ class BlockManagerMasterEndpoint(
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}\n")
 
-      logInfo("\n" + builder.toString())
+      // logInfo("\n" + builder.toString())
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)

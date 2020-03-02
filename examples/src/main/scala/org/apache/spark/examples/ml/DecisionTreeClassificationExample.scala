@@ -68,7 +68,7 @@ object DecisionTreeClassificationExample {
     val featureIndexer = new VectorIndexer()
       .setInputCol("features")
       .setOutputCol("indexedFeatures")
-      .setMaxCategories(4) // features with > 4 distinct values are treated as continuous.
+      .setMaxCategories(1000000) // features with > 4 distinct values are treated as continuous.
       .fit(trainingData)
 
     // Train a DecisionTree model.
