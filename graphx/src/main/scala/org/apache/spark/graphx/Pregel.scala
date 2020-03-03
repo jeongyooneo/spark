@@ -142,7 +142,7 @@ object Pregel extends Logging {
     // Loop
     var prevG: Graph[VD, ED] = null
     var i = 0
-    while (activeMessages > 0 && i < maxIterations) {
+    while (i < 15) {
       // Receive the messages and update the vertices.
       prevG = g
       g = g.joinVertices(messages)(vprog)
