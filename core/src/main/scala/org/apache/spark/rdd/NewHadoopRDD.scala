@@ -224,10 +224,27 @@ class NewHadoopRDD[K, V](
       private var havePair = false
       private var recordsSinceMetricsUpdate = 0
 
+      private val sampledRun = SparkEnv.get.conf
+        .getBoolean("spark.drdd.sampledRun", defaultValue = false)
+
+      logInfo(s"Sampled run  in NewHadoopRDD $sampledRun")
+
+      var cnt = 0
+
       override def hasNext: Boolean = {
         if (!finished && !havePair) {
           try {
-            finished = !reader.nextKeyValue
+            if (sampledRun) {
+              if (cnt >= 100) {
+                logInfo(s"Sampled run reading finished!!")
+                finished = true
+              } else {
+                finished = !reader.nextKeyValue
+                cnt += 1
+              }
+            } else {
+              finished = !reader.nextKeyValue
+            }
           } catch {
             case e: FileNotFoundException if ignoreMissingFiles =>
               logWarning(s"Skipped missing file: ${split.serializableHadoopSplit}", e)

@@ -82,10 +82,11 @@ class RDDCostBasedEvictionEndpoint(
 
     // logInfo(s"Request $blockId, size $estimateSize 222")
 
+    // Screening
     if (storingCost < 2000) {
       // the cost due to discarding >  cost to store
       // we won't store it
-      logInfo(s"Discarding $blockId, discardingCost: $storingCost")
+      logInfo(s"Screening! Discarding $blockId, discardingCost: $storingCost")
 
       return false
     }
