@@ -348,7 +348,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     val finalCost = cost * uncachedChildNum
-    logInfo(s"Disagg Importance of $blockId: $cost * $uncachedChildNum = $finalCost")
+    // logInfo(s"Disagg Importance of $blockId: $cost * $uncachedChildNum = $finalCost")
 
     new BlockCost(
       cost * uncachedChildNum,
