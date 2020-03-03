@@ -225,7 +225,7 @@ class NewHadoopRDD[K, V](
       private var recordsSinceMetricsUpdate = 0
 
       private val sampledRun = SparkEnv.get.conf
-        .getBoolean("spark.drdd.sampledRun", defaultValue = false)
+        .getBoolean("spark.disagg.sampledRun", defaultValue = false)
 
       logInfo(s"Sampled run  in NewHadoopRDD $sampledRun")
 

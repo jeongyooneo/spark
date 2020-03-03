@@ -224,7 +224,7 @@ class HadoopRDD[K, V](
     val iter = new NextIterator[(K, V)] {
 
       private val sampledRun = SparkEnv.get.conf
-        .getBoolean("spark.drdd.sampledRun", defaultValue = false)
+        .getBoolean("spark.disagg.sampledRun", defaultValue = false)
 
       logInfo(s"Sampled run $sampledRun")
 
