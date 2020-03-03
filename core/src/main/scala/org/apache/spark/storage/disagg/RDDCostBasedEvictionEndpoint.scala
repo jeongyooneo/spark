@@ -145,7 +145,7 @@ class RDDCostBasedEvictionEndpoint(
                       case Some(blockInfo) =>
                         // timeToRemove: prevent immediate eviction of the cached block
                         if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                          && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
+                        && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
                           // GC 0 cost blocks
 
                           totalDiscardSize += blockInfo.size
@@ -175,7 +175,7 @@ class RDDCostBasedEvictionEndpoint(
                       // do nothing
                       case Some(blockInfo) =>
                         if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                          && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
+                        && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
 
                           // evict the victim
                           totalDiscardSize += blockInfo.size
