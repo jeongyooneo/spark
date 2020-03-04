@@ -276,7 +276,7 @@ class RDDCostBasedEvictionEndpoint(
       }
     }
 
-    histogram
+    (histogram, totalCost / blocks.size)
   }
 
   private def findMaxSizeCompRatio(
@@ -293,7 +293,8 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   private def removePercent(blocks: mutable.ListBuffer[(BlockId, BlockCost)],
-                            index: Int) = {
+                            index: Int,
+                            avgCost: Long) = {
     val currTime = System.currentTimeMillis()
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
@@ -302,9 +303,11 @@ class RDDCostBasedEvictionEndpoint(
       disaggBlockInfo.get(blocks(i)._1) match {
         case None =>
         case Some(blockInfo) =>
-          if (timeToRemove(blockInfo.createdTime, currTime)) {
+          if (timeToRemove(blockInfo.createdTime, currTime) &&
+                blocks(i)._2.cost < avgCost) {
             logInfo(s"Remove block for histogram " +
-              s"for block ${blockInfo.bid}, ${blocks(i)._2.cost}, ${blockInfo.size}")
+              s"for block ${blockInfo.bid}, ${blocks(i)._2.cost}, ${blockInfo.size}, " +
+              s"avgCost: $avgCost")
             removeBlocks.append((blockInfo.bid, blockInfo))
           }
       }
@@ -337,7 +340,7 @@ class RDDCostBasedEvictionEndpoint(
           case None =>
           case Some(sortedBlocks) =>
 
-            val histogram = calculateHistogram(sortedBlocks)
+            val (histogram, avgCost) = calculateHistogram(sortedBlocks)
             val maxSizeCompRatio = findMaxSizeCompRatio(histogram)
             logInfo(s"histogram: $histogram\n maxSizeCompRatio for histogram: $maxSizeCompRatio")
 
@@ -348,7 +351,7 @@ class RDDCostBasedEvictionEndpoint(
               val percent = maxSizeCompRatio.percentage
               logInfo(s"Start to evict ${percent/maxSizeCompRatio.index/sortedBlocks.size}" +
                 s" blocks for histogram... ${maxSizeCompRatio}")
-              removeBlocks.appendAll(removePercent(sortedBlocks, maxSizeCompRatio.index))
+              removeBlocks.appendAll(removePercent(sortedBlocks, maxSizeCompRatio.index, avgCost))
             }
 
           /*
