@@ -1810,16 +1810,16 @@ private[spark] class BlockManager(
         // remove from disagg
         val removedFromDisagg = disaggStore.remove(blockId)
 
-        if (removedFromDisagg) {
-          logInfo(s"Removed block $blockId from disagg !! remote !!")
+        // if (removedFromDisagg) {
+        logInfo(s"Removed block $blockId from disagg !! remote !!")
 
-          if (tellMaster) {
-            reportBlockStatus(blockId, BlockStatus.empty)
-          }
-          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
-        } else {
-          logWarning(s"Asked to remove block $blockId, which does not exist")
+        if (tellMaster) {
+          reportBlockStatus(blockId, BlockStatus.empty)
         }
+        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        // } else {
+        //  logWarning(s"Asked to remove block $blockId, which does not exist")
+        // }
 
       case Some(info) =>
         removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster, isLocal = false)

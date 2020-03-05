@@ -151,7 +151,7 @@ abstract class DisaggBlockManagerEndpoint(
                   if (info.readCount.get() == 0) {
                     info.isRemoved = true
                     recentlyRemoved.put(b._1, info)
-                    disaggBlockInfo.remove(b._1)
+                    remove(b._1)
                     logInfo(s"Remove block from worker ${b._1}")
                     blockManagerMaster.removeBlockFromWorkers(b._1)
 
@@ -167,6 +167,15 @@ abstract class DisaggBlockManagerEndpoint(
         }
       })
     }
+  }
+
+  private def remove(blockId: BlockId): Boolean = {
+    val path = getPath(blockId)
+    fs.delete(path, false)
+    logInfo(s"jy: Removed block $blockId from disagg")
+    logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
+    fileRemoved(blockId)
+    true
   }
 
 
@@ -253,9 +262,11 @@ abstract class DisaggBlockManagerEndpoint(
     // logInfo(s"Disagg endpoint: file removed: $blockId")
     disaggBlockInfo.remove(blockId) match {
       case None =>
-        val blockInfo = recentlyRemoved.remove(blockId)
-        if (!blocksRemovedByMaster.remove(blockId)) {
-          totalSize.addAndGet(-blockInfo.size)
+        if (recentlyRemoved.contains(blockId)) {
+          val blockInfo = recentlyRemoved.remove(blockId)
+          if (!blocksRemovedByMaster.remove(blockId)) {
+            totalSize.addAndGet(-blockInfo.size)
+          }
         }
       case Some(blockInfo) =>
         recentlyRemoved.remove(blockId)
