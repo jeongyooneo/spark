@@ -68,7 +68,9 @@ abstract class DisaggBlockManagerEndpoint(
     new ConcurrentHashMap[BlockId, Boolean]()
   val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]()
-  val recentlyRemoved: mutable.Set[BlockId] = new mutable.HashSet[BlockId]()
+  // blockId, size
+  val recentlyRemoved: mutable.Map[BlockId, CrailBlockInfo] =
+    new mutable.HashMap[BlockId, CrailBlockInfo]()
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
@@ -134,27 +136,33 @@ abstract class DisaggBlockManagerEndpoint(
 
       executor.submit(new Runnable {
         override def run(): Unit = {
-          if (disaggBlockInfo.get(b._1).isDefined) {
-            val info = disaggBlockInfo.get(b._1).get
+          try {
+            if (disaggBlockInfo.get(b._1).isDefined) {
+              val info = disaggBlockInfo.get(b._1).get
 
-            while (!info.isRemoved) {
-              while (info.readCount.get() > 0) {
-                // waiting...
-                Thread.sleep(1000)
-                logInfo(s"Waiting for deleting ${b._1}, count: ${info.readCount}")
-              }
+              while (!info.isRemoved) {
+                while (info.readCount.get() > 0) {
+                  // waiting...
+                  Thread.sleep(1000)
+                  logInfo(s"Waiting for deleting ${b._1}, count: ${info.readCount}")
+                }
 
-              info.synchronized {
-                if (info.readCount.get() == 0) {
-                  info.isRemoved = true
-                  recentlyRemoved.add(b._1)
+                info.synchronized {
+                  if (info.readCount.get() == 0) {
+                    info.isRemoved = true
+                    recentlyRemoved.put(b._1, info)
+                    disaggBlockInfo.remove(b._1)
+                    logInfo(s"Remove block from worker ${b._1}")
+                    blockManagerMaster.removeBlockFromWorkers(b._1)
 
-                  logInfo(s"Remove block from worker ${b._1}")
-                  blockManagerMaster.removeBlockFromWorkers(b._1)
-
+                  }
                 }
               }
             }
+          } catch {
+            case e: Exception =>
+              e.printStackTrace()
+              throw new RuntimeException(e)
           }
         }
       })
@@ -163,18 +171,30 @@ abstract class DisaggBlockManagerEndpoint(
 
 
   def fileCreated(blockId: BlockId): Boolean = {
-    if (disaggBlockInfo.contains(blockId)) {
-      // logInfo(s"tg: Disagg block is already created $blockId")
-      false
-    } else {
-      logInfo(s"Disagg endpoint: file created: $blockId")
-      val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
-      if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-        fileCreatedCall(blockInfo)
-        true
-      } else {
-        false
-      }
+    disaggBlockInfo.get(blockId) match {
+      case None =>
+        logInfo(s"Disagg endpoint: file created: $blockId")
+        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+        if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
+          fileCreatedCall(blockInfo)
+          true
+        } else {
+          false
+        }
+      case Some(v) =>
+        v.synchronized {
+          if (v.isRemoved) {
+            val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+            if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
+              fileCreatedCall(blockInfo)
+              true
+            } else {
+              false
+            }
+          } else {
+            false
+          }
+        }
     }
   }
 
@@ -231,15 +251,19 @@ abstract class DisaggBlockManagerEndpoint(
 
   def fileRemoved(blockId: BlockId): Boolean = {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
-    val blockInfo = disaggBlockInfo.remove(blockId).get
-    recentlyRemoved.remove(blockId)
-
-    fileRemovedCall(blockInfo)
-
-    if (!blocksRemovedByMaster.remove(blockId)) {
-      totalSize.addAndGet(-blockInfo.size)
+    disaggBlockInfo.remove(blockId) match {
+      case None =>
+        val blockInfo = recentlyRemoved.remove(blockId)
+        if (!blocksRemovedByMaster.remove(blockId)) {
+          totalSize.addAndGet(-blockInfo.size)
+        }
+      case Some(blockInfo) =>
+        recentlyRemoved.remove(blockId)
+        fileRemovedCall(blockInfo)
+        if (!blocksRemovedByMaster.remove(blockId)) {
+          totalSize.addAndGet(-blockInfo.size)
+        }
     }
-
     true
   }
 
@@ -275,7 +299,7 @@ abstract class DisaggBlockManagerEndpoint(
       }
       */
 
-      logInfo(s"Storing file writing $blockId, total: $totalSize")
+      logInfo(s"Storing file writing $blockId, size $size, total: $totalSize")
       fileWriteEndCall(blockId, size)
       true
     }

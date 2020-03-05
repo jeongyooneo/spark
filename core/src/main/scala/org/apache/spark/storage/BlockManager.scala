@@ -1348,6 +1348,10 @@ private[spark] class BlockManager(
                 // val (iter1, iter2):
                 //  (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = iter.duplicate
 
+                // if (blockId.name== "rdd_270_0" || blockId.name== "rdd_270_1") {
+                //  logInfo(s"RDD logging $blockId, $iter")
+                // }
+
                 disaggSuccess = disaggStore.put(blockId,
                   10) { channel =>
                   val out = Channels.newOutputStream(channel)
