@@ -71,7 +71,8 @@ class RDDCostBasedEvictionEndpoint(
     }
   }
 
-  override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
+  override def cachingDecision(
+                blockId: BlockId, estimateSize: Long, taskId: String): Boolean = synchronized {
     val prevTime = prevDiscardTime.get()
 
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)
