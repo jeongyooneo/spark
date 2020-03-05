@@ -1345,17 +1345,17 @@ private[spark] class BlockManager(
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead 22.")
 
-                val (iter1, iter2):
-                  (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = iter.duplicate
+                // val (iter1, iter2):
+                //  (PartiallyUnrolledIterator[T], PartiallyUnrolledIterator[T]) = iter.duplicate
 
                 disaggSuccess = disaggStore.put(blockId,
-                  estimateIteratorSize(iter2, classTag)) { channel =>
+                  10) { channel =>
                   val out = Channels.newOutputStream(channel)
-                  serializerManager.dataSerializeStream(blockId, out, iter1)(classTag)
+                  serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
 
                 if (!disaggSuccess) {
-                  iteratorFromFailedMemoryStorePut = Some(iter1)
+                  iteratorFromFailedMemoryStorePut = Some(iter)
                 } else {
                   size = disaggStore.getSize(blockId)
                 }
@@ -1406,10 +1406,10 @@ private[spark] class BlockManager(
       } else if (level.useDisagg &&
         disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         val it = iterator()
-        val (iter1, iter2) = it.duplicate
-        disaggSuccess = disaggStore.put(blockId, estimateIteratorSize(iter2, classTag)) { channel =>
+        // val (iter1, iter2) = it.duplicate
+        disaggSuccess = disaggStore.put(blockId, 10) { channel =>
           val out = Channels.newOutputStream(channel)
-          serializerManager.dataSerializeStream(blockId, out, iter1)(classTag)
+          serializerManager.dataSerializeStream(blockId, out, it)(classTag)
         }
         size = disaggStore.getSize(blockId)
       }
@@ -1733,14 +1733,13 @@ private[spark] class BlockManager(
         data() match {
           case Left(elements) =>
             val it = elements.toIterator
-            val (iter1, iter2) = it.duplicate
-            disaggStore.put(blockId, estimateIteratorSize(iter2,
-                info.classTag.asInstanceOf[ClassTag[T]])) { channel =>
+            // val (iter1, iter2) = it.duplicate
+            disaggStore.put(blockId, 10) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
                 blockId,
                 out,
-                iter1)(info.classTag.asInstanceOf[ClassTag[T]])
+                it)(info.classTag.asInstanceOf[ClassTag[T]])
             }
           case Right(bytes) =>
             disaggStore.putBytes(blockId, bytes)
