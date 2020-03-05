@@ -235,7 +235,7 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
-    val percents = List(0.5, 1, 1.5, 2)
+    val percents = List(0.1, 0.2, 0.3, 0.5)
     val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
 
     var compSum = 0L
