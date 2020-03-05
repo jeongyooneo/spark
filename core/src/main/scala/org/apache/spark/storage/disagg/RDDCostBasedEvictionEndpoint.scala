@@ -276,7 +276,7 @@ class RDDCostBasedEvictionEndpoint(
       }
     }
 
-    (histogram, totalCost / blocks.size)
+    (histogram, totalCost / Math.max(1, blocks.size))
   }
 
   private def findMaxSizeCompRatio(
