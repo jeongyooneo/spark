@@ -109,19 +109,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     vertices.foreach { v =>
       val vertex = v._2
-      vertex.currentStoredBlocks.foreach { entry: (BlockId, Long) =>
+      vertex.currentStoredBlocks.foreach { entry: (BlockId, Boolean) =>
         val blockId = entry._1
-        val size = entry._2 / 1000
+        // val size = entry._2 / 1000
 
         val cost = calculateCost(blockId)
         blockCost.put(blockId, cost)
 
         l.append((blockId, cost))
 
-        blockBenefitList.append((blockId, new Benefit(cost.cost, size)))
+        // blockBenefitList.append((blockId, new Benefit(cost.cost, size)))
 
-        totalImportance += cost.cost
-        totalSize += size
+        // totalImportance += cost.cost
+        // totalSize += size
       }
     }
 
@@ -165,11 +165,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
   }
 
-  def storingBlock(blockId: BlockId, size: Long): Unit = {
+  def storingBlock(blockId: BlockId): Unit = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    rddNode.currentStoredBlocks.put(blockId, size)
+    rddNode.currentStoredBlocks.put(blockId, true)
     if (!rddNode.storedBlocksCreatedTime.contains(blockId)) {
       rddNode.storedBlocksCreatedTime.put(blockId, System.currentTimeMillis())
     }
@@ -459,8 +459,8 @@ class RDDNode(val rddId: Int,
   var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
 
   // <blockId, size>
-  val currentStoredBlocks: concurrent.Map[BlockId, Long] =
-    new ConcurrentHashMap[BlockId, Long]().asScala
+  val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
+    new ConcurrentHashMap[BlockId, Boolean]().asScala
 
   val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]().asScala
