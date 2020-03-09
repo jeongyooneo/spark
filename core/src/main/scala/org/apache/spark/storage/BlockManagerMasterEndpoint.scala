@@ -117,7 +117,8 @@ class BlockManagerMasterEndpoint(
       builder.append("------- stat logging start ------\n")
 
       if (rddJobDag.isDefined &&
-        conf.get("spark.disagg.evictpolicy", "None").equals("DRDD")) {
+        conf.get("spark.disagg.evictpolicy", "None").equals("DRDD") ||
+        conf.get("spark.disagg.evictpolicy", "None").equals("Autosizing") ) {
         rddJobDag.get.updateCostAndSort
       }
 

@@ -17,8 +17,6 @@
 
 package org.apache.spark.storage.disagg
 
-import java.util.Random
-
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
