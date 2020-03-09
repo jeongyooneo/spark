@@ -223,6 +223,11 @@ class HadoopRDD[K, V](
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
 
+      private val sampledRun = SparkEnv.get.conf
+        .getBoolean("spark.disagg.sampledRun", defaultValue = false)
+
+      logInfo(s"Sampled run $sampledRun")
+
       private val split = theSplit.asInstanceOf[HadoopPartition]
       logInfo("Input split: " + split.inputSplit)
       private val jobConf = getJobConf()
@@ -287,10 +292,22 @@ class HadoopRDD[K, V](
 
       private val key: K = if (reader == null) null.asInstanceOf[K] else reader.createKey()
       private val value: V = if (reader == null) null.asInstanceOf[V] else reader.createValue()
+      var cnt = 0
 
       override def getNext(): (K, V) = {
         try {
-          finished = !reader.next(key, value)
+          if (sampledRun) {
+            if (cnt >= 100) {
+              logInfo(s"Sampled run reading finished!!")
+              finished = true
+            } else {
+              finished = !reader.next(key, value)
+              cnt += 1
+            }
+
+          } else {
+            finished = !reader.next(key, value)
+          }
         } catch {
           case e: FileNotFoundException if ignoreMissingFiles =>
             logWarning(s"Skipped missing file: ${split.inputSplit}", e)

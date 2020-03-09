@@ -497,7 +497,7 @@ object RDDJobDag extends Logging {
   def apply(dagPath: String,
             sparkConf: SparkConf): Option[RDDJobDag] = {
 
-    if (dagPath.equals("??")) {
+    if (dagPath.equals("None")) {
       Option.empty
     } else {
       val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])] = mutable.Map()
