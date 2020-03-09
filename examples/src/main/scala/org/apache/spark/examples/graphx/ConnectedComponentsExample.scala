@@ -58,7 +58,7 @@ object ConnectedComponentsExample {
     // Join the connected components with the usernames
     val users = sc.textFile("data/graphx/users.txt").map { line =>
       val fields = line.split(",")
-      (fields(0).toLong, fields(1))
+      (fields(0).toLong.toString.toLong, fields(1))
     }
     val ccByUsername = users.join(cc).map {
       case (id, (username, cc)) => (username, cc)

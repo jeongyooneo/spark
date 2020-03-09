@@ -415,6 +415,9 @@ object DisaggBlockManagerEndpoint {
     } else if (policy.equals("DRDD")) {
       new RDDCostBasedEvictionEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
+    } else if (policy.equals("Autosizing")) {
+      new RDDAutosizingEvictionEndpoint(rpcEnv, isLocal,
+        conf, listenerBus, blockManagerMaster, thresholdMB)
     } else if (policy.equals("Nectar")) {
        new NectarEvictionEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
