@@ -114,14 +114,11 @@ class BlockManagerMasterEndpoint(
       val unit = 1000000
 
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
-      builder.append("------- stat logging start ------\n")
 
       if (rddJobDag.isDefined &&
         conf.get("spark.disagg.evictpolicy", "None").equals("DRDD")) {
         rddJobDag.get.updateCostAndSort
       }
-
-
 
       blockManagerInfo.foreach {
         case (k: BlockManagerId, v: BlockManagerInfo) =>
@@ -149,9 +146,7 @@ class BlockManagerMasterEndpoint(
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")
 
-      builder.append("------- stat logging end ------\n")
-
-      logInfo(builder.toString())
+      logInfo("\n" + builder.toString())
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
