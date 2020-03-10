@@ -238,7 +238,8 @@ class RDDAutosizingEvictionEndpoint(
   }
 
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
-    val percents = List(compDiscardRatio, compDiscardRatio*2, compDiscardRatio*3, compDiscardRatio*4)
+    val percents = List(compDiscardRatio, compDiscardRatio*2,
+      compDiscardRatio*3, compDiscardRatio*4)
     val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
 
     var compSum = 0L
