@@ -43,6 +43,8 @@ class RDDAutosizingEvictionEndpoint(
     rpcEnv, isLocal, conf, listenerBus, blockManagerMaster, thresholdMB) {
   logInfo("RDDCostBasedEvictionEndpoint up")
 
+  val compDiscardRatio = conf.getDouble("spark.disagg.autosizing.comp", defaultValue = 0.1)
+
   override def taskStartedCall(taskId: String): Unit = {
     rddJobDag match {
       case None =>
@@ -236,7 +238,7 @@ class RDDAutosizingEvictionEndpoint(
   }
 
   private def calculateHistogram(blocks: mutable.ListBuffer[(BlockId, BlockCost)]) = {
-    val percents = List(0.1, 0.2, 0.3, 0.5)
+    val percents = List(compDiscardRatio, compDiscardRatio*2, compDiscardRatio*3, compDiscardRatio*4)
     val indices = percents.map(percent => (blocks.size * 0.01 * percent).toInt)
 
     var compSum = 0L
@@ -347,7 +349,7 @@ class RDDAutosizingEvictionEndpoint(
 
             // sizeReduction / compReduction >= 2
             if (maxSizeCompRatio.sizeCompRatio >= 5 &&
-            System.currentTimeMillis() - prevEvictTime >= 10000) {
+            System.currentTimeMillis() - prevEvictTime >= 6000) {
               prevEvictTime = System.currentTimeMillis()
               val percent = maxSizeCompRatio.percentage
               logInfo(s"Start to evict ${percent/maxSizeCompRatio.index/sortedBlocks.size}" +
