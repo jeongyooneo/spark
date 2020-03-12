@@ -385,7 +385,7 @@ abstract class DisaggBlockManagerEndpoint(
       }
 
     case LocalEviction(blockId, executorId, size) =>
-      localEviction(blockId, executorId, size)
+      context.reply(localEviction(blockId, executorId, size))
   }
 }
 
