@@ -429,6 +429,9 @@ object DisaggBlockManagerEndpoint {
     } else if (policy.equals("Nectar")) {
        new NectarEvictionEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
+    } else if (policy.equals("Local")) {
+      new RDDLocalMemoryPolicyPoint(rpcEnv, isLocal,
+        conf, listenerBus, blockManagerMaster, thresholdMB)
     } else if (policy.equals("None")) {
       new NoEvictionManagerEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
