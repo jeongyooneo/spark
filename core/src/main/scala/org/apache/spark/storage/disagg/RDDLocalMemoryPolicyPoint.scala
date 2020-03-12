@@ -76,7 +76,7 @@ class RDDLocalMemoryPolicyPoint(
     new mutable.HashMap[String, mutable.Map[BlockId, Long]]()
 
   private val blockCountMap: mutable.Map[BlockId, Int] =
-    new mutable.HashMap[BlockId, Int]().withDefaultValue(0)
+    new mutable.HashMap[BlockId, Int]()
 
   override def cachingDecision(
                 blockId: BlockId, estimateSize: Long,
@@ -144,7 +144,7 @@ class RDDLocalMemoryPolicyPoint(
                   val bid = pair._1
                   val cost = pair._2
                   if (map.contains(bid)) {
-                    val elapsed = currTime - recentlyEvictFailBlocks.get(bid).get
+                    val elapsed = currTime - recentlyEvictFailBlocks.getOrElse(bid, 0L)
                     if (elapsed > 10000) {
 
                       recentlyEvictFailBlocks.remove(bid)
