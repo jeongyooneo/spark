@@ -29,7 +29,7 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 import scala.concurrent.duration.Duration
 
-class DisaggBlockManager(
+private[spark] class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging with CrailManager {
 
@@ -37,12 +37,16 @@ class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
   }
 
-  def cachingDecision(blockId: BlockId, estimateSize: Long): Boolean = {
+  def localEviction(blockId: Option[BlockId], executorId: String, size: Long): List[BlockId] = {
+    driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size))
+  }
+
+  def cachingDecision(blockId: BlockId, estimateSize: Long, executorId: String): Boolean = {
 
     val taskContext = TaskContext.get()
     val taskId = s"${taskContext.stageId()}-" +
       s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
-    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize, taskId))
+    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize, taskId, executorId))
   }
 
   def read(blockId: BlockId) : Boolean = {

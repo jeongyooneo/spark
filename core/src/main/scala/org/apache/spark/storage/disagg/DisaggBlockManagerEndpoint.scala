@@ -122,7 +122,8 @@ abstract class DisaggBlockManagerEndpoint(
   def stageCompletedCall(stageId: Int): Unit
   def stageSubmittedCall(stageId: Int): Unit
 
-  def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean
+  def cachingDecision(blockId: BlockId, estimateSize: Long,
+                      taskId: String, executorId: String): Boolean
   def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit
 
   // abstract method definition
@@ -345,6 +346,10 @@ abstract class DisaggBlockManagerEndpoint(
     }
   }
 
+  def localEviction(blockId: Option[BlockId], executorId: String, size: Long): List[BlockId] = {
+    List.empty
+  }
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case FileCreated(blockId) =>
       context.reply(fileCreated(blockId))
@@ -361,8 +366,8 @@ abstract class DisaggBlockManagerEndpoint(
     case DiscardBlocksIfNecessary(estimateSize) =>
       throw new RuntimeException("not supported")
 
-    case StoreBlockOrNot(blockId, estimateSize, taskId) =>
-      context.reply(cachingDecision(blockId, estimateSize, taskId))
+    case StoreBlockOrNot(blockId, estimateSize, taskId, executorId) =>
+      context.reply(cachingDecision(blockId, estimateSize, taskId, executorId))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
@@ -378,6 +383,9 @@ abstract class DisaggBlockManagerEndpoint(
       } else {
         context.reply(disaggBlockInfo.get(blockId).get.size)
       }
+
+    case LocalEviction(blockId, executorId, size) =>
+      localEviction(blockId, executorId, size)
   }
 }
 

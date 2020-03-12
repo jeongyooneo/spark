@@ -39,7 +39,8 @@ private[spark] object DisaggBlockManagerMessages {
   case class DiscardBlocksIfNecessary(estimateSize: Long)
     extends ToBlockManagerMaster
 
-  case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, taskId: String)
+  case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long,
+                             taskId: String, executorId: String)
     extends ToBlockManagerMaster
 
   case class FileWriteEnd(blockId: BlockId, size: Long)
@@ -49,6 +50,11 @@ private[spark] object DisaggBlockManagerMessages {
     extends ToBlockManagerMaster
 
   case class GetSize(blockId: BlockId)
+    extends ToBlockManagerMaster
+
+  // for local decision
+
+  case class LocalEviction(blockId: Option[BlockId], executorId: String, size: Long)
     extends ToBlockManagerMaster
 
 }

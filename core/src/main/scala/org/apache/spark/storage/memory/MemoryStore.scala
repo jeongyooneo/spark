@@ -24,15 +24,14 @@ import java.util.LinkedHashMap
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import com.google.common.io.ByteStreams
-
 import org.apache.spark.{SparkConf, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.{UNROLL_MEMORY_CHECK_PERIOD, UNROLL_MEMORY_GROWTH_FACTOR}
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.serializer.{SerializationStream, SerializerManager}
 import org.apache.spark.storage._
+import org.apache.spark.storage.disagg.DisaggBlockManager
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.{SizeEstimator, Utils}
@@ -83,7 +82,9 @@ private[spark] class MemoryStore(
     blockInfoManager: BlockInfoManager,
     serializerManager: SerializerManager,
     memoryManager: MemoryManager,
-    blockEvictionHandler: BlockEvictionHandler)
+    blockEvictionHandler: BlockEvictionHandler,
+    disaggManager: DisaggBlockManager,
+    executorId: String)
   extends Logging {
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
@@ -153,6 +154,9 @@ private[spark] class MemoryStore(
       val bytes = _bytes()
       assert(bytes.size == size)
       val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
+      // here, we send cache it to the master
+      disaggManager.cachingDecision(blockId, entry.size, executorId)
+
       entries.synchronized {
         entries.put(blockId, entry)
       }
@@ -261,6 +265,9 @@ private[spark] class MemoryStore(
           val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
           assert(success, "transferring unroll memory to storage memory failed")
         }
+
+        // here, we send cache it to the master
+        disaggManager.cachingDecision(blockId, entry.size, executorId)
 
         entries.synchronized {
           entries.put(blockId, entry)
@@ -445,10 +452,30 @@ private[spark] class MemoryStore(
       def blockIsEvictable(blockId: BlockId, entry: MemoryEntry[_]): Boolean = {
           entry.memoryMode == memoryMode && (rddToAdd.isEmpty || rddToAdd != getRddId(blockId))
       }
+
+
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
       entries.synchronized {
+        while (freedMemory < space) {
+          val evictBlockList: List[BlockId] =
+            disaggManager.localEviction(blockId, executorId, space)
+          val iterator = evictBlockList.iterator
+
+          logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList from $executorId")
+          while (iterator.hasNext) {
+            val evictBlock = iterator.next()
+            val entry = entries.get(evictBlock)
+            if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+              selectedBlocks += evictBlock
+              freedMemory += entry.size
+            }
+          }
+        }
+
+
+        /*
         val iterator = entries.entrySet().iterator()
         while (freedMemory < space && iterator.hasNext) {
           val pair = iterator.next()
@@ -464,6 +491,7 @@ private[spark] class MemoryStore(
             }
           }
         }
+        */
       }
 
       def dropBlock[T](blockId: BlockId, entry: MemoryEntry[T]): Unit = {

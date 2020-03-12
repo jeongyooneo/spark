@@ -209,7 +209,8 @@ private[spark] class BlockManager(
   // Actual storage of where blocks are kept
   // This also implements eviction policy
   private[spark] val memoryStore =
-    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this)
+    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this,
+      disaggManager, executorId)
 
   private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
   memoryManager.setMemoryStore(memoryStore)
@@ -1139,6 +1140,9 @@ private[spark] class BlockManager(
       if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
+
+        disaggManager.cachingDecision(blockId, bytes.size, executorId)
+
         val putSucceeded = if (level.deserialized) {
           val values =
             serializerManager.dataDeserializeStream(blockId, bytes.toInputStream())(classTag)
@@ -1170,13 +1174,13 @@ private[spark] class BlockManager(
         if (!putSucceeded && level.useDisagg &&
           disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
           logWarning(s"Persisting block $blockId to disagg instead 11.")
-          disaggStore.putBytes(blockId, bytes)
+          disaggStore.putBytes(blockId, executorId, bytes)
         }
 
       } else if (level.useDisk) {
         diskStore.putBytes(blockId, bytes)
       } else if (level.useDisagg && disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
-        disaggStore.putBytes(blockId, bytes)
+        disaggStore.putBytes(blockId, executorId, bytes)
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
@@ -1353,7 +1357,7 @@ private[spark] class BlockManager(
                 // }
 
                 disaggSuccess = disaggStore.put(blockId,
-                  10) { channel =>
+                  10, executorId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
@@ -1385,7 +1389,7 @@ private[spark] class BlockManager(
                 disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
                 logWarning(s"tg: Persisting block $blockId to disagg instead 33.")
                 disaggSuccess = disaggStore.put(blockId,
-                  partiallySerializedValues.unrolledBuffer.size) { channel =>
+                  partiallySerializedValues.unrolledBuffer.size, executorId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   partiallySerializedValues.finishWritingToStream(out)
                 }
@@ -1411,7 +1415,7 @@ private[spark] class BlockManager(
         disaggStoringPolicy.isStoringEvictedBlockToDisagg(blockId)) {
         val it = iterator()
         // val (iter1, iter2) = it.duplicate
-        disaggSuccess = disaggStore.put(blockId, 10) { channel =>
+        disaggSuccess = disaggStore.put(blockId, 10, executorId) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, it)(classTag)
         }
@@ -1738,7 +1742,7 @@ private[spark] class BlockManager(
           case Left(elements) =>
             val it = elements.toIterator
             // val (iter1, iter2) = it.duplicate
-            disaggStore.put(blockId, 10) { channel =>
+            disaggStore.put(blockId, 10, executorId) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
                 blockId,
@@ -1746,7 +1750,7 @@ private[spark] class BlockManager(
                 it)(info.classTag.asInstanceOf[ClassTag[T]])
             }
           case Right(bytes) =>
-            disaggStore.putBytes(blockId, bytes)
+            disaggStore.putBytes(blockId, executorId, bytes)
         }
       } else {
         logInfo(s"tg: Just evicting block $blockId from memory and disagg.. no caching")

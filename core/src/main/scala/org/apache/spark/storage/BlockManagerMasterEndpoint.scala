@@ -116,9 +116,7 @@ class BlockManagerMasterEndpoint(
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
       builder.append("------- stat logging start ------\n")
 
-      if (rddJobDag.isDefined &&
-        conf.get("spark.disagg.evictpolicy", "None").equals("DRDD") ||
-        conf.get("spark.disagg.evictpolicy", "None").equals("Autosizing") ) {
+      if (rddJobDag.isDefined) {
         rddJobDag.get.updateCostAndSort
       }
 

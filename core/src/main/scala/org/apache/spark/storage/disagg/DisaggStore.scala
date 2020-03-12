@@ -53,7 +53,8 @@ private[spark] class DisaggStore(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def put(blockId: BlockId, estimateSize: Long)(writeFunc: WritableByteChannel => Unit): Boolean = {
+  def put(blockId: BlockId, estimateSize: Long,
+          executorId: String)(writeFunc: WritableByteChannel => Unit): Boolean = {
     // if (contains(blockId)) {
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
@@ -62,7 +63,7 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    if (!disaggManager.cachingDecision(blockId, estimateSize)) {
+    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId)) {
       return false
     }
 
@@ -123,8 +124,9 @@ private[spark] class DisaggStore(
 
   def putBytes[T: ClassTag](
       blockId: BlockId,
+      executorId: String,
       bytes: ChunkedByteBuffer): Unit = {
-    put(blockId, bytes.size) { channel =>
+    put(blockId, bytes.size, executorId) { channel =>
       bytes.writeFully(channel)
     }
   }

@@ -77,7 +77,8 @@ class NectarEvictionEndpoint(
     cost / benefit
   }
 
-  override def cachingDecision(blockId: BlockId, estimateSize: Long, taskId: String): Boolean = {
+  override def cachingDecision(blockId: BlockId, estimateSize: Long,
+                               taskId: String, executorId: String): Boolean = {
     synchronized {
       if (disaggBlockInfo.contains(blockId)) {
         return false
