@@ -477,9 +477,12 @@ private[spark] class MemoryStore(
             if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
               selectedBlocks += evictBlock
               freedMemory += entry.size
-            } else {
+            } else if (entry != null) {
+              logInfo(s"LocalDecision]  eviction fail $evictBlock " +
+                s"from executor $executorId, entry: $entry")
               disaggManager.evictionFail(evictBlock, executorId, entry.size)
-              logInfo(s"LocalDecision]  eviction fail $evictBlock from executor $executorId")
+            } else {
+              logInfo(s"LocalDecision] entry is null $evictBlock...")
             }
           }
         }
