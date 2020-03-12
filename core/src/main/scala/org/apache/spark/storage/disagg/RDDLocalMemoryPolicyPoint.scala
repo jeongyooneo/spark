@@ -135,23 +135,20 @@ class RDDLocalMemoryPolicyPoint(
                     sizeSum += map.get(bid).get
                     evictionList.append(bid)
                     map.remove(bid)
+                    val cnt = blockCountMap.get(bid).get - 1
+                    blockCountMap.put(bid, cnt)
+
+                    if (cnt <= 0) {
+                      rddJobDag.get.removingBlock(bid)
+                    }
 
                     if (sizeSum > evictionSize) {
-                      evictionList.foreach {
-                        bid => val cnt = blockCountMap.get(bid).get - 1
-                          if (cnt <= 0) {
-                            // remove from rddJobDag
-                            rddJobDag.get.removingBlock(bid)
-                          }
-                      }
-
                       logInfo(s"LocalDecision] Evict blocks $evictionList " +
-                        s"from executor $executorId, size $evictionSize")
+                        s"from executor $executorId, size $evictionSize, existing blocks $map")
                       return evictionList.toList
                     }
                   }
               }
-
           }
         }
     }
