@@ -114,8 +114,12 @@ class RDDLocalMemoryPolicyPoint(
     }
   }
 
+  val recentlyEvictFailBlocks: mutable.Map[BlockId, Long] =
+    new mutable.HashMap[BlockId, Long]().withDefaultValue(0L)
+
   override def localEvictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
     executorBlockMap.synchronized {
+      recentlyEvictFailBlocks.put(blockId, System.currentTimeMillis())
      executorBlockMap.get(executorId).get.put(blockId, size)
       blockCountMap.put(blockId, blockCountMap.get(blockId).get + 1)
     }
@@ -130,6 +134,7 @@ class RDDLocalMemoryPolicyPoint(
       case None =>
       case Some(l) =>
         executorBlockMap.synchronized {
+          val currTime = System.currentTimeMillis()
           executorBlockMap.get(executorId) match {
             case None =>
             case Some(map) =>
@@ -139,20 +144,26 @@ class RDDLocalMemoryPolicyPoint(
                   val bid = pair._1
                   val cost = pair._2
                   if (map.contains(bid)) {
-                    sizeSum += map.get(bid).get
-                    evictionList.append(bid)
-                    map.remove(bid)
-                    val cnt = blockCountMap.get(bid).get - 1
-                    blockCountMap.put(bid, cnt)
+                    val elapsed = currTime - recentlyEvictFailBlocks.get(bid).get
+                    if (elapsed > 10000) {
 
-                    if (cnt <= 0) {
-                      rddJobDag.get.removingBlock(bid)
-                    }
+                      recentlyEvictFailBlocks.remove(bid)
 
-                    if (sizeSum > evictionSize) {
-                      logInfo(s"LocalDecision] Evict blocks $evictionList " +
-                        s"from executor $executorId, size $evictionSize, existing blocks $map")
-                      return evictionList.toList
+                      sizeSum += map.get(bid).get
+                      evictionList.append(bid)
+                      map.remove(bid)
+                      val cnt = blockCountMap.get(bid).get - 1
+                      blockCountMap.put(bid, cnt)
+
+                      if (cnt <= 0) {
+                        rddJobDag.get.removingBlock(bid)
+                      }
+
+                      if (sizeSum > evictionSize) {
+                        logInfo(s"LocalDecision] Evict blocks $evictionList " +
+                          s"from executor $executorId, size $evictionSize, existing blocks $map")
+                        return evictionList.toList
+                      }
                     }
                   }
               }
