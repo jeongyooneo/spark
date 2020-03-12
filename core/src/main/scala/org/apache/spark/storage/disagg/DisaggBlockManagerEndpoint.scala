@@ -350,6 +350,10 @@ abstract class DisaggBlockManagerEndpoint(
     List.empty
   }
 
+  def localEvictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
+
+  }
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case FileCreated(blockId) =>
       context.reply(fileCreated(blockId))
@@ -386,6 +390,8 @@ abstract class DisaggBlockManagerEndpoint(
 
     case LocalEviction(blockId, executorId, size) =>
       context.reply(localEviction(blockId, executorId, size))
+    case EvictionFail(blockId, executorId, size) =>
+      localEvictionFail(blockId, executorId, size)
   }
 }
 

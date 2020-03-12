@@ -468,13 +468,18 @@ private[spark] class MemoryStore(
             disaggManager.localEviction(blockId, executorId, space)
           val iterator = evictBlockList.iterator
 
-          logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList from $executorId")
+          logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
+            s"from executor $executorId")
+
           while (iterator.hasNext) {
             val evictBlock = iterator.next()
             val entry = entries.get(evictBlock)
-            if (blockInfoManager.lockForWriting(evictBlock, blocking = true).isDefined) {
+            if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
               selectedBlocks += evictBlock
               freedMemory += entry.size
+            } else {
+              disaggManager.evictionFail(evictBlock, executorId, entry.size)
+              logInfo(s"LocalDecision]  eviction fail $evictBlock from executor $executorId")
             }
           }
         }

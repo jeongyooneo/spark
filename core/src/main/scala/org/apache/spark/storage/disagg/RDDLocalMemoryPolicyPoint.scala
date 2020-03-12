@@ -76,7 +76,7 @@ class RDDLocalMemoryPolicyPoint(
     new mutable.HashMap[String, mutable.Map[BlockId, Long]]()
 
   private val blockCountMap: mutable.Map[BlockId, Int] =
-    new mutable.HashMap[BlockId, Int]()
+    new mutable.HashMap[BlockId, Int]().withDefaultValue(0)
 
   override def cachingDecision(
                 blockId: BlockId, estimateSize: Long,
@@ -111,6 +111,13 @@ class RDDLocalMemoryPolicyPoint(
       map.put(blockId, estimateSize)
 
       return true
+    }
+  }
+
+  override def localEvictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
+    executorBlockMap.synchronized {
+     executorBlockMap.get(executorId).get.put(blockId, size)
+      blockCountMap.put(blockId, blockCountMap.get(blockId).get + 1)
     }
   }
 
@@ -153,9 +160,11 @@ class RDDLocalMemoryPolicyPoint(
         }
     }
 
-    throw new RuntimeException(s"Eviction is not performed in $executorId, block:$blockId " +
-      s".. size: $evictionSize, " +
-      s"${executorBlockMap.get(executorId)}")
+
+    List.empty
+    // throw new RuntimeException(s"Eviction is not performed in $executorId, block:$blockId " +
+    //  s".. size: $evictionSize, " +
+    //  s"${executorBlockMap.get(executorId)}")
   }
 
   var prevEvictTime = System.currentTimeMillis()

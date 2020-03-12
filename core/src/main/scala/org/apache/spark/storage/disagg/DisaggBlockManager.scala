@@ -41,6 +41,10 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size))
   }
 
+  def evictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
+    driverEndpoint.ask(EvictionFail(blockId, executorId, size))
+  }
+
   def cachingDecision(blockId: BlockId, estimateSize: Long, executorId: String): Boolean = {
 
     val taskContext = TaskContext.get()
