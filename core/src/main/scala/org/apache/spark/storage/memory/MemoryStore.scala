@@ -472,7 +472,7 @@ private[spark] class MemoryStore(
           while (iterator.hasNext) {
             val evictBlock = iterator.next()
             val entry = entries.get(evictBlock)
-            if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+            if (blockInfoManager.lockForWriting(evictBlock, blocking = true).isDefined) {
               selectedBlocks += evictBlock
               freedMemory += entry.size
             }

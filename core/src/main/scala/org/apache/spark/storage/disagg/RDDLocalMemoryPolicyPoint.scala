@@ -153,7 +153,9 @@ class RDDLocalMemoryPolicyPoint(
         }
     }
 
-    throw new RuntimeException(s"Eviction is not performed in $executorId .. what?")
+    throw new RuntimeException(s"Eviction is not performed in $executorId, block:$blockId " +
+      s".. size: $evictionSize, " +
+      s"${executorBlockMap.get(executorId)}")
   }
 
   var prevEvictTime = System.currentTimeMillis()
