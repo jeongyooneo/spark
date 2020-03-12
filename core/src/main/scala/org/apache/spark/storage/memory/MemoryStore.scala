@@ -463,7 +463,11 @@ private[spark] class MemoryStore(
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
       entries.synchronized {
-        while (freedMemory < space) {
+        var cnt = 0
+        while (freedMemory < space && cnt < 3) {
+
+          cnt +=  1
+
           val evictBlockList: List[BlockId] =
             disaggManager.localEviction(blockId, executorId, space)
           val iterator = evictBlockList.iterator
