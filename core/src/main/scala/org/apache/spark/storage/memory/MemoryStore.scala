@@ -154,8 +154,11 @@ private[spark] class MemoryStore(
       val bytes = _bytes()
       assert(bytes.size == size)
       val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
+
       // here, we send cache it to the master
-      disaggManager.cachingDecision(blockId, entry.size, executorId)
+      if (blockId.isRDD) {
+        disaggManager.cachingDecision(blockId, entry.size, executorId)
+      }
 
       entries.synchronized {
         entries.put(blockId, entry)
@@ -267,7 +270,9 @@ private[spark] class MemoryStore(
         }
 
         // here, we send cache it to the master
-        disaggManager.cachingDecision(blockId, entry.size, executorId)
+        if (blockId.isRDD) {
+          disaggManager.cachingDecision(blockId, entry.size, executorId)
+        }
 
         entries.synchronized {
           entries.put(blockId, entry)
