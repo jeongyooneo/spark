@@ -1141,8 +1141,6 @@ private[spark] class BlockManager(
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
 
-        disaggManager.cachingDecision(blockId, bytes.size, executorId)
-
         val putSucceeded = if (level.deserialized) {
           val values =
             serializerManager.dataDeserializeStream(blockId, bytes.toInputStream())(classTag)
