@@ -171,7 +171,7 @@ abstract class DisaggBlockManagerEndpoint(
 
   private def remove(blockId: BlockId): Boolean = {
     val path = getPath(blockId)
-    fs.delete(path, false)
+    fs.delete(path, false).get()
     logInfo(s"jy: Removed block $blockId from disagg")
     logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
     fileRemoved(blockId)
