@@ -155,7 +155,9 @@ class RDDLocalMemoryPolicyPoint(
                       val cnt = blockCountMap.get(bid).get - 1
                       blockCountMap.put(bid, cnt)
 
-                      rddJobDag.get.removingBlock(bid)
+                      // if (cnt <= 0) {
+                        rddJobDag.get.removingBlock(bid)
+                      // }
 
                       if (sizeSum > evictionSize) {
                         logInfo(s"LocalDecision] Evict blocks $evictionList " +
