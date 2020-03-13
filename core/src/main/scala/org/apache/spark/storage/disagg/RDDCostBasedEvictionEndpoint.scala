@@ -140,12 +140,12 @@ class RDDCostBasedEvictionEndpoint(
                 case None =>
                 // do nothing
                 case Some(blockInfo) =>
-                  if (discardBlockCost.cost <= 0) {
+                  if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
                     totalDiscardSize += blockInfo.size
                     removeBlocks.append((bid, blockInfo))
                   } else {
                     if (timeToRemove(blockInfo.createdTime, currTime)
-                       && totalDiscardSize < removalSize) {
+                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize) {
                       totalCost += discardCost
                       totalDiscardSize += blockInfo.size
                       removeBlocks.append((bid, blockInfo))

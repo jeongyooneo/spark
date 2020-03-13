@@ -69,8 +69,8 @@ abstract class DisaggBlockManagerEndpoint(
   val blocksSizeToBeCreated: ConcurrentHashMap[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]()
   // blockId, size
-  // val recentlyRemoved: mutable.Map[BlockId, CrailBlockInfo] =
-  //  new mutable.HashMap[BlockId, CrailBlockInfo]()
+  val recentlyRemoved: mutable.Map[BlockId, CrailBlockInfo] =
+    new mutable.HashMap[BlockId, CrailBlockInfo]()
 
   logInfo("creating main dir " + rootDir)
   val baseDirExists : Boolean = fs.lookup(rootDir).get() != null
@@ -150,12 +150,11 @@ abstract class DisaggBlockManagerEndpoint(
 
                 info.synchronized {
                   if (info.readCount.get() == 0) {
-                    info.isRemoved = true
-                    // recentlyRemoved.put(b._1, info)
-                    // remove from master
                     remove(b._1)
                     logInfo(s"Remove block from worker ${b._1}")
                     blockManagerMaster.removeBlockFromWorkers(b._1)
+                    info.isRemoved = true
+                    recentlyRemoved.put(b._1, info)
                   }
                 }
               }
@@ -172,7 +171,7 @@ abstract class DisaggBlockManagerEndpoint(
 
   private def remove(blockId: BlockId): Boolean = {
     val path = getPath(blockId)
-    fs.delete(path, false).get()
+    fs.delete(path, false)
     logInfo(s"jy: Removed block $blockId from disagg")
     logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
     fileRemoved(blockId)
@@ -258,14 +257,22 @@ abstract class DisaggBlockManagerEndpoint(
     currTime - blockCreatedTime > 7 * 1000
   }
 
-  // removed from local
   def fileRemoved(blockId: BlockId): Boolean = {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
     disaggBlockInfo.remove(blockId) match {
       case None =>
+        if (recentlyRemoved.contains(blockId)) {
+          val blockInfo = recentlyRemoved.remove(blockId)
+          if (!blocksRemovedByMaster.remove(blockId)) {
+            totalSize.addAndGet(-blockInfo.size)
+          }
+        }
       case Some(blockInfo) =>
+        recentlyRemoved.remove(blockId)
         fileRemovedCall(blockInfo)
-        totalSize.addAndGet(-blockInfo.size)
+        if (!blocksRemovedByMaster.remove(blockId)) {
+          totalSize.addAndGet(-blockInfo.size)
+        }
     }
     true
   }
