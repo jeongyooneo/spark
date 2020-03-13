@@ -99,7 +99,9 @@ class RDDLocalMemoryPolicyPoint(
   }
 
   override def localEvictionDone(blockId: BlockId): Unit = {
-    rddJobDag.get.removingBlock(blockId)
+    if (blockManagerMaster.getLocations(blockId).isEmpty) {
+      rddJobDag.get.removingBlock(blockId)
+    }
   }
 
   override def localEviction(blockId: Option[BlockId],

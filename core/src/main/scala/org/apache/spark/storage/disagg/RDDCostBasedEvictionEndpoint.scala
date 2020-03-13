@@ -135,6 +135,7 @@ class RDDCostBasedEvictionEndpoint(
             val currTime = System.currentTimeMillis()
 
             if (removalSize <= estimateSize) {
+
               while (iterator.hasNext && totalDiscardSize < removalSize) {
                 val (bid, discardBlockCost) = iterator.next()
                 val discardCost = discardBlockCost.cost
