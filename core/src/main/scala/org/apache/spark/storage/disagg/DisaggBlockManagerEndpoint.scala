@@ -150,12 +150,11 @@ abstract class DisaggBlockManagerEndpoint(
 
                 info.synchronized {
                   if (info.readCount.get() == 0) {
-                    info.isRemoved = true
-                    recentlyRemoved.put(b._1, info)
                     remove(b._1)
                     logInfo(s"Remove block from worker ${b._1}")
                     blockManagerMaster.removeBlockFromWorkers(b._1)
-
+                    info.isRemoved = true
+                    recentlyRemoved.put(b._1, info)
                   }
                 }
               }
@@ -178,7 +177,6 @@ abstract class DisaggBlockManagerEndpoint(
     fileRemoved(blockId)
     true
   }
-
 
   def fileCreated(blockId: BlockId): Boolean = {
     disaggBlockInfo.get(blockId) match {
