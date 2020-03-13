@@ -128,7 +128,7 @@ class RDDCostBasedEvictionEndpoint(
             val iterator = l.iterator
 
             val removalSize = Math.max(estimateSize,
-              totalSize.get() + estimateSize - threshold + 500 * (1000 * 1000))
+              totalSize.get() + estimateSize - threshold + 10 * (1000 * 1000))
 
             val currTime = System.currentTimeMillis()
 
