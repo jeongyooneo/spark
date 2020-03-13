@@ -72,12 +72,6 @@ class RDDLocalMemoryPolicyPoint(
     }
   }
 
-  private val executorBlockMap: mutable.Map[String, mutable.Map[BlockId, Long]] =
-    new mutable.HashMap[String, mutable.Map[BlockId, Long]]()
-
-  private val blockCountMap: mutable.Map[BlockId, Int] =
-    new mutable.HashMap[BlockId, Int]()
-
   override def cachingDecision(
                 blockId: BlockId, estimateSize: Long,
                 taskId: String, executorId: String): Boolean = synchronized {
@@ -90,39 +84,22 @@ class RDDLocalMemoryPolicyPoint(
 
     val rddId = blockId.asRDDId.get.rddId
 
-    blockCountMap.synchronized {
-      if (!blockCountMap.contains(blockId)) {
-        blockCountMap.put(blockId, 0)
-      }
-      blockCountMap.put(blockId, blockCountMap.get(blockId).get + 1)
-    }
-
-    executorBlockMap.synchronized {
-      // if (totalSize.get() + estimateSize < threshold) {
-      logInfo(s"Storing $blockId, " +
-        s"size $estimateSize / $totalSize into $executorId")
-      rddJobDag.get.storingBlock(blockId)
-
-      if (!executorBlockMap.contains(executorId)) {
-        executorBlockMap.put(executorId, new mutable.HashMap[BlockId, Long]())
-      }
-
-      val map = executorBlockMap.get(executorId).get
-      map.put(blockId, estimateSize)
-
-      return true
-    }
+    // if (totalSize.get() + estimateSize < threshold) {
+    logInfo(s"Storing $blockId, " +
+      s"size $estimateSize / $totalSize into $executorId")
+    rddJobDag.get.storingBlock(blockId)
+    return true
   }
 
   val recentlyEvictFailBlocks: mutable.Map[BlockId, Long] =
     new mutable.HashMap[BlockId, Long]().withDefaultValue(0L)
 
   override def localEvictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
-    executorBlockMap.synchronized {
-      recentlyEvictFailBlocks.put(blockId, System.currentTimeMillis())
-     executorBlockMap.get(executorId).get.put(blockId, size)
-      blockCountMap.put(blockId, blockCountMap.get(blockId).get + 1)
-    }
+    recentlyEvictFailBlocks.put(blockId, System.currentTimeMillis())
+  }
+
+  override def localEvictionDone(blockId: BlockId): Unit = {
+    rddJobDag.get.removingBlock(blockId)
   }
 
   override def localEviction(blockId: Option[BlockId],
@@ -133,44 +110,33 @@ class RDDLocalMemoryPolicyPoint(
     rddJobDag.get.sortedBlockCost match {
       case None =>
       case Some(l) =>
-        executorBlockMap.synchronized {
-          val currTime = System.currentTimeMillis()
-          executorBlockMap.get(executorId) match {
-            case None =>
-            case Some(map) =>
-              var sizeSum = 0L
-              l.foreach {
-                pair =>
-                  val bid = pair._1
-                  val cost = pair._2
-                  if (map.contains(bid)) {
-                    val elapsed = currTime - recentlyEvictFailBlocks.getOrElse(bid, 0L)
-                    if (elapsed > 10000) {
 
-                      recentlyEvictFailBlocks.remove(bid)
+        val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
+        val blockManagerInfo = blockManagerMaster.blockManagerInfo(blockManagerId)
 
-                      sizeSum += map.get(bid).get
-                      evictionList.append(bid)
-                      map.remove(bid)
-                      val cnt = blockCountMap.get(bid).get - 1
-                      blockCountMap.put(bid, cnt)
+        val currTime = System.currentTimeMillis()
+        var sizeSum = 0L
+        l.foreach {
+          pair =>
+            val bid = pair._1
+            val cost = pair._2
+            if (blockManagerInfo.blocks.contains(bid)) {
+              val elapsed = currTime - recentlyEvictFailBlocks.getOrElse(bid, 0L)
+              if (elapsed > 10000) {
+                recentlyEvictFailBlocks.remove(bid)
 
-                      // if (cnt <= 0) {
-                        rddJobDag.get.removingBlock(bid)
-                      // }
+                sizeSum += blockManagerInfo.blocks(bid).memSize
+                evictionList.append(bid)
 
-                      if (sizeSum > evictionSize) {
-                        logInfo(s"LocalDecision] Evict blocks $evictionList " +
-                          s"from executor $executorId, size $evictionSize, existing blocks $map")
-                        return evictionList.toList
-                      }
-                    }
-                  }
+                if (sizeSum > evictionSize && cost.cost > 0) {
+                  logInfo(s"LocalDecision] Evict blocks $evictionList " +
+                    s"from executor $executorId, size $evictionSize, existing blocks")
+                  return evictionList.toList
+                }
               }
-          }
+            }
         }
     }
-
 
     List.empty
     // throw new RuntimeException(s"Eviction is not performed in $executorId, block:$blockId " +

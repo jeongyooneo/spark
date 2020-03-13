@@ -50,7 +50,8 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
-  private val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
+  val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
+  val executorBlockManagerMap = new ConcurrentHashMap[String, BlockManagerId]().asScala
 
   // disagg block size info
   private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]
@@ -302,6 +303,7 @@ class BlockManagerMasterEndpoint(
 
     // Remove it from blockManagerInfo and remove all the blocks.
     blockManagerInfo.remove(blockManagerId)
+    executorBlockManagerMap.remove(blockManagerId.executorId)
 
     val iterator = info.blocks.keySet.iterator
     while (iterator.hasNext) {
@@ -471,6 +473,7 @@ class BlockManagerMasterEndpoint(
 
       blockManagerInfo(id) = new BlockManagerInfo(
         id, System.currentTimeMillis(), maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint)
+      executorBlockManagerMap(id.executorId) = id
     }
     listenerBus.post(SparkListenerBlockManagerAdded(time, id, maxOnHeapMemSize + maxOffHeapMemSize,
         Some(maxOnHeapMemSize), Some(maxOffHeapMemSize)))
@@ -533,7 +536,7 @@ class BlockManagerMasterEndpoint(
     true
   }
 
-  private def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
+  def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
     if (blockLocations.containsKey(blockId)) blockLocations.get(blockId).toSeq else Seq.empty
   }
 

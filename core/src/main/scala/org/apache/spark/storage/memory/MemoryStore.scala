@@ -544,6 +544,11 @@ private[spark] class MemoryStore(
             // future safety.
             if (entry != null) {
               dropBlock(blockId, entry)
+
+              if (blockId.isRDD) {
+                disaggManager.localEvictionDone(blockId)
+              }
+
               afterDropAction(blockId)
             }
             lastSuccessfulBlock = idx

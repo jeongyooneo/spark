@@ -59,4 +59,6 @@ private[spark] object DisaggBlockManagerMessages {
 
   case class EvictionFail(blockId: BlockId, executorId: String, size: Long)
     extends ToBlockManagerMaster
+
+  case class LocalEvictionDone(blockId: BlockId) extends ToBlockManagerMaster
 }

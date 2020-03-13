@@ -350,6 +350,10 @@ abstract class DisaggBlockManagerEndpoint(
     List.empty
   }
 
+  def localEvictionDone(blockId: BlockId): Unit = {
+
+  }
+
   def localEvictionFail(blockId: BlockId, executorId: String, size: Long): Unit = {
 
   }
@@ -392,6 +396,8 @@ abstract class DisaggBlockManagerEndpoint(
       context.reply(localEviction(blockId, executorId, size))
     case EvictionFail(blockId, executorId, size) =>
       localEvictionFail(blockId, executorId, size)
+    case LocalEvictionDone(blockId) =>
+      localEvictionDone(blockId)
   }
 }
 
