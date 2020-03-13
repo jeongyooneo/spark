@@ -121,8 +121,6 @@ class RDDCostBasedEvictionEndpoint(
       val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
-      if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
-
         rddJobDag.get.sortedBlockCost match {
           case None =>
             None
@@ -130,10 +128,35 @@ class RDDCostBasedEvictionEndpoint(
             val iterator = l.iterator
 
             val removalSize = Math.max(estimateSize,
-              totalSize.get() + estimateSize - threshold)
+              totalSize.get() + estimateSize - threshold + 500 * (1000 * 1000))
 
             val currTime = System.currentTimeMillis()
 
+            while (iterator.hasNext) {
+              val (bid, discardBlockCost) = iterator.next()
+              val discardCost = discardBlockCost.cost
+
+              disaggBlockInfo.get(bid) match {
+                case None =>
+                // do nothing
+                case Some(blockInfo) =>
+                  if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
+                    totalDiscardSize += blockInfo.size
+                    removeBlocks.append((bid, blockInfo))
+                  } else {
+                    if (timeToRemove(blockInfo.createdTime, currTime)
+                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize) {
+                      totalCost += discardCost
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
+                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
+                    }
+                  }
+              }
+            }
+
+            /*
             if (removalSize <= estimateSize) {
 
               while (iterator.hasNext && totalDiscardSize < removalSize) {
@@ -193,8 +216,8 @@ class RDDCostBasedEvictionEndpoint(
                 }
               }
             }
+            */
         }
-      }
 
 
       if (totalDiscardSize < estimateSize) {
