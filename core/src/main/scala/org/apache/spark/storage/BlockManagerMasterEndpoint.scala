@@ -246,11 +246,9 @@ class BlockManagerMasterEndpoint(
       bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId, totalDisaggSize)))
       blockLocations.remove(blockId)
 
-      if (blockLocations.get(blockId).isEmpty) {
-        rddJobDag match {
-          case None =>
-          case Some(dag) => dag.removingBlock(blockId)
-        }
+      rddJobDag match {
+        case None =>
+        case Some(dag) => dag.removingBlock(blockId)
       }
     }
 
