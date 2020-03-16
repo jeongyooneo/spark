@@ -89,6 +89,8 @@ private[spark] class MemoryStore(
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
+  private val decisionByMaster = conf.get("spark.disagg.evictpolicy").equals("Local")
+
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 
@@ -156,7 +158,7 @@ private[spark] class MemoryStore(
       val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
 
       // here, we send cache it to the master
-      if (blockId.isRDD) {
+      if (blockId.isRDD && decisionByMaster) {
         disaggManager.cachingDecision(blockId, entry.size, executorId)
       }
 
@@ -270,7 +272,7 @@ private[spark] class MemoryStore(
         }
 
         // here, we send cache it to the master
-        if (blockId.isRDD) {
+        if (blockId.isRDD && decisionByMaster) {
           disaggManager.cachingDecision(blockId, entry.size, executorId)
         }
 
@@ -463,52 +465,52 @@ private[spark] class MemoryStore(
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
       entries.synchronized {
-        var cnt = 0
-        while (freedMemory < space && cnt < 3) {
+        if (decisionByMaster) {
+          var cnt = 0
+          while (freedMemory < space && cnt < 3) {
 
-          cnt +=  1
+            cnt += 1
 
-          val evictBlockList: List[BlockId] =
-            disaggManager.localEviction(blockId, executorId, space)
-          val iterator = evictBlockList.iterator
+            val evictBlockList: List[BlockId] =
+              disaggManager.localEviction(blockId, executorId, space)
+            val iterator = evictBlockList.iterator
 
-          logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
-            s"from executor $executorId")
+            logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
+              s"from executor $executorId")
 
-          while (iterator.hasNext) {
-            val evictBlock = iterator.next()
-            val entry = entries.get(evictBlock)
-            if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
-              selectedBlocks += evictBlock
-              freedMemory += entry.size
-            } else if (entry != null) {
-              logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                s"from executor $executorId, entry: $entry")
-              disaggManager.evictionFail(evictBlock, executorId, entry.size)
-            } else {
-              logInfo(s"LocalDecision] entry is null $evictBlock...")
+            while (iterator.hasNext) {
+              val evictBlock = iterator.next()
+              val entry = entries.get(evictBlock)
+              if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                selectedBlocks += evictBlock
+                freedMemory += entry.size
+              } else if (entry != null) {
+                logInfo(s"LocalDecision]  eviction fail $evictBlock " +
+                  s"from executor $executorId, entry: $entry")
+                disaggManager.evictionFail(evictBlock, executorId, entry.size)
+              } else {
+                logInfo(s"LocalDecision] entry is null $evictBlock...")
+              }
+            }
+          }
+        } else {
+
+          val iterator = entries.entrySet().iterator()
+          while (freedMemory < space && iterator.hasNext) {
+            val pair = iterator.next()
+            val blockId = pair.getKey
+            val entry = pair.getValue
+            if (blockIsEvictable(blockId, entry)) {
+              // We don't want to evict blocks which are currently being read, so we need to obtain
+              // an exclusive write lock on blocks which are candidates for eviction. We perform a
+              // non-blocking "tryLock" here in order to ignore blocks which are locked for reading:
+              if (blockInfoManager.lockForWriting(blockId, blocking = false).isDefined) {
+                selectedBlocks += blockId
+                freedMemory += pair.getValue.size
+              }
             }
           }
         }
-
-
-        /*
-        val iterator = entries.entrySet().iterator()
-        while (freedMemory < space && iterator.hasNext) {
-          val pair = iterator.next()
-          val blockId = pair.getKey
-          val entry = pair.getValue
-          if (blockIsEvictable(blockId, entry)) {
-            // We don't want to evict blocks which are currently being read, so we need to obtain
-            // an exclusive write lock on blocks which are candidates for eviction. We perform a
-            // non-blocking "tryLock" here in order to ignore blocks which are locked for reading:
-            if (blockInfoManager.lockForWriting(blockId, blocking = false).isDefined) {
-              selectedBlocks += blockId
-              freedMemory += pair.getValue.size
-            }
-          }
-        }
-        */
       }
 
       def dropBlock[T](blockId: BlockId, entry: MemoryEntry[T]): Unit = {
@@ -545,7 +547,7 @@ private[spark] class MemoryStore(
             if (entry != null) {
               dropBlock(blockId, entry)
 
-              if (blockId.isRDD) {
+              if (blockId.isRDD && decisionByMaster) {
                 disaggManager.localEvictionDone(blockId)
               }
 
