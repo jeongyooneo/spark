@@ -158,7 +158,7 @@ private[spark] class MemoryStore(
 
       // here, we send cache it to the master
       if (blockId.isRDD && decisionByMaster) {
-        disaggManager.cachingDecision(blockId, entry.size, executorId)
+        disaggManager.cachingDecision(blockId, entry.size, executorId, false)
       }
 
       entries.synchronized {
@@ -272,7 +272,7 @@ private[spark] class MemoryStore(
 
         // here, we send cache it to the master
         if (blockId.isRDD && decisionByMaster) {
-          disaggManager.cachingDecision(blockId, entry.size, executorId)
+          disaggManager.cachingDecision(blockId, entry.size, executorId, false)
         }
 
         entries.synchronized {

@@ -49,12 +49,14 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.ask(EvictionFail(blockId, executorId, size))
   }
 
-  def cachingDecision(blockId: BlockId, estimateSize: Long, executorId: String): Boolean = {
+  def cachingDecision(blockId: BlockId, estimateSize: Long,
+                      executorId: String, putDisagg: Boolean): Boolean = {
 
     val taskContext = TaskContext.get()
     val taskId = s"${taskContext.stageId()}-" +
       s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
-    driverEndpoint.askSync[Boolean](StoreBlockOrNot(blockId, estimateSize, taskId, executorId))
+    driverEndpoint.askSync[Boolean](
+      StoreBlockOrNot(blockId, estimateSize, taskId, executorId, putDisagg))
   }
 
   def read(blockId: BlockId) : Boolean = {
