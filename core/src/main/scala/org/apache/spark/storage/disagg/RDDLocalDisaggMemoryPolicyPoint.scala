@@ -247,7 +247,8 @@ class RDDLocalDisaggMemoryPolicyPoint(
                     removeBlocks.append((bid, blockInfo))
                   } else {
                     if (timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize) {
+                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
+                      && discardCost < storingCost) {
                       totalCost += discardCost
                       totalDiscardSize += blockInfo.size
                       removeBlocks.append((bid, blockInfo))
@@ -267,11 +268,11 @@ class RDDLocalDisaggMemoryPolicyPoint(
           s"discardingSize: $totalDiscardSize/$estimateSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
         false
-      } else if (totalCost < storingCost) {
+      } else if (removeBlocks.isEmpty) {
         // the cost due to discarding >  cost to store
         // we won't store it
         logInfo(s"Discarding $blockId because the discarding " +
-          s"cost is low, discardingCost: $totalCost, " +
+          s"block is empty, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
         false
