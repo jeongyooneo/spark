@@ -245,6 +245,13 @@ class BlockManagerMasterEndpoint(
       val bms: mutable.HashSet[BlockManagerId] = blockLocations.get(blockId)
       bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId, totalDisaggSize)))
       blockLocations.remove(blockId)
+
+      if (blockLocations.get(blockId).isEmpty) {
+        rddJobDag match {
+          case None =>
+          case Some(dag) => dag.removingBlock(blockId)
+        }
+      }
     }
 
     // Ask the slaves to remove the RDD, and put the result in a sequence of Futures.
@@ -532,6 +539,10 @@ class BlockManagerMasterEndpoint(
     // Remove the block from master tracking if it has been removed on all slaves.
     if (locations.size == 0) {
       blockLocations.remove(blockId)
+      rddJobDag match {
+        case None =>
+        case Some(dag) => dag.removingBlock(blockId)
+      }
     }
     true
   }
