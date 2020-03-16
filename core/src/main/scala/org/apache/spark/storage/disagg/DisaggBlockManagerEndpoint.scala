@@ -123,7 +123,7 @@ abstract class DisaggBlockManagerEndpoint(
   def stageSubmittedCall(stageId: Int): Unit
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,
-                      taskId: String, executorId: String): Boolean
+                      taskId: String, executorId: String, putDisagg: Boolean): Boolean
   def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit
 
   // abstract method definition
@@ -372,8 +372,8 @@ abstract class DisaggBlockManagerEndpoint(
     case DiscardBlocksIfNecessary(estimateSize) =>
       throw new RuntimeException("not supported")
 
-    case StoreBlockOrNot(blockId, estimateSize, taskId, executorId) =>
-      context.reply(cachingDecision(blockId, estimateSize, taskId, executorId))
+    case StoreBlockOrNot(blockId, estimateSize, taskId, executorId, putDisagg) =>
+      context.reply(cachingDecision(blockId, estimateSize, taskId, executorId, putDisagg))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)
@@ -444,6 +444,9 @@ object DisaggBlockManagerEndpoint {
         conf, listenerBus, blockManagerMaster, thresholdMB)
     } else if (policy.equals("None")) {
       new NoEvictionManagerEndpoint(rpcEnv, isLocal,
+        conf, listenerBus, blockManagerMaster, thresholdMB)
+    } else if (policy.equals("Local-Disagg")) {
+      new RDDLocalDisaggMemoryPolicyPoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
     } else {
       throw new RuntimeException("Not supported eviction " + policy)

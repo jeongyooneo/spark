@@ -31,7 +31,7 @@ import scala.collection.mutable.ListBuffer
  * of all slaves' block managers.
  */
 private[spark]
-class RDDLocalMemoryPolicyPoint(
+class RDDLocalDisaggMemoryPolicyPoint(
     override val rpcEnv: RpcEnv,
     isLocal: Boolean,
     conf: SparkConf,
@@ -41,6 +41,9 @@ class RDDLocalMemoryPolicyPoint(
    extends DisaggBlockManagerEndpoint(
     rpcEnv, isLocal, conf, listenerBus, blockManagerMaster, thresholdMB) {
   logInfo("RDDCostBasedEvictionEndpoint up")
+
+  private val costBasedEviction = new RDDCostBasedEvictionEndpoint(
+    rpcEnv, isLocal, conf, listenerBus, blockManagerMaster, thresholdMB)
 
   val compDiscardRatio = conf.getDouble("spark.disagg.autosizing.comp", defaultValue = 5.0)
 
@@ -76,20 +79,26 @@ class RDDLocalMemoryPolicyPoint(
                 blockId: BlockId, estimateSize: Long,
                 taskId: String, executorId: String,
                 putDisagg: Boolean): Boolean = synchronized {
-    val prevTime = prevDiscardTime.get()
 
-    rddJobDag.get.setStoredBlocksCreatedTime(blockId)
-    rddJobDag.get.setBlockCreatedTime(blockId)
+    if (!putDisagg) {
+      val prevTime = prevDiscardTime.get()
 
-    // logInfo(s"Request $blockId, size $estimateSize 222")
+      rddJobDag.get.setStoredBlocksCreatedTime(blockId)
+      rddJobDag.get.setBlockCreatedTime(blockId)
 
-    val rddId = blockId.asRDDId.get.rddId
+      // logInfo(s"Request $blockId, size $estimateSize 222")
 
-    // if (totalSize.get() + estimateSize < threshold) {
-    logInfo(s"Storing $blockId, " +
-      s"size $estimateSize / $totalSize into $executorId")
-    rddJobDag.get.storingBlock(blockId)
-    return true
+      val rddId = blockId.asRDDId.get.rddId
+
+      // if (totalSize.get() + estimateSize < threshold) {
+      logInfo(s"Storing $blockId, " +
+        s"size $estimateSize / $totalSize into $executorId")
+      rddJobDag.get.storingBlock(blockId)
+      true
+    } else {
+      costBasedEviction
+        .cachingDecision(blockId, estimateSize, taskId, executorId, putDisagg)
+    }
   }
 
   val recentlyEvictFailBlocks: mutable.Map[BlockId, Long] =

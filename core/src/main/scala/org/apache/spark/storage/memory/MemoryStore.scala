@@ -89,7 +89,7 @@ private[spark] class MemoryStore(
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
-  private val decisionByMaster = conf.get("spark.disagg.evictpolicy").equals("Local")
+  private val decisionByMaster = conf.get("spark.disagg.evictpolicy").contains("Local")
 
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
@@ -119,7 +119,6 @@ private[spark] class MemoryStore(
   }
 
   logInfo("MemoryStore started with capacity %s".format(Utils.bytesToString(maxMemory)))
-
   /** Total storage memory used including unroll memory, in bytes. */
   private def memoryUsed: Long = memoryManager.storageMemoryUsed
 

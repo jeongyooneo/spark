@@ -40,7 +40,8 @@ private[spark] object DisaggBlockManagerMessages {
     extends ToBlockManagerMaster
 
   case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long,
-                             taskId: String, executorId: String)
+                             taskId: String, executorId: String,
+                             putDisagg: Boolean)
     extends ToBlockManagerMaster
 
   case class FileWriteEnd(blockId: BlockId, size: Long)

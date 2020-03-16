@@ -99,7 +99,8 @@ class LRUEvictionManagerEndpoint(
   }
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
-                               taskId: String, executorId: String): Boolean = {
+                               taskId: String, executorId: String,
+                               putDisagg: Boolean): Boolean = {
 
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]

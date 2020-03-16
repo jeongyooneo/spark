@@ -74,7 +74,8 @@ class NoEvictionManagerEndpoint(
   }
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
-                               taskId: String, executorId: String): Boolean = {
+                               taskId: String, executorId: String,
+                               putDisagg: Boolean): Boolean = {
     true
   }
 }

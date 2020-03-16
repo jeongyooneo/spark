@@ -70,7 +70,8 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
-                               taskId: String, executorId: String): Boolean = {
+                               taskId: String, executorId: String,
+                               putDisagg: Boolean): Boolean = {
     /*
     val r = scala.util.Random
     if (taskId.contains("rdd_2_")) {
@@ -155,68 +156,6 @@ class RDDCostBasedEvictionEndpoint(
                   }
               }
             }
-
-            /*
-            if (removalSize <= estimateSize) {
-
-              while (iterator.hasNext && totalDiscardSize < removalSize) {
-                val (bid, discardBlockCost) = iterator.next()
-                val discardCost = discardBlockCost.cost
-                disaggBlockInfo.get(bid) match {
-                  case None =>
-                  // do nothing
-                  case Some(blockInfo) =>
-                    // timeToRemove: prevent immediate eviction of the cached block
-                    if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
-                      // GC 0 cost blocks
-
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
-                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                    } else if (totalCost + discardCost < storingCost
-                      && timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid)) {
-                      totalCost += discardCost
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
-                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                    }
-                }
-              }
-            } else {
-              // remove blocks til threshold without considering cost
-              // for hard threshold
-              while (iterator.hasNext && totalDiscardSize < removalSize) {
-                val (bid, discardBlockCost) = iterator.next()
-                val discardCost = discardBlockCost.cost
-
-                disaggBlockInfo.get(bid) match {
-                  case None =>
-                  // do nothing
-                  case Some(blockInfo) =>
-                    if (discardCost <= 0 && timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid) && !bid.asRDDId.get.rddId.equals(rddId)) {
-
-                      // evict the victim
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
-                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                    } else if (timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid)) {
-                      totalCost += discardCost
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
-                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                    }
-                }
-              }
-            }
-            */
         }
 
 
@@ -226,7 +165,14 @@ class RDDCostBasedEvictionEndpoint(
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
-
+        false
+      } else if (totalCost < storingCost) {
+        // the cost due to discarding >  cost to store
+        // we won't store it
+        logInfo(s"Discarding $blockId because the discarding " +
+          s"cost is low, discardingCost: $totalCost, " +
+          s"discardingSize: $totalDiscardSize/$estimateSize")
+        rddJobDag.get.setStoredBlocksCreatedTime(blockId)
         false
       } else {
 
