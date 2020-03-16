@@ -128,7 +128,8 @@ class RDDLocalDisaggMemoryPolicyPoint(
           pair =>
             val bid = pair._1
             val cost = pair._2
-            if (blockManagerInfo.blocks.contains(bid)) {
+            if (blockManagerInfo.blocks.contains(bid)
+            && blockManagerInfo.blocks.get(bid).get.disaggSize == 0) {
               val elapsed = currTime - recentlyEvictFailBlocks.getOrElse(bid, 0L)
               if (elapsed > 10000) {
                 recentlyEvictFailBlocks.remove(bid)
