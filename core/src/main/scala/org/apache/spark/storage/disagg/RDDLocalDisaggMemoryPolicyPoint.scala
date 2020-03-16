@@ -105,9 +105,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
   }
 
   override def localEvictionDone(blockId: BlockId): Unit = {
-    if (blockManagerMaster.getLocations(blockId).isEmpty) {
-      rddJobDag.get.removingBlock(blockId)
-    }
+
   }
 
   override def localEviction(blockId: Option[BlockId],
@@ -194,6 +192,10 @@ class RDDLocalDisaggMemoryPolicyPoint(
       // we won't store it
       logInfo(s"Discarding $blockId, discardingCost: $storingCost")
 
+      if (blockManagerMaster.getLocations(blockId).isEmpty) {
+        rddJobDag.get.removingBlock(blockId)
+      }
+
       return false
     }
 
@@ -267,6 +269,12 @@ class RDDLocalDisaggMemoryPolicyPoint(
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
+
+
+        if (blockManagerMaster.getLocations(blockId).isEmpty) {
+          rddJobDag.get.removingBlock(blockId)
+        }
+
         false
       } else if (removeBlocks.isEmpty) {
         // the cost due to discarding >  cost to store
@@ -275,6 +283,11 @@ class RDDLocalDisaggMemoryPolicyPoint(
           s"block is empty, discardingCost: $totalCost, " +
           s"discardingSize: $totalDiscardSize/$estimateSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
+
+        if (blockManagerMaster.getLocations(blockId).isEmpty) {
+          rddJobDag.get.removingBlock(blockId)
+        }
+
         false
       } else {
 
