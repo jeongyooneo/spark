@@ -246,9 +246,11 @@ class BlockManagerMasterEndpoint(
       bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId, totalDisaggSize)))
       blockLocations.remove(blockId)
 
-      rddJobDag match {
-        case None =>
-        case Some(dag) => dag.removingBlock(blockId)
+      if (blockId.isRDD) {
+        rddJobDag match {
+          case None =>
+          case Some(dag) => dag.removingBlock(blockId)
+        }
       }
     }
 
@@ -537,9 +539,11 @@ class BlockManagerMasterEndpoint(
     // Remove the block from master tracking if it has been removed on all slaves.
     if (locations.size == 0) {
       blockLocations.remove(blockId)
-      rddJobDag match {
-        case None =>
-        case Some(dag) => dag.removingBlock(blockId)
+      if (blockId.isRDD) {
+        rddJobDag match {
+          case None =>
+          case Some(dag) => dag.removingBlock(blockId)
+        }
       }
     }
     true
