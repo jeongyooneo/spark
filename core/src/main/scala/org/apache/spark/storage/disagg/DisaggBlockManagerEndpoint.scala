@@ -130,7 +130,7 @@ abstract class DisaggBlockManagerEndpoint(
   // abstract method definition
   // abstract method definition
 
-  def evictBlocks(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = {
+  def evictBlocks(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = synchronized {
     removeBlocks.foreach { b =>
       blocksRemovedByMaster.put(b._1, true)
       totalSize.addAndGet(-b._2.size)
@@ -178,7 +178,7 @@ abstract class DisaggBlockManagerEndpoint(
     true
   }
 
-  def fileCreated(blockId: BlockId): Boolean = {
+  def fileCreated(blockId: BlockId): Boolean = synchronized {
     disaggBlockInfo.get(blockId) match {
       case None =>
         logInfo(s"Disagg endpoint: file created: $blockId")
@@ -258,7 +258,7 @@ abstract class DisaggBlockManagerEndpoint(
     currTime - blockCreatedTime > 7 * 1000
   }
 
-  def fileRemoved(blockId: BlockId): Boolean = {
+  def fileRemoved(blockId: BlockId): Boolean = synchronized {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
     disaggBlockInfo.remove(blockId) match {
       case None =>
