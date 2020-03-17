@@ -1816,7 +1816,6 @@ private[spark] class BlockManager(
         val removedFromDisagg = disaggStore.remove(blockId)
 
         // if (removedFromDisagg) {
-        logInfo(s"Removed block $blockId from disagg !! remote !!")
 
         if (tellMaster) {
           reportBlockStatus(blockId, BlockStatus.empty)

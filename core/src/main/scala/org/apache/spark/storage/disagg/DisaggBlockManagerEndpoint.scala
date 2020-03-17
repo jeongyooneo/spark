@@ -347,7 +347,8 @@ abstract class DisaggBlockManagerEndpoint(
 
     if (info.isEmpty) {
        // logInfo(s"disagg not containing $blockId")
-      0 } else {
+      0
+    } else {
       val v = info.get
       if (!v.writeDone) {
         logInfo(s"Waiting for disagg block writing $blockId")
@@ -387,7 +388,7 @@ abstract class DisaggBlockManagerEndpoint(
       context.reply(fileCreated(blockId))
 
     case FileRemoved(blockId, remove) =>
-      fileRemoved(blockId, remove)
+      context.reply(fileRemoved(blockId, remove))
 
     case FileRead(blockId) =>
       context.reply(fileRead(blockId))
