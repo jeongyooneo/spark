@@ -174,11 +174,11 @@ abstract class DisaggBlockManagerEndpoint(
     fs.delete(path, false).get()
     logInfo(s"jy: Removed block $blockId from disagg")
     logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
-    fileRemoved(blockId)
+    fileRemoved(blockId, false)
     true
   }
 
-  def fileCreated(blockId: BlockId): Boolean = synchronized {
+  def fileCreated(blockId: BlockId): Boolean = {
     disaggBlockInfo.get(blockId) match {
       case None =>
         logInfo(s"Disagg endpoint: file created: $blockId")
@@ -258,8 +258,9 @@ abstract class DisaggBlockManagerEndpoint(
     currTime - blockCreatedTime > 7 * 1000
   }
 
-  def fileRemoved(blockId: BlockId): Boolean = synchronized {
+  def fileRemoved(blockId: BlockId, isRemove: Boolean): Boolean = {
     // logInfo(s"Disagg endpoint: file removed: $blockId")
+
     disaggBlockInfo.remove(blockId) match {
       case None =>
         if (recentlyRemoved.contains(blockId)) {
@@ -268,14 +269,21 @@ abstract class DisaggBlockManagerEndpoint(
             totalSize.addAndGet(-blockInfo.size)
           }
         }
+        false
       case Some(blockInfo) =>
+        if (isRemove) {
+          val path = getPath(blockId)
+          fs.delete(path, false).get()
+          logInfo(s"jy: Removed block $blockId from disagg")
+          logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
+        }
         recentlyRemoved.remove(blockId)
         fileRemovedCall(blockInfo)
         if (!blocksRemovedByMaster.remove(blockId)) {
           totalSize.addAndGet(-blockInfo.size)
         }
+        true
     }
-    true
   }
 
   def fileWriteEndCall(blockId: BlockId, size: Long): Unit
@@ -361,8 +369,8 @@ abstract class DisaggBlockManagerEndpoint(
     case FileCreated(blockId) =>
       context.reply(fileCreated(blockId))
 
-    case FileRemoved(blockId) =>
-      fileRemoved(blockId)
+    case FileRemoved(blockId, remove) =>
+      fileRemoved(blockId, remove)
 
     case FileRead(blockId) =>
       context.reply(fileRead(blockId))

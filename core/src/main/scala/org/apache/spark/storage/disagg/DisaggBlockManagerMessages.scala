@@ -30,7 +30,7 @@ private[spark] object DisaggBlockManagerMessages {
       blockId: BlockId)
     extends ToBlockManagerMaster
 
-  case class FileRemoved(blockId: BlockId)
+  case class FileRemoved(blockId: BlockId, remove: Boolean)
     extends ToBlockManagerMaster
 
   case class FileRead(blockId: BlockId) extends ToBlockManagerMaster

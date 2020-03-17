@@ -106,6 +106,8 @@ private[spark] class DisaggBlockManager(
   }
 
   def remove(blockId: BlockId): Boolean = {
+    driverEndpoint.askSync[Boolean](FileRemoved(blockId, remove = true))
+    /*
     if (blockExists(blockId)) {
       val path = getPath(blockId)
       fs.delete(path, false)
@@ -113,12 +115,12 @@ private[spark] class DisaggBlockManager(
 
       logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
 
-      driverEndpoint.ask(FileRemoved(blockId))
       true
     } else {
       logInfo(s"Block $blockId is already removed from disagg")
       false
     }
+    */
   }
 
   def blockExists(blockId: BlockId): Boolean = {
