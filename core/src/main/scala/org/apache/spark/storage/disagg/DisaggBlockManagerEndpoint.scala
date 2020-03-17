@@ -190,6 +190,8 @@ abstract class DisaggBlockManagerEndpoint(
           false
         }
       case Some(v) =>
+        false
+        /*
         v.synchronized {
           if (v.isRemoved) {
             val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
@@ -203,6 +205,7 @@ abstract class DisaggBlockManagerEndpoint(
             false
           }
         }
+        */
     }
   }
 
