@@ -172,7 +172,7 @@ abstract class DisaggBlockManagerEndpoint(
   private def remove(blockId: BlockId): Boolean = {
     val path = getPath(blockId)
     fs.delete(path, false).get()
-    logInfo(s"jy: Removed block $blockId from disagg")
+    logInfo(s"jy: Removed block $blockId from disagg master")
     logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
     fileRemoved(blockId, false)
     true
@@ -259,7 +259,31 @@ abstract class DisaggBlockManagerEndpoint(
   }
 
   def fileRemoved(blockId: BlockId, isRemove: Boolean): Boolean = {
-    // logInfo(s"Disagg endpoint: file removed: $blockId")
+
+    if (isRemove) {
+      logInfo(s"Disagg endpoint: file removed from local: $blockId")
+      if (disaggBlockInfo.get(blockId).isDefined) {
+        val info = disaggBlockInfo.get(blockId).get
+
+        while (!info.isRemoved) {
+          while (info.readCount.get() > 0) {
+            // waiting...
+            Thread.sleep(1000)
+            logInfo(s"Waiting for deleting ${blockId}, count: ${info.readCount}")
+          }
+
+          info.synchronized {
+            if (info.readCount.get() == 0) {
+              val path = getPath(blockId)
+              fs.delete(path, false).get()
+              info.isRemoved = true
+              logInfo(s"jy: Removed block $blockId from disagg local")
+              logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
+            }
+          }
+        }
+      }
+    }
 
     disaggBlockInfo.remove(blockId) match {
       case None =>
@@ -271,12 +295,6 @@ abstract class DisaggBlockManagerEndpoint(
         }
         false
       case Some(blockInfo) =>
-        if (isRemove) {
-          val path = getPath(blockId)
-          fs.delete(path, false).get()
-          logInfo(s"jy: Removed block $blockId from disagg")
-          logInfo(s"Removed block $blockId lookup ${fs.lookup(path).get()}")
-        }
         recentlyRemoved.remove(blockId)
         fileRemovedCall(blockInfo)
         if (!blocksRemovedByMaster.remove(blockId)) {
