@@ -142,14 +142,15 @@ abstract class DisaggBlockManagerEndpoint(
               val info = disaggBlockInfo.get(b._1).get
 
               while (!info.isRemoved) {
-                while (info.readCount.get() > 0) {
+                while (info.readCount.get() > 0 || !info.writeDone) {
                   // waiting...
                   Thread.sleep(1000)
                   logInfo(s"Waiting for deleting ${b._1}, count: ${info.readCount}")
                 }
 
                 info.synchronized {
-                  if (info.readCount.get() == 0 && !info.isRemoved) {
+                  if (info.readCount.get() == 0 && !info.isRemoved
+                    && info.writeDone) {
                     info.isRemoved = true
                     recentlyRemoved.put(b._1, info)
                     remove(b._1)
@@ -269,14 +270,15 @@ abstract class DisaggBlockManagerEndpoint(
         val info = disaggBlockInfo.get(blockId).get
 
         while (!info.isRemoved) {
-          while (info.readCount.get() > 0) {
+          while (info.readCount.get() > 0 || !info.writeDone) {
             // waiting...
             Thread.sleep(1000)
             logInfo(s"Waiting for deleting ${blockId}, count: ${info.readCount}")
           }
 
           info.synchronized {
-            if (info.readCount.get() == 0 && !info.isRemoved) {
+            if (info.readCount.get() == 0 && !info.isRemoved
+                  && info.writeDone) {
               val path = getPath(blockId)
               fs.delete(path, false).get()
               info.isRemoved = true
