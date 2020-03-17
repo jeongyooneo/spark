@@ -149,7 +149,7 @@ abstract class DisaggBlockManagerEndpoint(
                 }
 
                 info.synchronized {
-                  if (info.readCount.get() == 0) {
+                  if (info.readCount.get() == 0 && !info.isRemoved) {
                     info.isRemoved = true
                     recentlyRemoved.put(b._1, info)
                     remove(b._1)
@@ -273,7 +273,7 @@ abstract class DisaggBlockManagerEndpoint(
           }
 
           info.synchronized {
-            if (info.readCount.get() == 0) {
+            if (info.readCount.get() == 0 && !info.isRemoved) {
               val path = getPath(blockId)
               fs.delete(path, false).get()
               info.isRemoved = true
@@ -347,8 +347,7 @@ abstract class DisaggBlockManagerEndpoint(
 
     if (info.isEmpty) {
        // logInfo(s"disagg not containing $blockId")
-      0
-    } else {
+      0 } else {
       val v = info.get
       if (!v.writeDone) {
         logInfo(s"Waiting for disagg block writing $blockId")

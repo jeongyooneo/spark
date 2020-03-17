@@ -41,6 +41,14 @@ class NoEvictionManagerEndpoint(
   logInfo("LRUEvictionManagerEndpoint up")
 
 
+  override def fileRemoved(blockId: BlockId, r: Boolean): Boolean = {
+    true
+  }
+
+  override def contains(blockId: BlockId): Int = {
+    0
+  }
+
   override def fileWriteEndCall(blockId: BlockId, size: Long): Unit = {
 
   }
