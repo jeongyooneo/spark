@@ -219,12 +219,13 @@ abstract class DisaggBlockManagerEndpoint(
     } else {
       val v = info.get
 
-      while (!v.writeDone) {
-        return 2
-        // logInfo(s"Waiting for write done $blockId")
-      }
-
       v.synchronized {
+
+        while (!v.writeDone) {
+          return 2
+          // logInfo(s"Waiting for write done $blockId")
+        }
+
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
           logInfo(s"file read disagg block $blockId")
@@ -383,7 +384,8 @@ abstract class DisaggBlockManagerEndpoint(
 
     case GetSize(blockId) =>
       if (disaggBlockInfo.get(blockId).isEmpty) {
-        throw new RuntimeException(s"disagg block is empty.. no size $blockId")
+        logWarning(s"disagg block is empty.. no size $blockId")
+        context.reply(0)
       } else if (!disaggBlockInfo.get(blockId).get.writeDone) {
         throw new RuntimeException(s"disagg block size is 0.. not write done $blockId")
       } else {
