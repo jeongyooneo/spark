@@ -49,6 +49,8 @@ abstract class DisaggBlockManagerEndpoint(
                                            disaggCapacityMB: Long)
   extends ThreadSafeRpcEndpoint with Logging with CrailManager {
 
+  blockManagerMaster.setDisaggBlockManager(this)
+
   val threshold: Long = disaggCapacityMB * (1000 * 1000)
   val rddJobDag = blockManagerMaster.rddJobDag
   rddJobDag match {

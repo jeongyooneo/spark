@@ -28,7 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.RDDJobDag
+import org.apache.spark.storage.disagg.{DisaggBlockManagerEndpoint, RDDJobDag}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
@@ -76,6 +76,11 @@ class BlockManagerMasterEndpoint(
     mapper
   }
 
+  var disaggBlockManager: DisaggBlockManagerEndpoint = null
+  def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
+    disaggBlockManager = bm
+  }
+
   val proactivelyReplicate = conf.get("spark.storage.replication.proactive", "false").toBoolean
 
   logInfo("BlockManagerMasterEndpoint up")
@@ -109,7 +114,6 @@ class BlockManagerMasterEndpoint(
       // MB
       var memSize = 0L
       var diskSize = 0L
-      var disaggSize = 0L
 
       // MB
       val unit = 1000000
@@ -128,7 +132,6 @@ class BlockManagerMasterEndpoint(
 
           var memSizeForManager = 0L
           var diskSizeForManager = 0L
-
           v.blocks.values.foreach {
 
             stat: BlockStatus =>
@@ -137,7 +140,6 @@ class BlockManagerMasterEndpoint(
 
               memSize += stat.memSize
               diskSize += stat.diskSize
-              disaggSize += stat.disaggSize
           }
 
 
@@ -145,6 +147,11 @@ class BlockManagerMasterEndpoint(
             s"disk ${diskSizeForManager/unit}\n")
       }
 
+      val disaggSize = if (disaggBlockManager != null) {
+        disaggBlockManager.totalSize.get()
+      } else {
+        0L
+      }
 
       builder.append(s"Total size memory: ${memSize/unit}, " +
         s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")

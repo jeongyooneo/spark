@@ -1813,7 +1813,7 @@ private[spark] class BlockManager(
       case None =>
         // The block has already been removed; do nothing.
         // remove from disagg
-        val removedFromDisagg = disaggStore.remove(blockId)
+        // val removedFromDisagg = disaggStore.remove(blockId)
 
         // if (removedFromDisagg) {
 
@@ -1841,13 +1841,13 @@ private[spark] class BlockManager(
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
 
-    val removedFromDisagg = disaggStore.remove(blockId)
+    // val removedFromDisagg = disaggStore.remove(blockId)
 
     if (!storageLevel.useDisagg && !removedFromMemory && !removedFromDisk) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
 
-    logInfo(s"Remove block $blockId from mem $removedFromMemory or disagg $removedFromDisagg")
+    logInfo(s"Remove block $blockId from mem $removedFromMemory")
     blockInfoManager.removeBlock(blockId)
     if (tellMaster) {
       reportBlockStatus(blockId, BlockStatus.empty)
