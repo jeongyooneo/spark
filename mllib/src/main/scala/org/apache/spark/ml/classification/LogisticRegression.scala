@@ -499,7 +499,7 @@ class LogisticRegression @Since("1.2.0") (
           Instance(label, weight, features)
       }
 
-    if (handlePersistence) instances.persist(StorageLevel.MEMORY_AND_DISK)
+    if (handlePersistence) instances.persist(StorageLevel.MEMORY_ONLY)
 
     instr.logPipelineStage(this)
     instr.logDataset(dataset)
