@@ -227,6 +227,7 @@ abstract class DisaggBlockManagerEndpoint(
     new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
 
   def removeExecutor(executorId: String): Unit = {
+    logInfo(s"Remove executor and release lock for $executorId")
     executorLockMap.remove(executorId) match {
       case None =>
       case Some(set) =>
@@ -236,6 +237,7 @@ abstract class DisaggBlockManagerEndpoint(
             case None =>
             case Some(v) =>
               v.synchronized {
+                logInfo(s"release lock for $executorId/ $blockId")
                 v.readCount.decrementAndGet()
               }
           }
@@ -260,7 +262,8 @@ abstract class DisaggBlockManagerEndpoint(
 
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
-          val set = executorLockMap.getOrElse(executorId, new mutable.HashSet[BlockId]())
+          executorLockMap.putIfAbsent(executorId, new mutable.HashSet[BlockId]())
+          val set = executorLockMap.get(executorId).get
           set.synchronized {
             set.add(blockId)
           }
