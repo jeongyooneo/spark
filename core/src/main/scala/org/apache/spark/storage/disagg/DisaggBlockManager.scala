@@ -18,7 +18,7 @@
 package org.apache.spark.storage.disagg
 
 import org.apache.crail._
-import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
@@ -52,7 +52,7 @@ class DisaggBlockManager(
   def cachingDecision(blockId: BlockId, estimateSize: Long,
                       executorId: String, putDisagg: Boolean): Boolean = {
 
-    val taskContext = TaskContext.get()
+    // val taskContext = TaskContext.get()
     // val taskId = s"${taskContext.stageId()}-" +
     //  s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
     driverEndpoint.askSync[Boolean](
