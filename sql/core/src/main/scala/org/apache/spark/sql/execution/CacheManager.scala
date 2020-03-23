@@ -30,7 +30,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, ResolvedHint}
 import org.apache.spark.sql.execution.columnar.InMemoryRelation
 import org.apache.spark.sql.execution.datasources.{HadoopFsRelation, LogicalRelation}
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
+import org.apache.spark.storage.StorageLevel.MEMORY_ONLY
 
 /** Holds a cached logical plan and its data */
 case class CachedData(plan: LogicalPlan, cachedRepresentation: InMemoryRelation)
@@ -82,13 +82,13 @@ class CacheManager extends Logging {
 
   /**
    * Caches the data produced by the logical representation of the given [[Dataset]].
-   * Unlike `RDD.cache()`, the default storage level is set to be `MEMORY_AND_DISK` because
+   * Unlike `RDD.cache()`, the default storage level is set to be `MEMORY_ONLY` because
    * recomputing the in-memory columnar representation of the underlying table is expensive.
    */
   def cacheQuery(
       query: Dataset[_],
       tableName: Option[String] = None,
-      storageLevel: StorageLevel = MEMORY_AND_DISK): Unit = writeLock {
+      storageLevel: StorageLevel = MEMORY_ONLY): Unit = writeLock {
     val planToCache = query.logicalPlan
     if (lookupCachedData(planToCache).nonEmpty) {
       logWarning("Asked to cache already cached data.")
