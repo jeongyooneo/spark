@@ -59,8 +59,8 @@ class DisaggBlockManager(
       StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg))
   }
 
-  def read(blockId: BlockId) : Boolean = {
-    val result = driverEndpoint.askSync[Int](FileRead(blockId))
+  def read(blockId: BlockId, executorId: String) : Boolean = {
+    val result = driverEndpoint.askSync[Int](FileRead(blockId, executorId))
 
     logInfo(s"Read logging ... $blockId, result: $result")
 
@@ -69,7 +69,7 @@ class DisaggBlockManager(
     } else if (result == 2) {
       // retry... the block is being written
       Thread.sleep(500)
-      read(blockId)
+      read(blockId, executorId)
     } else if (result == 0) {
       false
     } else {
@@ -77,8 +77,8 @@ class DisaggBlockManager(
     }
   }
 
-  def readUnlock(blockId: BlockId) : Unit = {
-    driverEndpoint.ask[Unit](FileReadUnlock(blockId))
+  def readUnlock(blockId: BlockId, executorId: String) : Unit = {
+    driverEndpoint.ask[Unit](FileReadUnlock(blockId, executorId))
   }
 
   def createFile(blockId: BlockId) : CrailFile = {

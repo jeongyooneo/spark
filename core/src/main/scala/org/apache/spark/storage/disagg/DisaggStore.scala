@@ -184,10 +184,10 @@ private[spark] class DisaggStore(
   }
 
   def readLock(blockId: BlockId): Boolean = {
-    disaggManager.read(blockId)
+    disaggManager.read(blockId, executorId)
   }
 
   def readUnlock(blockId: BlockId): Unit = {
-    disaggManager.readUnlock(blockId)
+    disaggManager.readUnlock(blockId, executorId)
   }
 }

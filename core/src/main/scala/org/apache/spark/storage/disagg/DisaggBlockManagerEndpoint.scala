@@ -212,12 +212,38 @@ abstract class DisaggBlockManagerEndpoint(
     }
   }
 
-  def fileReadUnlock(blockId: BlockId): Unit = {
+  def fileReadUnlock(blockId: BlockId, executorId: String): Unit = {
     val info = disaggBlockInfo.get(blockId)
     info.get.readCount.decrementAndGet()
+    executorLockMap.get(executorId) match {
+      case None =>
+      case Some(set) => set.synchronized {
+        set.remove(blockId)
+      }
+    }
   }
 
-  def fileRead(blockId: BlockId): Int = {
+  private val executorLockMap: concurrent.Map[String, mutable.Set[BlockId]] =
+    new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
+
+  def removeExecutor(executorId: String): Unit = {
+    executorLockMap.remove(executorId) match {
+      case None =>
+      case Some(set) =>
+        set.foreach(blockId => {
+          val info = disaggBlockInfo.get(blockId)
+          info match {
+            case None =>
+            case Some(v) =>
+              v.synchronized {
+                v.readCount.decrementAndGet()
+              }
+          }
+        })
+    }
+  }
+
+  def fileRead(blockId: BlockId, executorId: String): Int = {
     val info = disaggBlockInfo.get(blockId)
 
     if (info.isEmpty) {
@@ -234,6 +260,11 @@ abstract class DisaggBlockManagerEndpoint(
 
         if (!v.isRemoved) {
           v.readCount.incrementAndGet()
+          val set = executorLockMap.getOrElse(executorId, new mutable.HashSet[BlockId]())
+          set.synchronized {
+            set.add(blockId)
+          }
+
           logInfo(s"file read disagg block $blockId")
           fileReadCall(v)
           return 1
@@ -397,11 +428,11 @@ abstract class DisaggBlockManagerEndpoint(
     case FileRemoved(blockId, remove) =>
       context.reply(fileRemoved(blockId, remove))
 
-    case FileRead(blockId) =>
-      context.reply(fileRead(blockId))
+    case FileRead(blockId, executorId) =>
+      context.reply(fileRead(blockId, executorId))
 
-    case FileReadUnlock(blockId) =>
-      context.reply(fileReadUnlock(blockId))
+    case FileReadUnlock(blockId, executorId) =>
+      context.reply(fileReadUnlock(blockId, executorId))
 
     case DiscardBlocksIfNecessary(estimateSize) =>
       throw new RuntimeException("not supported")

@@ -319,6 +319,8 @@ class BlockManagerMasterEndpoint(
     blockManagerInfo.remove(blockManagerId)
     executorBlockManagerMap.remove(blockManagerId.executorId)
 
+    disaggBlockManager.removeExecutor(blockManagerId.executorId)
+
     val iterator = info.blocks.keySet.iterator
     while (iterator.hasNext) {
       val blockId = iterator.next
