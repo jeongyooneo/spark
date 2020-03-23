@@ -70,7 +70,7 @@ class RDDCostBasedEvictionEndpoint(
   }
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
-                               taskId: String, executorId: String,
+                               executorId: String,
                                putDisagg: Boolean): Boolean = {
     /*
     val r = scala.util.Random

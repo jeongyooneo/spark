@@ -39,8 +39,7 @@ private[spark] object DisaggBlockManagerMessages {
   case class DiscardBlocksIfNecessary(estimateSize: Long)
     extends ToBlockManagerMaster
 
-  case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long,
-                             taskId: String, executorId: String,
+  case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, executorId: String,
                              putDisagg: Boolean)
     extends ToBlockManagerMaster
 

@@ -74,7 +74,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
 
   override def cachingDecision(
                 blockId: BlockId, estimateSize: Long,
-                taskId: String, executorId: String,
+                executorId: String,
                 putDisagg: Boolean): Boolean = synchronized {
 
     if (!putDisagg) {
@@ -93,7 +93,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
       rddJobDag.get.storingBlock(blockId)
       true
     } else {
-      disaggDecision(blockId, estimateSize, taskId, executorId, putDisagg)
+      disaggDecision(blockId, estimateSize, executorId, putDisagg)
     }
   }
 
@@ -177,8 +177,8 @@ class RDDLocalDisaggMemoryPolicyPoint(
 
 
   private def disaggDecision(blockId: BlockId, estimateSize: Long,
-                               taskId: String, executorId: String,
-                               putDisagg: Boolean): Boolean = {
+                             executorId: String,
+                             putDisagg: Boolean): Boolean = {
      val prevTime = prevDiscardTime.get()
 
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)

@@ -53,10 +53,10 @@ class DisaggBlockManager(
                       executorId: String, putDisagg: Boolean): Boolean = {
 
     val taskContext = TaskContext.get()
-    val taskId = s"${taskContext.stageId()}-" +
-      s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
+    // val taskId = s"${taskContext.stageId()}-" +
+    //  s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
     driverEndpoint.askSync[Boolean](
-      StoreBlockOrNot(blockId, estimateSize, taskId, executorId, putDisagg))
+      StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg))
   }
 
   def read(blockId: BlockId) : Boolean = {

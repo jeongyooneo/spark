@@ -125,7 +125,7 @@ abstract class DisaggBlockManagerEndpoint(
   def stageSubmittedCall(stageId: Int): Unit
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,
-                      taskId: String, executorId: String, putDisagg: Boolean): Boolean
+                      executorId: String, putDisagg: Boolean): Boolean
   def evictBlocksToIncreaseBenefit(totalCompReduction: Long, totalSize: Long): Unit
 
   // abstract method definition
@@ -406,8 +406,8 @@ abstract class DisaggBlockManagerEndpoint(
     case DiscardBlocksIfNecessary(estimateSize) =>
       throw new RuntimeException("not supported")
 
-    case StoreBlockOrNot(blockId, estimateSize, taskId, executorId, putDisagg) =>
-      context.reply(cachingDecision(blockId, estimateSize, taskId, executorId, putDisagg))
+    case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg) =>
+      context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg))
 
     case FileWriteEnd(blockId, size) =>
       fileWriteEnd(blockId, size)

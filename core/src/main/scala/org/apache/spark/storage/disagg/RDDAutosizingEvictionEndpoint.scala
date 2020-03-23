@@ -75,7 +75,7 @@ class RDDAutosizingEvictionEndpoint(
 
   override def cachingDecision(
                 blockId: BlockId, estimateSize: Long,
-                taskId: String, executorId: String,
+                executorId: String,
                 putDisagg: Boolean): Boolean = synchronized {
     val prevTime = prevDiscardTime.get()
 
