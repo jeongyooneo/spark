@@ -55,7 +55,6 @@ object ConnectedComponentsExample {
     val graph = GraphLoader.edgeListFile(sc, input)
     // Find the connected components
     val cc = graph.connectedComponents().vertices
-    /*
     // Join the connected components with the usernames
     /*
     val users = sc.textFile("data/graphx/users.txt").map { line =>
