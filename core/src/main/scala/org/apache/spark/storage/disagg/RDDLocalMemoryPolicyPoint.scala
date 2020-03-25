@@ -119,6 +119,8 @@ class RDDLocalMemoryPolicyPoint(
 
         val currTime = System.currentTimeMillis()
         var sizeSum = 0L
+        val removingBlocks: mutable.ListBuffer[BlockId] = new mutable.ListBuffer[BlockId]
+
         l.foreach {
           pair =>
             val bid = pair._1
@@ -137,8 +139,12 @@ class RDDLocalMemoryPolicyPoint(
                   return evictionList.toList
                 }
               }
+            } else {
+              removingBlocks.append(bid)
             }
         }
+
+        removingBlocks.foreach { bid => rddJobDag.get.removingBlock(bid) }
     }
 
     List.empty
