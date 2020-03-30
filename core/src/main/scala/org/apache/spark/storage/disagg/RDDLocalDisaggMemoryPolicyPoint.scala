@@ -175,11 +175,10 @@ class RDDLocalDisaggMemoryPolicyPoint(
 
 
 
-
   private def disaggDecision(blockId: BlockId, estimateSize: Long,
                              executorId: String,
                              putDisagg: Boolean): Boolean = {
-     val prevTime = prevDiscardTime.get()
+    val prevTime = prevDiscardTime.get()
 
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)
     rddJobDag.get.setBlockCreatedTime(blockId)
@@ -214,39 +213,45 @@ class RDDLocalDisaggMemoryPolicyPoint(
         logInfo(s"Storing $blockId, cost: $storingCost, " +
           s"size $estimateSize / $totalSize, threshold: $threshold")
 
-        // Remove cost 0
-        var totalCost = 0L
-        var totalDiscardSize = 0L
-
-        rddJobDag.get.sortedBlockCost match {
-          case None =>
-            None
-          case Some(l) =>
-            val iterator = l.iterator
-
-            while (iterator.hasNext) {
-              val (bid, discardBlockCost) = iterator.next()
-              val discardCost = discardBlockCost.cost
-
-              disaggBlockInfo.get(bid) match {
-                case None =>
-                // do nothing
-                case Some(blockInfo) =>
-                  if (discardBlockCost.cost <= 0) {
-                    totalDiscardSize += blockInfo.size
-                    removeBlocks.append((bid, blockInfo))
-                  }
-              }
-            }
-        }
-
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
         rddJobDag.get.storingBlock(blockId)
 
-        evictBlocks(removeBlocks)
-        removeBlocks.foreach { t =>
-          rddJobDag.get.removingBlock(t._1)
+        if (System.currentTimeMillis() - prevDiscardTime.get() >= 1000) {
+          // Remove cost 0
+          var totalCost = 0L
+          var totalDiscardSize = 0L
+
+          rddJobDag.get.sortedBlockCost match {
+            case None =>
+              None
+            case Some(l) =>
+              val iterator = l.iterator
+
+              while (iterator.hasNext) {
+                val (bid, discardBlockCost) = iterator.next()
+                val discardCost = discardBlockCost.cost
+
+                disaggBlockInfo.get(bid) match {
+                  case None =>
+                  // do nothing
+                  case Some(blockInfo) =>
+                    if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
+                      logInfo(s"Discarding zero cost $bid")
+                      totalDiscardSize += blockInfo.size
+                      removeBlocks.append((bid, blockInfo))
+                    }
+                }
+              }
+          }
+
+
+          evictBlocks(removeBlocks)
+          removeBlocks.foreach { t =>
+            rddJobDag.get.removingBlock(t._1)
+          }
+
+          prevDiscardTime.set(System.currentTimeMillis())
         }
 
         return true
@@ -255,7 +260,6 @@ class RDDLocalDisaggMemoryPolicyPoint(
       // Else, select a victim to evict
       var totalCost = 0L
       var totalDiscardSize = 0L
-
 
         rddJobDag.get.sortedBlockCost match {
           case None =>
@@ -276,7 +280,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
                 case None =>
                 // do nothing
                 case Some(blockInfo) =>
-                  if (discardBlockCost.cost <= 0) {
+                  if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
                     totalDiscardSize += blockInfo.size
                     removeBlocks.append((bid, blockInfo))
                   } else {
