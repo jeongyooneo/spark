@@ -108,9 +108,44 @@ class RDDCostBasedEvictionEndpoint(
         logInfo(s"Storing $blockId, cost: $storingCost, " +
           s"size $estimateSize / $totalSize, threshold: $threshold")
 
+        val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+          new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+
+        // Remove cost 0
+        var totalCost = 0L
+        var totalDiscardSize = 0L
+
+        rddJobDag.get.sortedBlockCost match {
+          case None =>
+            None
+          case Some(l) =>
+            val iterator = l.iterator
+
+            while (iterator.hasNext) {
+              val (bid, discardBlockCost) = iterator.next()
+              val discardCost = discardBlockCost.cost
+
+              disaggBlockInfo.get(bid) match {
+                case None =>
+                // do nothing
+                case Some(blockInfo) =>
+                  if (discardBlockCost.cost <= 0) {
+                    totalDiscardSize += blockInfo.size
+                    removeBlocks.append((bid, blockInfo))
+                  }
+              }
+            }
+        }
+
+
         blocksSizeToBeCreated.put(blockId, estimateSize)
         totalSize.addAndGet(estimateSize)
         rddJobDag.get.storingBlock(blockId)
+
+        evictBlocks(removeBlocks)
+        removeBlocks.foreach { t =>
+          rddJobDag.get.removingBlock(t._1)
+        }
 
         return true
       }
@@ -118,10 +153,6 @@ class RDDCostBasedEvictionEndpoint(
       // Else, select a victim to evict
       var totalCost = 0L
       var totalDiscardSize = 0L
-
-      val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
-        new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
-
         rddJobDag.get.sortedBlockCost match {
           case None =>
             None
@@ -141,7 +172,7 @@ class RDDCostBasedEvictionEndpoint(
                 case None =>
                 // do nothing
                 case Some(blockInfo) =>
-                  if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
+                  if (discardBlockCost.cost <= 0) {
                     totalDiscardSize += blockInfo.size
                     removeBlocks.append((bid, blockInfo))
                   } else {
