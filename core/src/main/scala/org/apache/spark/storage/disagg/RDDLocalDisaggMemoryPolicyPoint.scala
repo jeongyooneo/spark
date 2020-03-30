@@ -22,7 +22,7 @@ import org.apache.spark.rpc.{RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 
-import scala.collection.mutable
+import scala.collection.{Set, mutable}
 import scala.collection.mutable.ListBuffer
 
 
@@ -174,6 +174,37 @@ class RDDLocalDisaggMemoryPolicyPoint(
   }
 
 
+  override def removeRddFromDisagg(rdds: Set[Int]): Unit = {
+    // Remove cost 0
+    val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+      new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+
+      rddJobDag.get.sortedBlockCost match {
+        case None =>
+          None
+        case Some(l) =>
+          val iterator = l.iterator
+
+          while (iterator.hasNext) {
+            val (bid, discardBlockCost) = iterator.next()
+            disaggBlockInfo.get(bid) match {
+              case None =>
+              // do nothing
+              case Some(blockInfo) =>
+                if (rdds.contains(bid.asRDDId.get.rddId) && !recentlyRemoved.contains(bid)) {
+                  logInfo(s"Discarding zero cost $bid")
+                  removeBlocks.append((bid, blockInfo))
+                }
+            }
+          }
+      }
+
+      evictBlocks(removeBlocks)
+      removeBlocks.foreach { t =>
+        rddJobDag.get.removingBlock(t._1)
+      }
+
+  }
 
   private def disaggDecision(blockId: BlockId, estimateSize: Long,
                              executorId: String,
@@ -217,42 +248,6 @@ class RDDLocalDisaggMemoryPolicyPoint(
         totalSize.addAndGet(estimateSize)
         rddJobDag.get.storingBlock(blockId)
 
-        if (System.currentTimeMillis() - prevDiscardTime.get() >= 1000) {
-          // Remove cost 0
-          var totalCost = 0L
-          var totalDiscardSize = 0L
-
-          rddJobDag.get.sortedBlockCost match {
-            case None =>
-              None
-            case Some(l) =>
-              val iterator = l.iterator
-
-              while (iterator.hasNext) {
-                val (bid, discardBlockCost) = iterator.next()
-                val discardCost = discardBlockCost.cost
-
-                disaggBlockInfo.get(bid) match {
-                  case None =>
-                  // do nothing
-                  case Some(blockInfo) =>
-                    if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
-                      logInfo(s"Discarding zero cost $bid")
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                    }
-                }
-              }
-          }
-
-
-          evictBlocks(removeBlocks)
-          removeBlocks.foreach { t =>
-            rddJobDag.get.removingBlock(t._1)
-          }
-
-          prevDiscardTime.set(System.currentTimeMillis())
-        }
 
         return true
       }
@@ -280,24 +275,18 @@ class RDDLocalDisaggMemoryPolicyPoint(
                 case None =>
                 // do nothing
                 case Some(blockInfo) =>
-                  if (discardBlockCost.cost <= 0 && !recentlyRemoved.contains(bid)) {
+                  if (timeToRemove(blockInfo.createdTime, currTime)
+                    && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
+                    && discardCost < storingCost) {
+                    totalCost += discardCost
                     totalDiscardSize += blockInfo.size
                     removeBlocks.append((bid, blockInfo))
-                  } else {
-                    if (timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardCost < storingCost) {
-                      totalCost += discardCost
-                      totalDiscardSize += blockInfo.size
-                      removeBlocks.append((bid, blockInfo))
-                      logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
-                        s"size: $totalDiscardSize/$removalSize, remove block: $bid")
-                    }
+                    logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
+                      s"size: $totalDiscardSize/$removalSize, remove block: $bid")
                   }
               }
             }
         }
-
 
       if (totalDiscardSize < estimateSize) {
         // the cost due to discarding >  cost to store

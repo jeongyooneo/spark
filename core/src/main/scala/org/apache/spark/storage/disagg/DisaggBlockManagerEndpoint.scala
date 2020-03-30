@@ -286,18 +286,25 @@ abstract class DisaggBlockManagerEndpoint(
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
+    stageCompletedCall(stageId)
+
     // unpersist rdds
     rddJobDag match {
       case None =>
       case Some(dag) =>
-        dag.getZeroCostRDDs.foreach {
+        val zeroRdds = dag.getZeroCostRDDs
+        zeroRdds.foreach {
           rdd =>
-            logInfo(s"Remove zero cost rdd $rdd")
+            logInfo(s"Remove zero cost rdd $rdd from memory")
             blockManagerMaster.removeRdd(rdd)
         }
-    }
 
-    stageCompletedCall(stageId)
+        removeRddFromDisagg(zeroRdds)
+    }
+  }
+
+  def removeRddFromDisagg(rdds: Set[Int]): Unit = {
+
   }
 
   def stageSubmitted(stageId: Int): Unit = {
