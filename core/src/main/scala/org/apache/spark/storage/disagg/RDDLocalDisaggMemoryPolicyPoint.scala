@@ -206,13 +206,13 @@ class RDDLocalDisaggMemoryPolicyPoint(
         return false
       }
 
+      val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
+        new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
+
       // If we have enough space in disagg memory, cache it
       if (totalSize.get() + estimateSize < threshold) {
         logInfo(s"Storing $blockId, cost: $storingCost, " +
           s"size $estimateSize / $totalSize, threshold: $threshold")
-
-        val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
-          new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
         // Remove cost 0
         var totalCost = 0L
@@ -256,8 +256,6 @@ class RDDLocalDisaggMemoryPolicyPoint(
       var totalCost = 0L
       var totalDiscardSize = 0L
 
-      val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
-        new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
         rddJobDag.get.sortedBlockCost match {
           case None =>
