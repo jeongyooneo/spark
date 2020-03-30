@@ -874,8 +874,10 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
+        logInfo(s"jy: cache hit: $blockId")
         return Left(block)
       case _ =>
+        logInfo(s"jy: cache miss: $blockId")
         // Need to compute the block.
     }
     // Initially we hold no locks on this block.
