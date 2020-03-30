@@ -97,8 +97,30 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     logInfo(s"BlockCost: ${blockCost}")
   }
 
+  def getZeroCostRDDs: Set[Int] = {
+    updateCostAndSort
+
+    val zeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
+    val nonzeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
+
+    sortedBlockCost match {
+      case None =>
+      case Some(l) =>
+        l.foreach {
+          pair =>
+            if (pair._2.cost <= 0) {
+              zeros.add(pair._1.asRDDId.get.rddId)
+            } else {
+              nonzeros.add(pair._1.asRDDId.get.rddId)
+            }
+        }
+    }
+
+    zeros.diff(nonzeros)
+  }
+
   // Return benefit = (total importance/total size)
-  def updateCostAndSort: Unit = {
+  def updateCostAndSort: Unit = synchronized {
     val l: mutable.ListBuffer[(BlockId, BlockCost)] = new mutable.ListBuffer[(BlockId, BlockCost)]()
 
     val blockBenefitList: mutable.ListBuffer[(BlockId, Benefit)] =

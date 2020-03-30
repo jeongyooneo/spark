@@ -241,7 +241,7 @@ class BlockManagerMasterEndpoint(
       }
   }
 
-  private def removeRdd(rddId: Int): Future[Seq[Int]] = {
+  def removeRdd(rddId: Int): Future[Seq[Int]] = {
     // First remove the metadata for the given RDD, and then asynchronously remove the blocks
     // from the slaves.
 
