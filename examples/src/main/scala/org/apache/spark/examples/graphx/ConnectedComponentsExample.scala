@@ -56,6 +56,7 @@ object ConnectedComponentsExample {
     // Find the connected components
     val cc = graph.connectedComponents().vertices
     // Join the connected components with the usernames
+    /*
     val users = sc.textFile("data/graphx/users.txt").map { line =>
       val fields = line.split(",")
       (fields(0).toLong, fields(1))
@@ -66,6 +67,7 @@ object ConnectedComponentsExample {
     // Print the result
     println(ccByUsername.collect().mkString("\n"))
     // $example off$
+    */
     spark.stop()
   }
 }

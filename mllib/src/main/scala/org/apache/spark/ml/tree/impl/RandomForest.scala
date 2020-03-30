@@ -133,7 +133,7 @@ private[spark] object RandomForest extends Logging with Serializable {
 
     val baggedInput = BaggedPoint
       .convertToBaggedRDD(treeInput, strategy.subsamplingRate, numTrees, withReplacement, seed)
-      .persist(StorageLevel.MEMORY_AND_DISK)
+      .persist(StorageLevel.MEMORY_ONLY)
 
     // depth of the decision tree
     val maxDepth = strategy.maxDepth

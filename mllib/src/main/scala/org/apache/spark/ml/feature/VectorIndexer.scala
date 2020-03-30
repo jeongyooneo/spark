@@ -147,11 +147,14 @@ class VectorIndexer @Since("1.4.0") (
     val numFeatures = firstRow(0).getAs[Vector](0).size
     val vectorDataset = dataset.select($(inputCol)).rdd.map { case Row(v: Vector) => v }
     val maxCats = $(maxCategories)
+    logInfo(s"deci: numFeatures $numFeatures maxCategories $maxCategories")
     val categoryStats: VectorIndexer.CategoryStats = vectorDataset.mapPartitions { iter =>
       val localCatStats = new VectorIndexer.CategoryStats(numFeatures, maxCats)
       iter.foreach(localCatStats.addVector)
+      logInfo(s"deci: Formed categoryStats")
       Iterator(localCatStats)
     }.reduce((stats1, stats2) => stats1.merge(stats2))
+    logInfo(s"deci: Creating model..")
     val model = new VectorIndexerModel(uid, numFeatures, categoryStats.getCategoryMaps)
       .setParent(this)
     copyValues(model)

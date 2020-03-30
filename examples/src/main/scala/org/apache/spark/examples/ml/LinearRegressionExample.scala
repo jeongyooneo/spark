@@ -21,7 +21,9 @@ package org.apache.spark.examples.ml
 import scopt.OptionParser
 
 import org.apache.spark.examples.mllib.AbstractParams
+import org.apache.spark.ml.Transformer
 import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.mllib.evaluation.RegressionMetrics
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 /**
@@ -51,6 +53,7 @@ object LinearRegressionExample {
       fracTest: Double = 0.2) extends AbstractParams[Params]
 
   def main(args: Array[String]) {
+    /*
     val defaultParams = Params()
 
     val parser = new OptionParser[Params]("LinearRegressionExample") {
@@ -81,7 +84,7 @@ object LinearRegressionExample {
       opt[String]("dataFormat")
         .text("data format: libsvm (default), dense (deprecated in Spark v1.1)")
         .action((x, c) => c.copy(dataFormat = x))
-      arg[String]("input")
+      arg[String]("<input>")
         .text("input path to labeled examples")
         .required()
         .action((x, c) => c.copy(input = x))
@@ -98,27 +101,30 @@ object LinearRegressionExample {
       case Some(params) => run(params)
       case _ => sys.exit(1)
     }
+    */
+    run(args)
   }
 
-  def run(params: Params): Unit = {
+  def run(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder
-      .appName(s"LinearRegressionExample with $params")
+      .appName(s"LinearRegressionExample")
       .getOrCreate()
 
-    println(s"LinearRegressionExample with parameters:\n$params")
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
 
-    // Load training and test data and cache it.
-    val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
-      params.dataFormat, params.testInput, "regression", params.fracTest)
+    if (args.length > 0) {
+      path = args(0)
+    }
+
+    // Load the data stored in LIBSVM format as a DataFrame.
+    val data = spark.read.format("libsvm").load(prefix + path)
+    val Array(training, test) = data.randomSplit(Array(0.7, 0.3))
 
     val lir = new LinearRegression()
       .setFeaturesCol("features")
       .setLabelCol("label")
-      .setRegParam(params.regParam)
-      .setElasticNetParam(params.elasticNetParam)
-      .setMaxIter(params.maxIter)
-      .setTol(params.tol)
 
     // Train the model
     val startTime = System.nanoTime()
@@ -130,11 +136,23 @@ object LinearRegressionExample {
     println(s"Weights: ${lirModel.coefficients} Intercept: ${lirModel.intercept}")
 
     println("Training data results:")
-    DecisionTreeExample.evaluateRegressionModel(lirModel, training, "label")
+    evaluateRegressionModel(lirModel, training, "label")
     println("Test data results:")
-    DecisionTreeExample.evaluateRegressionModel(lirModel, test, "label")
+    evaluateRegressionModel(lirModel, test, "label")
 
     spark.stop()
   }
+
+  private[ml] def evaluateRegressionModel(
+                                           model: Transformer,
+                                           data: DataFrame,
+                                           labelColName: String): Unit = {
+    val fullPredictions = model.transform(data).cache()
+    val predictions = fullPredictions.select("prediction").rdd.map(_.getDouble(0))
+    val labels = fullPredictions.select(labelColName).rdd.map(_.getDouble(0))
+    val RMSE = new RegressionMetrics(predictions.zip(labels)).rootMeanSquaredError
+    println(s"  Root mean squared error (RMSE): $RMSE")
+  }
 }
 // scalastyle:on println
+
