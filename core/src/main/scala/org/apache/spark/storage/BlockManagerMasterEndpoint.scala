@@ -172,6 +172,9 @@ class BlockManagerMasterEndpoint(
     case BlockManagerHeartbeat(blockManagerId) =>
       context.reply(heartbeatReceived(blockManagerId))
 
+    case LogInfo(log) =>
+      logInfo(log)
+
     case HasCachedBlocks(executorId) =>
       blockManagerIdByExecutor.get(executorId) match {
         case Some(bm) =>

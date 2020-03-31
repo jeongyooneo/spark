@@ -91,6 +91,8 @@ private[spark] object BlockManagerMessages {
     }
   }
 
+  case class LogInfo(log: String) extends ToBlockManagerMaster
+
   case class GetLocations(blockId: BlockId) extends ToBlockManagerMaster
 
   case class GetLocationsAndStatus(blockId: BlockId) extends ToBlockManagerMaster

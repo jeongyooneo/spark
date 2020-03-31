@@ -880,6 +880,8 @@ private[spark] class BlockManager(
         logInfo(s"jy: cache miss: $blockId")
         // Need to compute the block.
     }
+
+    val blockCompStartTime = System.currentTimeMillis()
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
@@ -895,11 +897,20 @@ private[spark] class BlockManager(
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
+
+        val blockCompEndTime = System.currentTimeMillis()
+        val elapsed = blockCompEndTime - blockCompStartTime
+        master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
+
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
+        val blockCompEndTime = System.currentTimeMillis()
+        val elapsed = blockCompEndTime - blockCompStartTime
+        master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
+
        Right(iter)
     }
   }
