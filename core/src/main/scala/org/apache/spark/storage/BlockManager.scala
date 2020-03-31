@@ -1043,10 +1043,13 @@ private[spark] class BlockManager(
         master.sendLog(s"RCTime\t$blockId\t${context.stageId()}\t$elapsed")
 
         Left(blockResult)
-     case Some(iter) =>
+      case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
+        val blockCompEndTime = System.currentTimeMillis()
+        val elapsed = blockCompEndTime - blockCompStartTime
+        master.sendLog(s"RCTime\t$blockId\t${context.stageId()}\t$elapsed")
         Right(iter)
     }
   }
