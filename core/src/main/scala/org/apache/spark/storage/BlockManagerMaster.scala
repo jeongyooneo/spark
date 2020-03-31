@@ -67,6 +67,10 @@ class BlockManagerMaster(
     updatedId
   }
 
+  def sendLog(log: String): Unit = {
+    driverEndpoint.ask(LogString(log))
+  }
+
   def updateBlockInfo(
       blockManagerId: BlockManagerId,
       blockId: BlockId,

@@ -1010,14 +1010,14 @@ private[spark] class BlockManager(
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
 
-    val disaggRecomputeStart = System.nanoTime
-
     get[T](blockId)(classTag) match {
       case Some(block) =>
         return Left(block)
       case _ =>
         // Need to compute the block.
     }
+
+    val blockCompStartTime = System.currentTimeMillis()
 
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
@@ -1037,6 +1037,11 @@ private[spark] class BlockManager(
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
+
+        val blockCompEndTime = System.currentTimeMillis()
+        val elapsed = blockCompEndTime - blockCompStartTime
+        master.sendLog(s"RCTime\t$blockId\t${context.stageId()}\t$elapsed")
+
         Left(blockResult)
      case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be

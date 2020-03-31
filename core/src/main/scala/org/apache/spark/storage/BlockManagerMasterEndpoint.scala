@@ -124,6 +124,7 @@ class BlockManagerMasterEndpoint(
 
       if (rddJobDag.isDefined) {
         rddJobDag.get.updateCostAndSort
+        /*
         rddJobDag.get.sortedBlockCost match {
           case None =>
           case Some(l) =>
@@ -137,6 +138,7 @@ class BlockManagerMasterEndpoint(
             }
             logInfo(costLog.toString())
         }
+        */
       }
 
       blockManagerInfo.foreach {
@@ -239,6 +241,8 @@ class BlockManagerMasterEndpoint(
 
     case BlockManagerHeartbeat(blockManagerId) =>
       context.reply(heartbeatReceived(blockManagerId))
+
+    case LogString(log) => logInfo(log)
 
     case HasCachedBlocks(executorId) =>
       blockManagerIdByExecutor.get(executorId) match {
