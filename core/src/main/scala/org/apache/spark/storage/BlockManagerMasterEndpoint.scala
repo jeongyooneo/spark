@@ -108,6 +108,7 @@ class BlockManagerMasterEndpoint(
   val scheduler = Executors.newSingleThreadScheduledExecutor()
 
 
+  var loggingCnt = 0
   val task = new Runnable {
     def run(): Unit = {
 
@@ -131,7 +132,8 @@ class BlockManagerMasterEndpoint(
               pair =>
                 val bid = pair._1
                 val cost = pair._2.cost
-                costLog.append(s"CostLog\t$bid\t$cost\n")
+                costLog.append(s"CostLog\t$loggingCnt\t$bid\t$cost\n")
+                loggingCnt += 1
             }
             logInfo(costLog.toString())
         }
