@@ -128,12 +128,12 @@ class BlockManagerMasterEndpoint(
           case None =>
           case Some(l) =>
             val costLog: mutable.StringBuilder = new mutable.StringBuilder()
+            loggingCnt += 1
             l.foreach {
               pair =>
                 val bid = pair._1
                 val cost = pair._2.cost
                 costLog.append(s"CostLog\t$loggingCnt\t$bid\t$cost\n")
-                loggingCnt += 1
             }
             logInfo(costLog.toString())
         }
