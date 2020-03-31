@@ -123,9 +123,19 @@ class BlockManagerMasterEndpoint(
 
       if (rddJobDag.isDefined) {
         rddJobDag.get.updateCostAndSort
+        rddJobDag.get.sortedBlockCost match {
+          case None =>
+          case Some(l) =>
+            val costLog: mutable.StringBuilder = new mutable.StringBuilder()
+            l.foreach {
+              pair =>
+                val bid = pair._1
+                val cost = pair._2.cost
+                costLog.append(s"CostLog\t$bid\t$cost\n")
+            }
+            logInfo(costLog.toString())
+        }
       }
-
-
 
       blockManagerInfo.foreach {
         case (k: BlockManagerId, v: BlockManagerInfo) =>
