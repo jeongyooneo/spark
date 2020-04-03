@@ -76,6 +76,8 @@ class BlockManagerMasterEndpoint(
     mapper
   }
 
+  val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
+
   var disaggBlockManager: DisaggBlockManagerEndpoint = null
   def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
     disaggBlockManager = bm
@@ -99,7 +101,12 @@ class BlockManagerMasterEndpoint(
 
   val totalDisaggSize: AtomicLong = new AtomicLong(0)
 
-  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath, conf)
+
+  val rddJobDag: Option[RDDJobDag] = if (autocaching) {
+    RDDJobDag(dagPath, conf)
+  } else {
+    Option.empty
+  }
 
   if (rddJobDag.isDefined) {
     logInfo(rddJobDag.get.toString)
