@@ -212,7 +212,11 @@ abstract class RDD[T: ClassTag](
    * @return This RDD.
    */
   def unpersist(blocking: Boolean = true): this.type = {
-    // sc.unpersistRDD(id, blocking)
+
+    val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
+    if (!autocaching) {
+      sc.unpersistRDD(id, blocking)
+    }
     storageLevel = StorageLevel.NONE
     this
   }
