@@ -107,6 +107,7 @@ class LRUEvictionManagerEndpoint(
     val prevTime = prevDiscardTime.get()
 
     val elapsed = System.currentTimeMillis() - prevTime
+    var totalDiscardSize: Long = 0
 
     if (totalSize.get() + estimateSize > threshold) {
       // discard!!
@@ -119,7 +120,6 @@ class LRUEvictionManagerEndpoint(
       val targetDiscardSize: Long = Math.max(estimateSize,
         totalSize.get() + estimateSize - threshold + 1 * (1000 * 1000)) // 5GB
 
-      var totalDiscardSize: Long = 0
 
       lruQueue.synchronized {
         var cnt = 0
@@ -146,10 +146,20 @@ class LRUEvictionManagerEndpoint(
       }
     }
 
-    blocksSizeToBeCreated.put(blockId, estimateSize)
-    totalSize.addAndGet(estimateSize)
+    if (totalDiscardSize > estimateSize) {
+      blocksSizeToBeCreated.put(blockId, estimateSize)
+      totalSize.addAndGet(estimateSize)
+      evictBlocks(removeBlocks)
+      true
+    } else {
 
-    evictBlocks(removeBlocks)
-    true
+      lruQueue.synchronized {
+        removeBlocks.foreach {
+          info => lruQueue.append(info._2)
+        }
+      }
+
+      false
+    }
   }
 }
