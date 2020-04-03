@@ -89,7 +89,10 @@ private[spark] class MemoryStore(
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
-  private val decisionByMaster = conf.get("spark.disagg.evictpolicy").contains("Local")
+  private val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
+
+  private val decisionByMaster =
+    conf.get("spark.disagg.evictpolicy").contains("Local") && autocaching
 
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
