@@ -80,6 +80,8 @@ abstract class DisaggBlockManagerEndpoint(
     fs.delete(rootDir, true).get().syncDir()
   }
 
+  val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
+
   fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
     CrailLocationClass.DEFAULT, true).get().syncDir()
   logInfo("creating " + rootDir + " done")
@@ -288,18 +290,20 @@ abstract class DisaggBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     stageCompletedCall(stageId)
 
-    // unpersist rdds
-    rddJobDag match {
-      case None =>
-      case Some(dag) =>
-        val zeroRdds = dag.getZeroCostRDDs
-        zeroRdds.foreach {
-          rdd =>
-            logInfo(s"Remove zero cost rdd $rdd from memory")
-            blockManagerMaster.removeRdd(rdd)
-        }
+    if (autocaching) {
+      // unpersist rdds
+      rddJobDag match {
+        case None =>
+        case Some(dag) =>
+          val zeroRdds = dag.getZeroCostRDDs
+          zeroRdds.foreach {
+            rdd =>
+              logInfo(s"Remove zero cost rdd $rdd from memory")
+              blockManagerMaster.removeRdd(rdd)
+          }
 
-        removeRddFromDisagg(zeroRdds)
+          removeRddFromDisagg(zeroRdds)
+      }
     }
   }
 
