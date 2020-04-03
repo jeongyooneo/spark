@@ -100,7 +100,7 @@ class LRUEvictionManagerEndpoint(
 
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
                                executorId: String,
-                               putDisagg: Boolean): Boolean = {
+                               putDisagg: Boolean): Boolean = synchronized {
 
     val removeBlocks: mutable.ListBuffer[(BlockId, CrailBlockInfo)] =
       new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
@@ -108,43 +108,39 @@ class LRUEvictionManagerEndpoint(
 
     val elapsed = System.currentTimeMillis() - prevTime
 
-    if (totalSize.get() + estimateSize > threshold && elapsed > 1000) {
+    if (totalSize.get() + estimateSize > threshold) {
       // discard!!
       // rm 1/3 after 10 seconds
-      if (prevDiscardTime.compareAndSet(prevTime, System.currentTimeMillis())) {
 
         // logInfo(s"Discard blocks.. pointer ${lruPointer} / ${lruQueue.size}")
         // val targetDiscardSize: Long = 1 * (disaggTotalSize + estimateSize) / 3
+      logInfo(s"lruQueue: $lruQueue")
 
-        logInfo(s"lruQueue: $lruQueue")
+      val targetDiscardSize: Long = Math.max(estimateSize,
+        totalSize.get() + estimateSize - threshold + 1 * (1000 * 1000)) // 5GB
 
-        val targetDiscardSize: Long = Math.max(totalSize.get()
-          + estimateSize - threshold,
-          2L * 1000L * 1000L * 1000L) // 5GB
+      var totalDiscardSize: Long = 0
 
-        var totalDiscardSize: Long = 0
+      lruQueue.synchronized {
+        var cnt = 0
 
-        lruQueue.synchronized {
-          var cnt = 0
+        val lruSize = lruQueue.size
 
-          val lruSize = lruQueue.size
+        val currTime = System.currentTimeMillis();
 
-          val currTime = System.currentTimeMillis();
+        while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty && cnt < lruSize) {
+          val candidateBlock: CrailBlockInfo = lruQueue.head
 
-          while (totalDiscardSize < targetDiscardSize && lruQueue.nonEmpty && cnt < lruSize) {
-            val candidateBlock: CrailBlockInfo = lruQueue.head
+          if (timeToRemove(candidateBlock.createdTime, currTime)) {
+            totalDiscardSize += candidateBlock.size
+            logInfo(s"Discarding ${candidateBlock.bid}.." +
+              s"pointer ${lruPointer} / ${lruQueue.size}" +
+              s"size $totalDiscardSize / $targetDiscardSize")
+            removeBlocks.append((candidateBlock.bid, candidateBlock))
 
-            if (timeToRemove(candidateBlock.createdTime, currTime)) {
-              totalDiscardSize += candidateBlock.size
-              logInfo(s"Discarding ${candidateBlock.bid}.." +
-                s"pointer ${lruPointer} / ${lruQueue.size}" +
-                s"size $totalDiscardSize / $targetDiscardSize")
-              removeBlocks.append((candidateBlock.bid, candidateBlock))
+            lruQueue -= candidateBlock
 
-              lruQueue -= candidateBlock
-
-              cnt += 1
-            }
+            cnt += 1
           }
         }
       }
