@@ -18,7 +18,7 @@
 package org.apache.spark.storage.disagg
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
-import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
+import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
@@ -56,6 +56,19 @@ abstract class DisaggBlockManagerEndpoint(
   rddJobDag match {
     case Some(dag) => dag.benefitAnalyzer.setDisaggBlockManagerEndpoint(this)
     case None =>
+  }
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+      fs.getStatistics.print("hello")
+    }
+  }
+
+  scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
+
+  override def onStop(): Unit = {
+    scheduler.shutdownNow()
   }
 
   val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
