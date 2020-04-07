@@ -22,12 +22,11 @@ import org.apache.spark.internal.Logging
 object DisaggUtils extends Logging {
 
   val conf = new CrailConfiguration()
-  val crailBlockSize = conf.get("crail.blocksize").toLong
-
-  logInfo(s"Crail block size: $crailBlockSize")
+  lazy val crailBlockSize = conf.get("crail.blocksize").toLong
 
   def calculateDisaggBlockSize(size: Long): Long = {
+    logInfo(s"Crail block size: $crailBlockSize")
     val remain = size % crailBlockSize
-    (size - remain + crailBlockSize)
+    size - remain + crailBlockSize
   }
 }
