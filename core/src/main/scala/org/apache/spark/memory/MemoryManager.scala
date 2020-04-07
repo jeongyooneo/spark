@@ -17,16 +17,19 @@
 
 package org.apache.spark.memory
 
-import javax.annotation.concurrent.GuardedBy
+import java.util.concurrent.{Executors, TimeUnit}
 
+import javax.annotation.concurrent.GuardedBy
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
-import org.apache.spark.storage.BlockId
+import org.apache.spark.storage.{BlockId, BlockManagerId, BlockManagerInfo, BlockStatus}
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.unsafe.memory.MemoryAllocator
+
+import scala.collection.mutable
 
 /**
  * An abstract memory manager that enforces how memory is shared between execution and storage.
@@ -237,4 +240,18 @@ private[spark] abstract class MemoryManager(
       case MemoryMode.OFF_HEAP => MemoryAllocator.UNSAFE
     }
   }
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+      val builder: mutable.StringBuilder = new mutable.StringBuilder()
+
+      builder.append(s"\nMemory status: EM $executionMemoryUsed, " +
+        s"SM: $storageMemoryUsed\n")
+
+      logInfo(builder.toString())
+    }
+  }
+  scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
+
 }

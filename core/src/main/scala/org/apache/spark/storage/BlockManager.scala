@@ -590,10 +590,18 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
-            memoryStore.getValues(blockId).get
+            val fetchLocalStart = System.nanoTime()
+            val deser = memoryStore.getValues(blockId).get
+            logInfo(s"$blockId local fetch time: " +
+              (System.nanoTime() - fetchLocalStart)/1000 + " us")
+            deser
           } else {
-            serializerManager.dataDeserializeStream(
+            val fetchLocalStart = System.nanoTime()
+            val ser = serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
+            logInfo(s"$blockId local fetch time(ser): " +
+              (System.nanoTime() - fetchLocalStart)/1000 + " us")
+            ser
           }
           // We need to capture the current taskId in case the iterator completion is triggered
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
@@ -693,11 +701,27 @@ private[spark] class BlockManager(
    */
   private def getRemoteValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val ct = implicitly[ClassTag[T]]
-    getRemoteBytes(blockId).map { data =>
+    var level = StorageLevel.MEMORY_ONLY
+
+    blockInfoManager.lockForReading(blockId) match {
+      case Some(info) =>
+        level = info.level
+    }
+
+    var isSer = ""
+    if (level.useMemory && !level.deserialized) {
+      isSer = "(ser)"
+    }
+
+    val fetchRemoteStart = System.nanoTime()
+    val ret = getRemoteBytes(blockId).map { data =>
       val values =
         serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))(ct)
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
+    logInfo(s"$blockId remote fetch time$isSer: " +
+      (System.nanoTime() - fetchRemoteStart)/1000 + " us")
+    ret
   }
 
   /**
@@ -874,16 +898,17 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
-        logInfo(s"jy: cache hit: $blockId")
+        logInfo(s"cache hit: $blockId")
         return Left(block)
       case _ =>
-        logInfo(s"jy: cache miss: $blockId")
+        logInfo(s"cache miss: $blockId")
         // Need to compute the block.
     }
 
     val blockCompStartTime = System.currentTimeMillis()
     // Initially we hold no locks on this block.
-    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
+    val storeLocalStart = System.nanoTime()
+    val ret = doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
@@ -913,6 +938,14 @@ private[spark] class BlockManager(
 
        Right(iter)
     }
+
+    var isSer = ""
+    if (level.useMemory && !level.deserialized) isSer = "(ser)"
+
+    logInfo(s"$blockId local store time$isSer: " +
+      (System.nanoTime() - storeLocalStart)/1000 + " us")
+
+    ret
   }
 
   /**
