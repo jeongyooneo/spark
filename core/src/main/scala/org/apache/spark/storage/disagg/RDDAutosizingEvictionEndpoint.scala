@@ -251,7 +251,7 @@ class RDDAutosizingEvictionEndpoint(
     val totalCost = blocks.map(block => block._2.cost).sum
     val totalSize = blocks.map(block => disaggBlockInfo.get(block._1) match {
       case None => 0L
-      case Some(info) => info.size
+      case Some(info) => info.getSize
     }).sum
 
     var percentIndex = 0
@@ -259,7 +259,7 @@ class RDDAutosizingEvictionEndpoint(
 
       val s = disaggBlockInfo.get(blocks(i)._1) match {
         case None => 0L
-        case Some(info) => info.size
+        case Some(info) => info.getSize
       }
 
       compSum += blocks(i)._2.cost
@@ -311,7 +311,7 @@ class RDDAutosizingEvictionEndpoint(
           if (timeToRemove(blockInfo.createdTime, currTime) &&
                 blocks(i)._2.cost < avgCost) {
             logInfo(s"Remove block for histogram " +
-              s"for block ${blockInfo.bid}, ${blocks(i)._2.cost}, ${blockInfo.size}, " +
+              s"for block ${blockInfo.bid}, ${blocks(i)._2.cost}, ${blockInfo.getSize}, " +
               s"avgCost: $avgCost")
             removeBlocks.append((blockInfo.bid, blockInfo))
           }

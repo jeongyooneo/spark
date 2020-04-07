@@ -18,7 +18,7 @@
 package org.apache.spark.storage.disagg
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
-import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
+import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors}
 
 import org.apache.crail.{CrailLocationClass, CrailNodeType, CrailStorageClass}
 import org.apache.spark.SparkConf
@@ -51,7 +51,7 @@ abstract class DisaggBlockManagerEndpoint(
 
   blockManagerMaster.setDisaggBlockManager(this)
 
-  val threshold: Long = disaggCapacityMB * (1000 * 1000)
+  val threshold: Long = disaggCapacityMB * (1024 * 1024)
   val rddJobDag = blockManagerMaster.rddJobDag
   rddJobDag match {
     case Some(dag) => dag.benefitAnalyzer.setDisaggBlockManagerEndpoint(this)
@@ -59,13 +59,14 @@ abstract class DisaggBlockManagerEndpoint(
   }
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
+  /*
   val task = new Runnable {
     def run(): Unit = {
       fs.getStatistics.print("hello")
     }
   }
-
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
+  */
 
   override def onStop(): Unit = {
     scheduler.shutdownNow()
@@ -150,7 +151,7 @@ abstract class DisaggBlockManagerEndpoint(
   def evictBlocks(removeBlocks: ListBuffer[(BlockId, CrailBlockInfo)]): Unit = synchronized {
     removeBlocks.foreach { b =>
       blocksRemovedByMaster.put(b._1, true)
-      totalSize.addAndGet(-b._2.size)
+      totalSize.addAndGet(-b._2.getActualBlockSize)
 
       executor.submit(new Runnable {
         override def run(): Unit = {
@@ -365,8 +366,8 @@ abstract class DisaggBlockManagerEndpoint(
       case None =>
         if (recentlyRemoved.contains(blockId)) {
           val blockInfo = recentlyRemoved.remove(blockId)
-          if (!blocksRemovedByMaster.remove(blockId)) {
-            totalSize.addAndGet(-blockInfo.size)
+          if (!blocksRemovedByMaster.remove(blockId) && blockInfo.isDefined) {
+            totalSize.addAndGet(-blockInfo.get.getActualBlockSize)
           }
         }
         false
@@ -374,7 +375,7 @@ abstract class DisaggBlockManagerEndpoint(
         recentlyRemoved.remove(blockId)
         fileRemovedCall(blockInfo)
         if (!blocksRemovedByMaster.remove(blockId)) {
-          totalSize.addAndGet(-blockInfo.size)
+          totalSize.addAndGet(-blockInfo.getActualBlockSize)
         }
         true
     }
@@ -391,13 +392,13 @@ abstract class DisaggBlockManagerEndpoint(
       throw new RuntimeException(s"no disagg block for writing $blockId")
     } else {
       val v = info.get
-      v.size = size
+      v.setSize(size)
       v.createdTime = System.currentTimeMillis()
       v.writeDone = true
 
       if (blocksSizeToBeCreated.containsKey(blockId)) {
         val estimateSize = blocksSizeToBeCreated.remove(blockId)
-        totalSize.addAndGet(v.size - estimateSize)
+        totalSize.addAndGet(v.getActualBlockSize - estimateSize)
       } else {
         throw new RuntimeException(s"No created block $blockId")
       }
@@ -491,7 +492,7 @@ abstract class DisaggBlockManagerEndpoint(
       } else if (!disaggBlockInfo.get(blockId).get.writeDone) {
         throw new RuntimeException(s"disagg block size is 0.. not write done $blockId")
       } else {
-        context.reply(disaggBlockInfo.get(blockId).get.size)
+        context.reply(disaggBlockInfo.get(blockId).get.getSize)
       }
 
     case LocalEviction(blockId, executorId, size) =>
@@ -501,25 +502,41 @@ abstract class DisaggBlockManagerEndpoint(
     case LocalEvictionDone(blockId) =>
       localEvictionDone(blockId)
   }
-}
 
-class CrailBlockInfo(blockId: BlockId,
-                     path: String) {
-  val bid = blockId
-  var writeDone: Boolean = false
-  var size: Long = 0L
-  var read: Boolean = true
-  val readCount: AtomicInteger = new AtomicInteger()
-  var isRemoved = false
-  var createdTime = System.currentTimeMillis()
-  var refTime = System.currentTimeMillis()
-  var refCnt: AtomicInteger = new AtomicInteger()
-  var nectarCost: Long = 0L
+  class CrailBlockInfo(blockId: BlockId,
+                       path: String) {
+    val bid = blockId
+    var writeDone: Boolean = false
+    private var size: Long = 0L
+    private var actualBlockSize: Long = 0L
+    var read: Boolean = true
+    val readCount: AtomicInteger = new AtomicInteger()
+    var isRemoved = false
+    var createdTime = System.currentTimeMillis()
+    var refTime = System.currentTimeMillis()
+    var refCnt: AtomicInteger = new AtomicInteger()
+    var nectarCost: Long = 0L
 
-  override def toString: String = {
-    s"<$bid/read:$read>"
+    override def toString: String = {
+      s"<$bid/read:$read>"
+    }
+
+    def getSize: Long = {
+      size
+    }
+
+    def getActualBlockSize: Long = {
+      actualBlockSize
+    }
+
+    def setSize(s: Long): Unit = {
+      size = s
+      actualBlockSize = DisaggUtils.calculateDisaggBlockSize(size)
+    }
   }
 }
+
+
 
 object DisaggBlockManagerEndpoint {
 

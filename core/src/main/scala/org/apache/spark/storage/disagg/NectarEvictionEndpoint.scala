@@ -71,7 +71,7 @@ class NectarEvictionEndpoint(
 
   // Calculate OSDI10 Nectar's CostBenefitRatio in eviction policy.
   private def calculateCostBenefitRatio(blockInfo: CrailBlockInfo, ct: Long): Long = {
-    val cost = (blockInfo.size / 10000) * (ct - blockInfo.refTime)
+    val cost = (blockInfo.getSize / 10000) * (ct - blockInfo.refTime)
     val benefit = Math.max(1, blockInfo.refCnt.get()) *
       rddJobDag.get.blockCompTime(blockInfo.bid, ct)
     cost / benefit
@@ -124,7 +124,7 @@ class NectarEvictionEndpoint(
           val bInfo = iterator.next()
 
           if (ct - bInfo.createdTime > 5000) {
-            totalDiscardSize += bInfo.size
+            totalDiscardSize += bInfo.getSize
             blocksToRemove.append((bInfo.bid, bInfo))
 
             logInfo(s"Try to evict a block: Cost: ${bInfo.nectarCost} " +

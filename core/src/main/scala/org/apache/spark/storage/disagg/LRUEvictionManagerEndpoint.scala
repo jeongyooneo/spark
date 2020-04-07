@@ -132,7 +132,7 @@ class LRUEvictionManagerEndpoint(
           val candidateBlock: CrailBlockInfo = lruQueue.head
 
           if (timeToRemove(candidateBlock.createdTime, currTime)) {
-            totalDiscardSize += candidateBlock.size
+            totalDiscardSize += candidateBlock.getSize
             logInfo(s"Discarding ${candidateBlock.bid}.." +
               s"pointer ${lruPointer} / ${lruQueue.size}" +
               s"size $totalDiscardSize / $targetDiscardSize")

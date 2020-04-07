@@ -211,6 +211,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
                              putDisagg: Boolean): Boolean = {
     val prevTime = prevDiscardTime.get()
 
+
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)
     rddJobDag.get.setBlockCreatedTime(blockId)
 
@@ -229,6 +230,8 @@ class RDDLocalDisaggMemoryPolicyPoint(
       return false
     }
 
+
+    val estimateBlockSize = DisaggUtils.calculateDisaggBlockSize(estimateSize)
     val rddId = blockId.asRDDId.get.rddId
 
     synchronized {
@@ -240,12 +243,12 @@ class RDDLocalDisaggMemoryPolicyPoint(
         new mutable.ListBuffer[(BlockId, CrailBlockInfo)]
 
       // If we have enough space in disagg memory, cache it
-      if (totalSize.get() + estimateSize < threshold) {
+      if (totalSize.get() + estimateBlockSize < threshold) {
         logInfo(s"Storing $blockId, cost: $storingCost, " +
-          s"size $estimateSize / $totalSize, threshold: $threshold")
+          s"size $estimateBlockSize / $totalSize, threshold: $threshold")
 
-        blocksSizeToBeCreated.put(blockId, estimateSize)
-        totalSize.addAndGet(estimateSize)
+        blocksSizeToBeCreated.put(blockId, estimateBlockSize)
+        totalSize.addAndGet(estimateBlockSize)
         rddJobDag.get.storingBlock(blockId)
 
 
@@ -264,8 +267,8 @@ class RDDLocalDisaggMemoryPolicyPoint(
         case Some(l) =>
           val iterator = l.iterator
 
-          val removalSize = Math.max(estimateSize,
-            totalSize.get() + estimateSize - threshold + 1 * (1000 * 1000))
+          val removalSize = Math.max(estimateBlockSize,
+            totalSize.get() + estimateBlockSize - threshold + 1 * (1000 * 1000))
 
           val currTime = System.currentTimeMillis()
 
@@ -281,7 +284,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
                   && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
                   && discardCost < storingCost) {
                   totalCost += discardCost
-                  totalDiscardSize += blockInfo.size
+                  totalDiscardSize += blockInfo.getActualBlockSize
                   removeBlocks.append((bid, blockInfo))
                   discardLog.append(s"EVICT\t$blockId\t$storingCost\n")
                   logInfo(s"Try to remove: Cost: $totalCost/$storingCost, " +
@@ -291,11 +294,11 @@ class RDDLocalDisaggMemoryPolicyPoint(
           }
       }
 
-      if (totalDiscardSize < estimateSize) {
+      if (totalDiscardSize < estimateBlockSize) {
         // the cost due to discarding >  cost to store
         // we won't store it
         logInfo(s"Discarding $blockId, discardingCost: $totalCost, " +
-          s"discardingSize: $totalDiscardSize/$estimateSize")
+          s"discardingSize: $totalDiscardSize/$estimateBlockSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
 
 
@@ -310,7 +313,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
         // we won't store it
         logInfo(s"Discarding $blockId because the discarding " +
           s"block is empty, discardingCost: $totalCost, " +
-          s"discardingSize: $totalDiscardSize/$estimateSize")
+          s"discardingSize: $totalDiscardSize/$estimateBlockSize")
         rddJobDag.get.setStoredBlocksCreatedTime(blockId)
 
         if (blockManagerMaster.getLocations(blockId).isEmpty) {
@@ -328,9 +331,10 @@ class RDDLocalDisaggMemoryPolicyPoint(
           rddJobDag.get.removingBlock(t._1)
         }
 
-        logInfo(s"Storing $blockId, size $estimateSize / $totalSize, threshold: $threshold")
-        blocksSizeToBeCreated.put(blockId, estimateSize)
-        totalSize.addAndGet(estimateSize)
+        logInfo(s"Storing $blockId, size $estimateBlockSize /" +
+          s" $totalSize, threshold: $threshold")
+        blocksSizeToBeCreated.put(blockId, estimateBlockSize)
+        totalSize.addAndGet(estimateBlockSize)
         rddJobDag.get.storingBlock(blockId)
 
         true
