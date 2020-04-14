@@ -218,6 +218,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
     val storingCost =
       rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
 
+    /*
     if (storingCost < 2000) {
       // the cost due to discarding >  cost to store
       // we won't store it
@@ -229,6 +230,7 @@ class RDDLocalDisaggMemoryPolicyPoint(
       logInfo(s"EVICT\t$blockId\t$storingCost")
       return false
     }
+    */
 
 
     val estimateBlockSize = DisaggUtils.calculateDisaggBlockSize(estimateSize)
