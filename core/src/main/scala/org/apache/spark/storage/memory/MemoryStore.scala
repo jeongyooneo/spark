@@ -469,7 +469,7 @@ private[spark] class MemoryStore(
       entries.synchronized {
         if (decisionByMaster) {
           var cnt = 0
-          while (freedMemory < space && cnt < 3) {
+          while (freedMemory < space && cnt < 30) {
 
             cnt += 1
 
