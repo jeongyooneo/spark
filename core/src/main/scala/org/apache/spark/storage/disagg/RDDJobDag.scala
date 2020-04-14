@@ -411,7 +411,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     new BlockCost(
-      cost * uncachedChildNum,
+      uncachedChildNum,
+      // cost * uncachedChildNum,
       nodeCreatedTime,
       parentBlocks,
       times)
