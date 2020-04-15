@@ -306,7 +306,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         case None =>
           getTaskStartTimeFromBlockId(rddNode.stageId, blockId) match {
             case None =>
-              stageStartTime.get(rddNode.stageId)
+              stageStartTime(rddNode.stageId)
             case Some(startTime) =>
               b.append(blockId)
               l.append(startTime)
