@@ -306,8 +306,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         case None =>
           getTaskStartTimeFromBlockId(rddNode.stageId, blockId) match {
             case None =>
-              throw new RuntimeException(s"Stage start time does " +
-                s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
+              stageStartTime.get(rddNode.stageId)
             case Some(startTime) =>
               b.append(blockId)
               l.append(startTime)
