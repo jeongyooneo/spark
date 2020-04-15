@@ -19,8 +19,9 @@ package org.apache.spark.storage.disagg
 
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
-import org.apache.spark.{BenefitAnalyzer, SparkConf}
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.disagg.RDDJobDag.{Benefit, BlockCost}
 import org.apache.spark.storage.{BlockId, RDDBlockId}
@@ -31,43 +32,56 @@ import scala.collection.mutable.ListBuffer
 import scala.collection.{mutable, _}
 import scala.io.Source
 
-class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])],
-                val edges: ListBuffer[(Int, Int)],
-                val vertices: mutable.Map[Int, RDDNode],
-                val autocaching: Boolean) extends Logging {
+class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
+                val reverseDag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
+                val autocaching: Boolean,
+                val evictionPolicy: String) extends Logging {
 
   val blockCost: concurrent.Map[BlockId, BlockCost] =
     new ConcurrentHashMap[BlockId, BlockCost]().asScala
   @volatile
   var sortedBlockCost: Option[mutable.ListBuffer[(BlockId, BlockCost)]] = None
 
-  // For benefit
-  var sortedBlockByBenefit: Option[mutable.ListBuffer[(BlockId, Benefit)]] = None
-
   val blockCreatedTimes: concurrent.Map[BlockId, Long] =
     new ConcurrentHashMap[BlockId, Long]().asScala
+
   val stageStartTime: concurrent.Map[Int, Long] =
     new ConcurrentHashMap[Int, Long]().asScala
+
   val taskStartTime: concurrent.Map[String, Long] = new ConcurrentHashMap[String, Long]().asScala
+
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
 
-  val benefitAnalyzer: BenefitAnalyzer = new BenefitAnalyzer
+  val dagChanged = new AtomicBoolean(true)
 
-  var globalBenefit: Option[Benefit] = None
+  val lrcBased = evictionPolicy.contains("LRC")
+
+  private var prevVertices: Map[Int, RDDNode] = new mutable.HashMap[Int, RDDNode]()
+  def vertices: Map[Int, RDDNode] = {
+    dagChanged.synchronized {
+      if (dagChanged.get()) {
+        prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
+        dagChanged.set(false)
+        prevVertices
+      } else {
+        prevVertices
+      }
+    }
+  }
 
   if (autocaching) {
     // clear cached rdds
     vertices.foreach { v =>
       if (v._2.cached) {
-        logInfo(s"Prev cached RDD: ${v._1}")
+        logInfo(s"Prev cached RDD: ${v._2.rddId}")
         v._2.cached = false
       }
     }
 
     // re-set cached rdds
     vertices.foreach { v =>
-      if (dag(v._2)._1.size > 1) {
-        logInfo(s"Num of children of RDD ${v._2.rddId}: ${dag(v._2)._1.size}, cache!!")
+      if (dag(v._2).size > 1) {
+        logInfo(s"Num of children of RDD ${v._2.rddId}: ${dag(v._2).size}, cache!!")
         v._2.cached = true
       }
     }
@@ -83,7 +97,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 
   def getCachedRDDs(): Iterable[Int] = {
-    vertices.values.filter(node => node.cached).map(node => node.rddId)
+    vertices.filter(node => node._2.cached).map(node => node._2.rddId)
   }
 
   def updateCost: Unit = {
@@ -95,6 +109,69 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
     }
 
     logInfo(s"BlockCost: ${blockCost}")
+  }
+
+  def onlineUpdate(newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
+    dagChanged.synchronized {
+      // update dag
+
+      newDag.foreach { pair =>
+
+        val parent = pair._1
+        pair._2.foreach {
+          child =>
+            if (!reverseDag.contains(child)) {
+              reverseDag(child) = new mutable.HashSet[RDDNode]()
+            }
+            reverseDag(child).add(parent)
+        }
+
+        if (!dag.contains(pair._1)) {
+          logInfo(s"New vertex is created ${pair._1}->${pair._2}")
+          dag.put(pair._1, pair._2)
+          dagChanged.set(true)
+        } else {
+          if (!pair._2.subsetOf(dag(pair._1))) {
+            pair._2.foreach { dag(pair._1).add(_) }
+            logInfo(s"New edges are created for RDD " +
+              s"${pair._1.rddId}, ${dag(pair._1)}")
+            dagChanged.set(true)
+          }
+        }
+      }
+
+      // compare with the reverse dag dependency
+      // to find DAG mistmatch !!
+      // if there exist additional dependencies not matched with the submitted job
+      // we should fix the dag
+      val newReverseDag = RDDJobDag.buildReverseDag(newDag)
+      val unmatchedRDDs = newReverseDag.filter {
+        pair =>
+          val node = pair._1
+          val newReverseDagParents = pair._2
+          val mismatch = !newReverseDagParents.equals(reverseDag(node))
+          if (mismatch) {
+            logInfo(s"Mismatched RDD ${node}, " +
+              s"additional parents ${reverseDag(node).diff(newReverseDagParents)}")
+          }
+          mismatch
+      }.toList
+
+      if (unmatchedRDDs.nonEmpty) {
+        dagChanged.set(true)
+        unmatchedRDDs.foreach {
+          pair =>
+            val child = pair._1
+            val parents = pair._2
+            val prevParents = reverseDag(child)
+            val diff = prevParents.diff(parents)
+            diff.foreach {
+              prevParent =>
+                dag(prevParent).remove(child)
+            }
+        }
+      }
+    }
   }
 
   def getZeroCostRDDs: Set[Int] = {
@@ -147,25 +224,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       }
     }
 
-
     totalSize = Math.max(1, totalSize)
-    globalBenefit = Some(new Benefit(totalImportance, totalSize))
-
-    // logInfo(s"SortedBlockCost: ${sortedBlockCost}")
-    logInfo(s"SortedBenefit: $sortedBlockByBenefit")
-    logInfo(s"Benefit: ${totalImportance.toDouble/totalSize}," +
-      s" importance $totalImportance, size: ${totalSize/1000} MB")
-
     sortedBlockCost = Some(l.sortWith(_._2.cost < _._2.cost))
-    sortedBlockByBenefit = Some(blockBenefitList.sortWith(_._2.getVal < _._2.getVal))
-    try {
-      benefitAnalyzer.analyze(totalImportance, totalSize)
-    } catch {
-      case x: Exception =>
-        logWarning(s"Exception at benefitAnalyzer!!")
-        x.printStackTrace()
-        throw new RuntimeException(x)
-    }
   }
 
   override def toString: String = {
@@ -246,8 +306,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
         case None =>
           getTaskStartTimeFromBlockId(rddNode.stageId, blockId) match {
             case None =>
-              throw new RuntimeException(s"Stage start time does " +
-                s"not exist ${rddNode.stageId}/$rootTaskId, $blockId")
+              b.append(blockId)
+              l.append(stageStartTime(rddNode.stageId))
             case Some(startTime) =>
               b.append(blockId)
               l.append(startTime)
@@ -406,15 +466,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
 
     // logInfo(s"child blocks for $blockId: $uncachedChildList")
 
-    if (cost <= 0 || uncachedChildNum == 0) {
-      // logInfo(s"Cost of $blockId: $cost * $uncachedChildNum, time: $nodeCreatedTime")
+    if (lrcBased) {
+      new BlockCost(
+        uncachedChildNum,
+        nodeCreatedTime,
+        parentBlocks,
+        times)
+    } else {
+      new BlockCost(
+        cost * uncachedChildNum,
+        nodeCreatedTime,
+        parentBlocks,
+        times)
     }
-
-    new BlockCost(
-      cost * uncachedChildNum,
-      nodeCreatedTime,
-      parentBlocks,
-      times)
   }
 
   private def collectUncachedChildBlocks(rddNode: RDDNode, blockId: BlockId,
@@ -432,7 +496,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
       visitedRdds.add(rddNode.rddId)
     }
 
-    for (childnode <- dag(rddNode)._1) {
+    for (childnode <- dag(rddNode)) {
       val childBlockId = getBlockId(childnode.rddId, blockId)
       if (!childnode.currentStoredBlocks.contains(childBlockId)) {
         if (!stageSet.contains(childnode.stageId) &&
@@ -472,60 +536,37 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set
   }
 }
 
-class RDDNode(val rddId: Int,
-              var cached: Boolean,
-              val stageId: Int) {
-
-  val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
-  var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
-  var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
-
-  // <blockId, size>
-  val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]().asScala
-
-  val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
-    new ConcurrentHashMap[BlockId, Long]().asScala
-
-  def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
-    cachedParents = cp
-  }
-
-  def setCachedChildren(cp: mutable.Set[RDDNode]): Unit = {
-    cachedChildren = cp
-  }
-
-  override def equals(that: Any): Boolean =
-    that match
-    {
-      case that: RDDNode =>
-        this.rddId == that.rddId
-      case _ => false
-    }
-
-  override def hashCode: Int = {
-    val prime = 31
-    var result = 1
-    result = prime * result + rddId
-    result
-  }
-
-  override def toString: String = {
-    s"(rdd: $rddId, cached: $cached, stage: $stageId)"
-  }
-}
-
 object RDDJobDag extends Logging {
+
+  private def buildReverseDag(dag: Map[RDDNode, mutable.Set[RDDNode]]):
+  mutable.Map[RDDNode, mutable.Set[RDDNode]] = {
+
+    val reverseDag = new mutable.HashMap[RDDNode, mutable.Set[RDDNode]]
+    dag.foreach {
+      pair =>
+        val node = pair._1
+        val children = pair._2
+        children.foreach (child => {
+          if (!reverseDag.contains(child)) {
+            reverseDag(child) = new mutable.HashSet[RDDNode]()
+          }
+          reverseDag(child).add(node)
+        })
+    }
+    reverseDag
+  }
+
   def apply(dagPath: String,
             sparkConf: SparkConf): Option[RDDJobDag] = {
 
-    if (dagPath.equals("None")) {
-      Option.empty
-    } else {
-      val dag: mutable.Map[RDDNode, (mutable.Set[RDDNode], mutable.Set[RDDNode])] = mutable.Map()
-      val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
-      val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
+    val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]] = mutable.Map()
+    val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
+    val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
+    val policy = sparkConf.get("spark.disagg.evictpolicy", "None")
 
+    if (dagPath.equals("None")) {
+      Option(new RDDJobDag(dag, mutable.Map(), false, policy))
+    } else {
       for (line <- Source.fromFile(dagPath).getLines) {
         val l = line.stripLineEnd
         // parse
@@ -552,7 +593,7 @@ object RDDJobDag extends Logging {
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
-              dag(rdd_object) = (new mutable.HashSet(), new mutable.HashSet())
+              dag(rdd_object) = new mutable.HashSet()
               for (parent_id <- parents) {
                 edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
               }
@@ -565,24 +606,12 @@ object RDDJobDag extends Logging {
       for ((parent_id, child_id) <- edges) {
         val child_rdd_object = vertices(child_id)
         val parent_rdd_object = vertices(parent_id)
-        dag(parent_rdd_object)._1.add(child_rdd_object)
+        dag(parent_rdd_object).add(child_rdd_object)
         child_rdd_object.parents.append(parent_rdd_object)
       }
 
-      for (node <- dag.keys) {
-        val (child, child_stage) = dag(node)
-
-        for (child_node <- child) {
-          if (!findSameStage(child_stage, child_node)) {
-            child_stage.add(child_node)
-          }
-        }
-
-        dag(node) = (child, child_stage)
-      }
-
-      Option(new RDDJobDag(dag, edges, vertices,
-        sparkConf.getBoolean("spark.disagg.autocaching", false)))
+      Option(new RDDJobDag(dag, buildReverseDag(dag),
+        sparkConf.getBoolean("spark.disagg.autocaching", false), policy))
     }
   }
 
@@ -591,8 +620,7 @@ object RDDJobDag extends Logging {
   }
 
   def findCachedChildren(parent: RDDNode,
-                         dag: mutable.Map[RDDNode,
-                         (mutable.Set[RDDNode], mutable.Set[RDDNode])]): mutable.Set[RDDNode] = {
+                         dag: mutable.Map[RDDNode, mutable.Set[RDDNode]]): mutable.Set[RDDNode] = {
 
     def find(parent: RDDNode, childNode: RDDNode): mutable.Set[RDDNode] = {
       if (childNode.cached) {
@@ -601,7 +629,7 @@ object RDDJobDag extends Logging {
         l
       } else {
         var l: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
-        for (child <- dag(childNode)._1) {
+        for (child <- dag(childNode)) {
           val n = find(childNode, child)
           l = l.union(n)
         }
@@ -610,7 +638,7 @@ object RDDJobDag extends Logging {
     }
 
     var set: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]
-    for (child <- dag(parent)._1) {
+    for (child <- dag(parent)) {
       val v = find(parent, child)
       set = set.union(v)
       logInfo(s"Find cached child of ${parent}/$child $v, $set")

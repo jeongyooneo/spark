@@ -102,11 +102,8 @@ class BlockManagerMasterEndpoint(
   val totalDisaggSize: AtomicLong = new AtomicLong(0)
 
 
-  val rddJobDag: Option[RDDJobDag] = if (autocaching) {
-    RDDJobDag(dagPath, conf)
-  } else {
-    Option.empty
-  }
+  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath, conf)
+
 
   if (rddJobDag.isDefined) {
     logInfo(rddJobDag.get.toString)

@@ -44,6 +44,9 @@ class RDDLocalDisaggMemoryPolicyPoint(
 
   val compDiscardRatio = conf.getDouble("spark.disagg.autosizing.comp", defaultValue = 5.0)
 
+  val policy = conf.get("spark.disagg.evictpolicy", "None")
+  val lrcBased = policy.contains("LRC")
+
   override def taskStartedCall(taskId: String): Unit = {
     rddJobDag match {
       case None =>
@@ -218,16 +221,18 @@ class RDDLocalDisaggMemoryPolicyPoint(
     val storingCost =
       rddJobDag.get.calculateCostToBeStored(blockId, System.currentTimeMillis()).cost
 
-    if (storingCost < 2000) {
-      // the cost due to discarding >  cost to store
-      // we won't store it
+    if (!lrcBased) {
+      if (storingCost < 2000) {
+        // the cost due to discarding >  cost to store
+        // we won't store it
 
-      if (blockManagerMaster.getLocations(blockId).isEmpty) {
-        rddJobDag.get.removingBlock(blockId)
+        if (blockManagerMaster.getLocations(blockId).isEmpty) {
+          rddJobDag.get.removingBlock(blockId)
+        }
+
+        logInfo(s"EVICT\t$blockId\t$storingCost")
+        return false
       }
-
-      logInfo(s"EVICT\t$blockId\t$storingCost")
-      return false
     }
 
 

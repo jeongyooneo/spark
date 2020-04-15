@@ -133,6 +133,9 @@ private[spark] class DAGScheduler(
       sc.env)
   }
 
+
+  val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
+
   def this(sc: SparkContext) = this(sc, sc.taskScheduler)
 
   private[spark] val metricsSource: DAGSchedulerSource = new DAGSchedulerSource(this)
@@ -1020,7 +1023,6 @@ private[spark] class DAGScheduler(
     barrierJobIdToNumTasksCheckFailures.remove(jobId)
 
     // TODO: re-cache the job RDD
-    val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
 
     if (autocaching) {
       disaggBlockManagerEndpoint.rddJobDag match {
@@ -1096,6 +1098,14 @@ private[spark] class DAGScheduler(
 
   /** Submits stage, but first recursively submits any missing parents. */
   private def submitStage(stage: Stage) {
+    // update dag
+    disaggBlockManagerEndpoint.rddJobDag match {
+      case None =>
+      case Some(dag) =>
+        logInfo(s"Online update dag for stage ${stage.id}")
+        dag.onlineUpdate(stage.rdd.extractStageDag(stage.id))
+    }
+
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logDebug("submitStage(" + stage + ")")
