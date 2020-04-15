@@ -409,7 +409,7 @@ abstract class RDD[T: ClassTag](
         + ancestor.name + " " + ancestor.id))
   }
 
-  private def rddsInStage(stageId: Int): mutable.HashMap[RDDNode, HashSet[RDDNode]] = {
+  private def rddsInStage(stageId: Int): Map[RDDNode, mutable.Set[RDDNode]] = {
     val visited = new HashSet[RDD[_]]
     val waitingForVisit = new ArrayStack[RDD[_]]
     val dag = new mutable.HashMap[RDDNode, HashSet[RDDNode]]

@@ -33,6 +33,7 @@ import scala.collection.{mutable, _}
 import scala.io.Source
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
+                val reverseDag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val autocaching: Boolean,
                 val evictionPolicy: String) extends Logging {
 
@@ -118,17 +119,49 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
         if (!dag.contains(pair._1)) {
           logInfo(s"New vertex is created ${pair._1}->${pair._2}")
-          dagChanged.set(true)
           dag.put(pair._1, pair._2)
+          dagChanged.set(true)
         } else {
           if (!pair._2.subsetOf(dag(pair._1))) {
-            logInfo(s"Different edges are created for RDD " +
-              s"${pair._1.rddId}, prev: ${dag(pair._1)}, curr: ${pair._2}")
+            pair._2.foreach { dag(pair._1).add(_) }
+            logInfo(s"New edges are created for RDD " +
+              s"${pair._1.rddId}, ${dag(pair._1)}")
             dagChanged.set(true)
             dag.put(pair._1, pair._2)
           }
         }
+      }
 
+      // compare with the reverse dag dependency
+      // to find DAG mistmatch !!
+      // if there exist additional dependencies not matched with the submitted job
+      // we should fix the dag
+      val newReverseDag = RDDJobDag.buildReverseDag(newDag)
+      val unmatchedRDDs = newReverseDag.filter {
+        pair =>
+          val node = pair._1
+          val newReverseDagParents = pair._2
+          val mismatch = !newReverseDagParents.equals(reverseDag(node))
+          if (mismatch) {
+            logInfo(s"Mismatched RDD ${node}, " +
+              s"additional parents ${reverseDag(node).diff(newReverseDagParents)}")
+          }
+          mismatch
+      }.toList
+
+      if (unmatchedRDDs.nonEmpty) {
+        dagChanged.set(true)
+        unmatchedRDDs.foreach {
+          pair =>
+            val child = pair._1
+            val parents = pair._2
+            val prevParents = reverseDag(child)
+            val diff = prevParents.diff(parents)
+            diff.foreach {
+              prevParent =>
+                dag(prevParent).remove(child)
+            }
+        }
       }
     }
   }
@@ -496,6 +529,25 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 }
 
 object RDDJobDag extends Logging {
+
+  private def buildReverseDag(dag: Map[RDDNode, mutable.Set[RDDNode]]):
+  mutable.Map[RDDNode, mutable.Set[RDDNode]] = {
+
+    val reverseDag = new mutable.HashMap[RDDNode, mutable.Set[RDDNode]]
+    dag.foreach {
+      pair =>
+        val node = pair._1
+        val children = pair._2
+        children.foreach (child => {
+          if (!reverseDag.contains(child)) {
+            reverseDag(child) = new mutable.HashSet[RDDNode]()
+          }
+          reverseDag(child).add(node)
+        })
+    }
+    reverseDag
+  }
+
   def apply(dagPath: String,
             sparkConf: SparkConf): Option[RDDJobDag] = {
 
@@ -505,7 +557,7 @@ object RDDJobDag extends Logging {
     val policy = sparkConf.get("spark.disagg.evictpolicy", "None")
 
     if (dagPath.equals("None")) {
-      Option(new RDDJobDag(dag, false, policy))
+      Option(new RDDJobDag(dag, mutable.Map(), false, policy))
     } else {
       for (line <- Source.fromFile(dagPath).getLines) {
         val l = line.stripLineEnd
@@ -550,7 +602,7 @@ object RDDJobDag extends Logging {
         child_rdd_object.parents.append(parent_rdd_object)
       }
 
-      Option(new RDDJobDag(dag,
+      Option(new RDDJobDag(dag, buildReverseDag(dag),
         sparkConf.getBoolean("spark.disagg.autocaching", false), policy))
     }
   }
