@@ -502,9 +502,10 @@ object RDDJobDag extends Logging {
     val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]] = mutable.Map()
     val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
     val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
+    val policy = sparkConf.get("spark.disagg.evictpolicy", "None")
 
     if (dagPath.equals("None")) {
-      Option(new RDDJobDag(dag, false))
+      Option(new RDDJobDag(dag, false, policy))
     } else {
       for (line <- Source.fromFile(dagPath).getLines) {
         val l = line.stripLineEnd
@@ -550,7 +551,7 @@ object RDDJobDag extends Logging {
       }
 
       Option(new RDDJobDag(dag,
-        sparkConf.getBoolean("spark.disagg.autocaching", false)))
+        sparkConf.getBoolean("spark.disagg.autocaching", false), policy))
     }
   }
 
