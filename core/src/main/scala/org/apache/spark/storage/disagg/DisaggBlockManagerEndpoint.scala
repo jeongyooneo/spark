@@ -53,10 +53,6 @@ abstract class DisaggBlockManagerEndpoint(
 
   val threshold: Long = disaggCapacityMB * (1024 * 1024)
   val rddJobDag = blockManagerMaster.rddJobDag
-  rddJobDag match {
-    case Some(dag) => dag.benefitAnalyzer.setDisaggBlockManagerEndpoint(this)
-    case None =>
-  }
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   /*
@@ -566,7 +562,7 @@ object DisaggBlockManagerEndpoint {
     } else if (policy.equals("None")) {
       new NoEvictionManagerEndpoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
-    } else if (policy.equals("Local-Disagg")) {
+    } else if (policy.equals("Local-Disagg") || policy.contains("LRC")) {
       new RDDLocalDisaggMemoryPolicyPoint(rpcEnv, isLocal,
         conf, listenerBus, blockManagerMaster, thresholdMB)
     } else {

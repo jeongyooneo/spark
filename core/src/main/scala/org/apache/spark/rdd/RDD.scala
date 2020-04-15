@@ -20,12 +20,11 @@ package org.apache.spark.rdd
 import java.util.Random
 
 import scala.collection.{Map, mutable}
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, ArrayStack, HashSet}
 import scala.io.Codec
 import scala.language.implicitConversions
-import scala.reflect.{classTag, ClassTag}
+import scala.reflect.{ClassTag, classTag}
 import scala.util.hashing
-
 import scala.reflect.{ClassTag, classTag}
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
 import org.apache.hadoop.io.{BytesWritable, NullWritable, Text}
@@ -40,6 +39,7 @@ import org.apache.spark.partial.BoundedDouble
 import org.apache.spark.partial.CountEvaluator
 import org.apache.spark.partial.GroupedCountEvaluator
 import org.apache.spark.partial.PartialResult
+import org.apache.spark.storage.disagg.{RDDJobDag, RDDNode}
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
@@ -409,9 +409,56 @@ abstract class RDD[T: ClassTag](
         + ancestor.name + " " + ancestor.id))
   }
 
+  private def rddsInStage(stageId: Int): mutable.HashMap[RDDNode, HashSet[RDDNode]] = {
+    val visited = new HashSet[RDD[_]]
+    val waitingForVisit = new ArrayStack[RDD[_]]
+    val dag = new mutable.HashMap[RDDNode, HashSet[RDDNode]]
+    def visit(rdd: RDD[_]) {
+      if (!visited(rdd)) {
+        visited += rdd
+        val node = new RDDNode(rdd.id, rdd.storageLevel != StorageLevel.NONE, stageId)
+
+        // update stage id
+        if (!dag.contains(node)) {
+          dag.put(node, new HashSet[RDDNode])
+        } else {
+          dag.keys.filter(key => key.rddId == node.rddId)
+            .foreach { key => key.stageId = stageId }
+        }
+
+        for (dep <- rdd.dependencies) {
+          // add edges
+          val parent = dep.rdd
+          val parentNode = new RDDNode(parent.id, parent.storageLevel != StorageLevel.NONE, -1)
+          if (!dag.contains(parentNode)) {
+            dag.put(parentNode, new HashSet[RDDNode])
+          }
+          dag(parentNode).add(node)
+
+          dep match {
+            case shufDep: ShuffleDependency[_, _, _] =>
+            case narrowDep: NarrowDependency[_] =>
+              waitingForVisit.push(narrowDep.rdd)
+          }
+        }
+      }
+    }
+
+    waitingForVisit.push(this)
+    while (waitingForVisit.nonEmpty) {
+      visit(waitingForVisit.pop())
+    }
+
+    logInfo(s"Stage updated dag: $dag")
+    dag
+  }
+
+  def extractStageDag(stageId: Int): Map[RDDNode, mutable.Set[RDDNode]] = {
+    rddsInStage(stageId)
+  }
+
   // TODO
   def setCachedRDDs(cachedRDDs: Iterable[Int], slevel: StorageLevel): Unit = {
-
     logInfo(s"Cached RDDS: $cachedRDDs")
 
     // 1: clear storage level
