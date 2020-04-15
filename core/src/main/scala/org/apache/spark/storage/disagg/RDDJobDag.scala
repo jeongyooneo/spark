@@ -117,6 +117,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
       newDag.foreach { pair =>
 
+        val parent = pair._1
+        pair._2.foreach {
+          child =>
+            if (!reverseDag.contains(child)) {
+              reverseDag(child) = new mutable.HashSet[RDDNode]()
+            }
+            reverseDag(child).add(parent)
+        }
+
         if (!dag.contains(pair._1)) {
           logInfo(s"New vertex is created ${pair._1}->${pair._2}")
           dag.put(pair._1, pair._2)
@@ -127,7 +136,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             logInfo(s"New edges are created for RDD " +
               s"${pair._1.rddId}, ${dag(pair._1)}")
             dagChanged.set(true)
-            dag.put(pair._1, pair._2)
           }
         }
       }
