@@ -91,8 +91,11 @@ private[spark] class MemoryStore(
 
   private val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
 
-  private val decisionByMaster =
+  private var decisionByMaster =
     conf.get("spark.disagg.evictpolicy").contains("Local") && autocaching
+
+  decisionByMaster = decisionByMaster || conf.get("spark.disagg.evictpolicy").contains("LRC")
+
 
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
