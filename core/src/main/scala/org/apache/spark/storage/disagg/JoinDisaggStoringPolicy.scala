@@ -26,7 +26,7 @@ class JoinDisaggStoringPolicy()
   extends DisaggStoringPolicy {
 
   override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
-    blockId.name.startsWith("rdd_79_") || blockId.name.startsWith("rdd_74_")
-    || blockId.name.startsWith("rdd_75_") || blockId.name.startsWith("rdd_80_")
+    blockId.name.startsWith("rdd_79_") || blockId.name.startsWith("rdd_74_") ||
+      blockId.name.startsWith("rdd_75_") || blockId.name.startsWith("rdd_80_")
   }
 }

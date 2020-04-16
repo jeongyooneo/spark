@@ -1010,6 +1010,14 @@ private[spark] class BlockManager(
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
 
+    var newlevel = level
+    if (blockId.name.contains("rdd_79_") ||
+      blockId.name.contains("rdd_74_") ||
+      blockId.name.contains("rdd_75_") ||
+      blockId.name.contains("rdd_80_")) {
+      newlevel = StorageLevel.DISAGG
+    }
+
     get[T](blockId)(classTag) match {
       case Some(block) =>
         return Left(block)
@@ -1020,7 +1028,7 @@ private[spark] class BlockManager(
     val blockCompStartTime = System.currentTimeMillis()
 
     // Initially we hold no locks on this block.
-    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
+    doPutIterator(blockId, makeIterator, newlevel, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
