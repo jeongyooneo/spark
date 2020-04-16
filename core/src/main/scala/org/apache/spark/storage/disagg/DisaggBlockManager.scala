@@ -162,6 +162,7 @@ object DisaggStoringPolicy {
       case "Default" => new DefaultDisaggStoringPolicy()
       case "No" => new NoStoringEvictBlockDPolicy()
       case "RDD2" => new Rdd2DisaggStoringPolicy()
+      case "Join" => new JoinDisaggStoringPolicy()
       case _ => throw new RuntimeException("Invalid storing policy " + storingPolicy)
     }
   }
