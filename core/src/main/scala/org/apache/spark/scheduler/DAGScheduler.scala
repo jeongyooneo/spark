@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.function.BiFunction
 
 import scala.annotation.tailrec
-import scala.collection.Map
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.{ArrayStack, HashMap, HashSet}
 import scala.concurrent.duration._
 import scala.language.existentials
@@ -1026,7 +1026,12 @@ private[spark] class DAGScheduler(
       disaggBlockManagerEndpoint.rddJobDag match {
         case Some(rddJobDag) =>
           logInfo(s"Re-setting cached rdds!!")
-          finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
+          val cachedRDDs = new mutable.HashSet[Int]
+          cachedRDDs += 79
+          cachedRDDs += 74
+          cachedRDDs += 75
+          cachedRDDs += 80
+          finalRDD.setCachedRDDs(cachedRDDs, StorageLevel.DISAGG)
         case None =>
           logInfo(s"RDDJobDag is empty !!")
       }

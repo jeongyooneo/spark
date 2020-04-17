@@ -104,14 +104,6 @@ class RDDCostBasedEvictionEndpoint(
   override def cachingDecision(blockId: BlockId, estimateSize: Long,
                                executorId: String,
                                putDisagg: Boolean): Boolean = {
-    /*
-    val r = scala.util.Random
-    if (taskId.contains("rdd_2_")) {
-      true
-    } else {
-      false
-    }
-    */
     val prevTime = prevDiscardTime.get()
 
     rddJobDag.get.setStoredBlocksCreatedTime(blockId)
