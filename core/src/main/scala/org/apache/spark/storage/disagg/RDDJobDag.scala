@@ -563,8 +563,12 @@ object RDDJobDag extends Logging {
     val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
     val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
     val policy = sparkConf.get("spark.disagg.evictpolicy", "None")
+    val profiling = sparkConf.getBoolean("spark.disagg.sampledRun", false)
 
-    if (dagPath.equals("None")) {
+
+    if (profiling) {
+      None
+    } else if (dagPath.equals("None")) {
       Option(new RDDJobDag(dag, mutable.Map(), false, policy))
     } else {
       for (line <- Source.fromFile(dagPath).getLines) {
