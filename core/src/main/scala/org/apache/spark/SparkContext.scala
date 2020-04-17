@@ -269,14 +269,6 @@ class SparkContext(config: SparkConf) extends Logging {
     map.asScala
   }
 
-  private[spark] val perJobDisaggLineage: HashMap[Int, Seq[RDD[_]]] =
-    new mutable.HashMap[Int, Seq[RDD[_]]]()
-
-  private[spark] val perJobDisaggLineageWithSize: HashMap[Int, OpenHashMap[RDD[_], Int]] =
-    new mutable.HashMap[Int, OpenHashMap[RDD[_], Int]]()
-
-  def getDrddLineage: HashMap[Int, OpenHashMap[RDD[_], Int]] = perJobDisaggLineageWithSize
-
   def statusTracker: SparkStatusTracker = _statusTracker
 
   private[spark] def progressBar: Option[ConsoleProgressBar] = _progressBar
