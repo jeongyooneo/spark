@@ -89,10 +89,8 @@ private[spark] class MemoryStore(
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
-  private val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
-
   private var decisionByMaster =
-    conf.get("spark.disagg.evictpolicy").contains("Local") && autocaching
+    conf.get("spark.disagg.evictpolicy").contains("Blaze")
 
   decisionByMaster = decisionByMaster || conf.get("spark.disagg.evictpolicy").contains("LRC")
 
