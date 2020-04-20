@@ -99,11 +99,6 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          v.cachedBlocks.foreach {
-            case (bi: BlockId) =>
-              logInfo(s"Currently Cached $bi")
-          }
-
           builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
             s"disk ${diskSizeForManager/unit}\n")
       }
