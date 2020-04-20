@@ -1012,8 +1012,10 @@ private[spark] class BlockManager(
 
     get[T](blockId)(classTag) match {
       case Some(block) =>
+        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
+        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
         // Need to compute the block.
     }
 
