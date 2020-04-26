@@ -1811,6 +1811,7 @@ class SparkContext(config: SparkConf) extends Logging {
    */
   private[spark] def persistRDD(rdd: RDD[_]) {
     persistentRdds(rdd.id) = rdd
+    logInfo("persist RDD " + rdd.id)
   }
 
   /**

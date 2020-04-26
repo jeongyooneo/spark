@@ -213,7 +213,7 @@ abstract class RDD[T: ClassTag](
    * @return This RDD.
    */
   def unpersist(blocking: Boolean = true): this.type = {
-    logInfo("Removing RDD " + id + " from persistence list")
+    logInfo("Unpersist RDD " + id)
     sc.unpersistRDD(id, blocking)
     storageLevel = StorageLevel.NONE
     this
