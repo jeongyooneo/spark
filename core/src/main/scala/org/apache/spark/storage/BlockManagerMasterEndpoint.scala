@@ -77,6 +77,7 @@ class BlockManagerMasterEndpoint(
     def run(): Unit = {
       // MB
       var memSize = 0L
+      var freeMemSize = 0L
       var diskSize = 0L
 
       // MB
@@ -89,6 +90,8 @@ class BlockManagerMasterEndpoint(
 
           var memSizeForManager = 0L
           var diskSizeForManager = 0L
+          freeMemSize += v.remainingMem
+          val evictions = v.getEvictions(k)
 
           v.blocks.values.foreach {
             stat: BlockStatus =>
@@ -99,12 +102,13 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
+          builder.append(s"BlockManager${k.host}: memUsed ${memSizeForManager/unit} " +
+            s"memFree ${v.remainingMem/unit} evictions $evictions " +
             s"disk ${diskSizeForManager/unit}\n")
       }
 
-      builder.append(s"Total size memory: ${memSize/unit}, " +
-        s"disk: ${diskSize/unit}\n")
+      builder.append(s"Total size memUsed ${memSize/unit} " +
+        s"memFree ${freeMemSize/unit} disk ${diskSize/unit}\n")
 
       logInfo("\n" + builder.toString())
     }
@@ -272,7 +276,7 @@ class BlockManagerMasterEndpoint(
         blockLocations.remove(blockId)
         logWarning(s"No more replicas available for $blockId !")
       } else if (proactivelyReplicate && (blockId.isRDD || blockId.isInstanceOf[TestBlockId])) {
-        // As a heursitic, assume single executor failure to find out the number of replicas that
+        // As a heuristic, assume single executor failure to find out the number of replicas that
         // existed before failure
         val maxReplicas = locations.size + 1
         val i = (new Random(blockId.hashCode)).nextInt(locations.size)
@@ -557,7 +561,10 @@ private[spark] class BlockManagerInfo(
 
   // Cached blocks held by this BlockManager. This does not include broadcast blocks.
   private val _cachedBlocks = new mutable.HashSet[BlockId]
+  private val evictionsPerBlockManager =
+    new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
 
+  def getEvictions(bm: BlockManagerId): Long = evictionsPerBlockManager(bm).getOrElse(0L)
   def getStatus(blockId: BlockId): Option[BlockStatus] = _blocks.get(blockId)
 
   def updateLastSeenMs() {
@@ -642,6 +649,11 @@ private[spark] class BlockManagerInfo(
       if (originalLevel.useDisk) {
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
+      }
+      if (evictionsPerBlockManager.contains(blockManagerId)) {
+        evictionsPerBlockManager(blockManagerId).get += 1L
+      } else {
+        evictionsPerBlockManager(blockManagerId) = Some(1L)
       }
     }
   }
