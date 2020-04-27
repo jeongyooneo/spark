@@ -875,19 +875,25 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
-        blockAccessHistory(blockId) += 1L
+        if (blockAccessHistory.contains(blockId)) {
+          blockAccessHistory(blockId) += 1L
+        } else {
+          // Fetched from other executors
+          blockAccessHistory(blockId) = 1L
+        }
         logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
         if (blockAccessHistory.contains(blockId)) {
-          // Cache miss
+          // Cache miss in this executor
           blockAccessHistory(blockId) += 1L
-          logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
         } else {
-          // First time generating this block
+          // First time generating this block *in this executor*
+          // (might have been generated and evicted in other executors)
           blockAccessHistory(blockId) = 1L
         }
-        // Need to compute the block.
+        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+      // Need to compute the block.
     }
 
     val blockCompStartTime = System.currentTimeMillis()
@@ -909,9 +915,10 @@ private[spark] class BlockManager(
 
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
-        if (blockAccessHistory(blockId) > 1) {
-          master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
-        }
+        val accessHistory = blockAccessHistory(blockId)
+        master.sendLog(s"RCTime\t$blockId\t$executorId\t$accessHistory\t" +
+          s"${TaskContext.get().stageId()}\t$elapsed")
+
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
