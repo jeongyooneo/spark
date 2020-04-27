@@ -564,7 +564,15 @@ private[spark] class BlockManagerInfo(
   private val evictionsPerBlockManager =
     new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
 
-  def getEvictions(bm: BlockManagerId): Long = evictionsPerBlockManager(bm).getOrElse(0L)
+  def getEvictions(bm: BlockManagerId): Long = {
+    if (evictionsPerBlockManager.contains(bm)) {
+      evictionsPerBlockManager(bm).getOrElse(0L)
+    } else {
+      evictionsPerBlockManager(bm) = Some(0L)
+      0L
+    }
+  }
+
   def getStatus(blockId: BlockId): Option[BlockStatus] = _blocks.get(blockId)
 
   def updateLastSeenMs() {
@@ -650,11 +658,8 @@ private[spark] class BlockManagerInfo(
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
       }
-      if (evictionsPerBlockManager.contains(blockManagerId)) {
-        evictionsPerBlockManager(blockManagerId).get += 1L
-      } else {
-        evictionsPerBlockManager(blockManagerId) = Some(1L)
-      }
+      evictionsPerBlockManager(blockManagerId) =
+        Some(evictionsPerBlockManager(blockManagerId).getOrElse(0L) + 1L)
     }
   }
 

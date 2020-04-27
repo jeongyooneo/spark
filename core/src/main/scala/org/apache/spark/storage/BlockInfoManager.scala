@@ -442,5 +442,4 @@ private[storage] class BlockInfoManager extends Logging {
     writeLocksByTask.clear()
     notifyAll()
   }
-
 }

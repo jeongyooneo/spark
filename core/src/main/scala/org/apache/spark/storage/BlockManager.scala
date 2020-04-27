@@ -24,6 +24,7 @@ import java.nio.channels.Channels
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
 import scala.concurrent.{ExecutionContext, Future}
@@ -33,7 +34,6 @@ import scala.util.Random
 import scala.util.control.NonFatal
 
 import com.codahale.metrics.{MetricRegistry, MetricSet}
-import com.google.common.io.CountingOutputStream
 
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
@@ -145,6 +145,7 @@ private[spark] class BlockManager(
 
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
+  private val blockAccessHistory = new ConcurrentHashMap[BlockId, Long]().asScala
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -874,10 +875,18 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
+        blockAccessHistory(blockId) += 1L
         logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
-        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+        if (blockAccessHistory.contains(blockId)) {
+          // Cache miss
+          blockAccessHistory(blockId) += 1L
+          logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+        } else {
+          // First time generating this block
+          blockAccessHistory(blockId) = 1L
+        }
         // Need to compute the block.
     }
 
@@ -900,16 +909,15 @@ private[spark] class BlockManager(
 
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
-        master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
-
+        if (blockAccessHistory(blockId) > 1) {
+          master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
+        }
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
         val blockCompEndTime = System.currentTimeMillis()
-        val elapsed = blockCompEndTime - blockCompStartTime
-        master.sendLog(s"RCTime\t$blockId\t${TaskContext.get().stageId()}\t$elapsed")
 
        Right(iter)
     }
