@@ -37,7 +37,7 @@ import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
-import org.apache.spark.storage.disagg.{DisaggBlockManager, DisaggBlockManagerEndpoint}
+import org.apache.spark.storage.disagg.{DisaggBlockManager, _}
 import org.apache.spark.util.{RpcUtils, Utils}
 
 import scala.collection.mutable
@@ -55,21 +55,23 @@ import scala.util.Properties
  */
 @DeveloperApi
 class SparkEnv (
-    val executorId: String,
-    private[spark] val rpcEnv: RpcEnv,
-    val serializer: Serializer,
-    val closureSerializer: Serializer,
-    val serializerManager: SerializerManager,
-    val mapOutputTracker: MapOutputTracker,
-    val shuffleManager: ShuffleManager,
-    val broadcastManager: BroadcastManager,
-    val blockManager: BlockManager,
-    val disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
-    val securityManager: SecurityManager,
-    val metricsSystem: MetricsSystem,
-    val memoryManager: MemoryManager,
-    val outputCommitCoordinator: OutputCommitCoordinator,
-    val conf: SparkConf) extends Logging {
+                 val executorId: String,
+                 private[spark] val rpcEnv: RpcEnv,
+                 val serializer: Serializer,
+                 val closureSerializer: Serializer,
+                 val serializerManager: SerializerManager,
+                 val mapOutputTracker: MapOutputTracker,
+                 val shuffleManager: ShuffleManager,
+                 val broadcastManager: BroadcastManager,
+                 val blockManager: BlockManager,
+                 val disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint,
+                 val rddJobDag: Option[RDDJobDag],
+                 val metricTracker: MetricTracker,
+                 val securityManager: SecurityManager,
+                 val metricsSystem: MetricsSystem,
+                 val memoryManager: MemoryManager,
+                 val outputCommitCoordinator: OutputCommitCoordinator,
+                 val conf: SparkConf) extends Logging {
 
   private[spark] var isStopped = false
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()
@@ -341,8 +343,8 @@ object SparkEnv extends Logging {
       conf.get(BLOCK_MANAGER_PORT)
     }
 
-    val thresholdMB = conf.get(DISAGG_THRESHOLD_MB)
-    val dagPath = conf.get(JOB_DAG_PATH)
+    val thresholdMB = conf.get(BlazeParameters.DISAGG_THRESHOLD_MB)
+    val dagPath = conf.get(BlazeParameters.JOB_DAG_PATH)
 
     val blockTransferService =
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
@@ -351,35 +353,48 @@ object SparkEnv extends Logging {
     var blockManagerMaster: BlockManagerMaster = null
     var disaggBlockManager: DisaggBlockManager = null
 
-    var disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint = null
+    var disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint = null
+    val metricTracker: MetricTracker = new MetricTracker
+
+    var rddJobDag: Option[RDDJobDag] = Option.empty
 
     if (isDriver) {
+      rddJobDag = RDDJobDag(dagPath, conf, metricTracker)
+      val costAnalyzer: CostAnalyzer = CostAnalyzer(conf, rddJobDag, metricTracker)
+
+      val autocaching = conf.get(BlazeParameters.AUTOCACHING)
+      val cachingPolicy: CachingPolicy = CachingPolicy(rddJobDag, conf)
+
       val blockManagerMasterEndpoint =
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)
 
       blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
         BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
         conf, isDriver)
 
+      val evictionPolicy = EvictionPolicy(costAnalyzer, metricTracker, conf)
+
       disaggBlockManagerEndpoint =
-        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          blockManagerMasterEndpoint, thresholdMB)
+        new LocalDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+          blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
+          metricTracker, cachingPolicy, evictionPolicy)
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
 
-
     } else {
       blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
        BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath)),
+        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)),
        conf, isDriver)
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-        DisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, dagPath),
-          thresholdMB)), conf)
+        new LocalDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
+            listenerBus, metricTracker, dagPath),
+          thresholdMB, new NoCostAnalyzer(metricTracker),
+          metricTracker, new RandomCachingPolicy(0.2), null)), conf)
     }
 
     // NB: blockManager is not valid until initialize() is called later.
@@ -420,6 +435,8 @@ object SparkEnv extends Logging {
       broadcastManager,
       blockManager,
       disaggBlockManagerEndpoint,
+      rddJobDag,
+      metricTracker,
       securityManager,
       metricsSystem,
       memoryManager,

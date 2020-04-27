@@ -42,7 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
-import org.apache.spark.storage.disagg.DisaggBlockManagerEndpoint
+import org.apache.spark.storage.disagg.{LocalDisaggBlockManagerEndpoint, MetricTracker, RDDJobDag}
 import org.apache.spark.util._
 
 /**
@@ -117,7 +117,8 @@ private[spark] class DAGScheduler(
     listenerBus: LiveListenerBus,
     mapOutputTracker: MapOutputTrackerMaster,
     blockManagerMaster: BlockManagerMaster,
-    disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
+    rddJobDag: Option[RDDJobDag],
+    disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint,
     env: SparkEnv,
     clock: Clock = new SystemClock())
   extends Logging {
@@ -129,12 +130,11 @@ private[spark] class DAGScheduler(
       sc.listenerBus,
       sc.env.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster],
       sc.env.blockManager.master,
+      sc.env.rddJobDag,
       sc.env.disaggBlockManagerEndpoint,
       sc.env)
   }
 
-
-  val autocaching = sc.conf.getBoolean("spark.disagg.autocaching", false)
 
   def this(sc: SparkContext) = this(sc, sc.taskScheduler)
 
@@ -1022,18 +1022,6 @@ private[spark] class DAGScheduler(
     // Job submitted, clear internal data.
     barrierJobIdToNumTasksCheckFailures.remove(jobId)
 
-    // TODO: re-cache the job RDD
-
-    if (autocaching) {
-      disaggBlockManagerEndpoint.rddJobDag match {
-        case Some(rddJobDag) =>
-          logInfo(s"Re-setting cached rdds!!")
-          finalRDD.setCachedRDDs(rddJobDag.getCachedRDDs(), StorageLevel.DISAGG)
-        case None =>
-          logInfo(s"RDDJobDag is empty !!")
-      }
-    }
-
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
     logInfo("Got job %s (%s) with %d output partitions".format(
@@ -1099,7 +1087,7 @@ private[spark] class DAGScheduler(
   /** Submits stage, but first recursively submits any missing parents. */
   private def submitStage(stage: Stage) {
     // update dag
-    disaggBlockManagerEndpoint.rddJobDag match {
+    rddJobDag match {
       case None =>
       case Some(dag) =>
         logInfo(s"Online update dag for stage ${stage.id}")

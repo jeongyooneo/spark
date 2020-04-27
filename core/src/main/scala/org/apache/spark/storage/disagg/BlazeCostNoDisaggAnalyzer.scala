@@ -17,31 +17,17 @@
 
 package org.apache.spark.storage.disagg
 
-import org.apache.spark.storage._
-import org.apache.spark.storage.memory.MemoryStore
-import org.apache.spark.util.io.ChunkedByteBuffer
+import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
- /**
- * This policy does not cache the data into memory.
- */
-class NoCachingPolicy(memoryStore: MemoryStore)
-                  extends DisaggCachingPolicy(memoryStore) {
+private[spark] class BlazeCostNoDisaggAnalyzer(val rddJobDag: RDDJobDag,
+                                               metricTracker: MetricTracker)
+  extends CostAnalyzer(metricTracker) with Logging {
 
-  override def maybeCacheDisaggValuesInMemory[T](
-                 blockInfo: BlockInfo,
-                 blockId: BlockId,
-                 level: StorageLevel,
-                 disaggIterator: Iterator[T]): Iterator[T] = {
-    // do nothing
-    disaggIterator
+  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+    val refCnt = rddJobDag.getRefCnt(blockId)
+    val recompTime = rddJobDag.getRecompTime(blockId,
+     metricTracker.blockCreatedTimeMap.get(blockId))
+    new CompDisaggCost(blockId, 0, refCnt * recompTime)
   }
-
-  override def maybeCacheDisaggBytesInMemory(
-                 blockInfo: BlockInfo,
-                 blockId: BlockId,
-                 level: StorageLevel,
-                 disaggData: BlockData): Option[ChunkedByteBuffer] = {
-    // do nothing
-    None
-  }
- }
+}

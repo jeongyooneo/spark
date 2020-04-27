@@ -37,7 +37,7 @@ import scala.reflect.ClassTag
 private[spark] class DisaggStore(
     conf: SparkConf,
     blockManagerMaster: BlockManagerMaster,
-    disaggManager: DisaggBlockManager,
+    val disaggManager: DisaggBlockManager,
     executorId: String)
   extends Logging {
 
@@ -45,7 +45,7 @@ private[spark] class DisaggStore(
   // private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
 
   def getSize(blockId: BlockId): Long = {
-    disaggManager.getSize(blockId)
+    disaggManager.getSize(blockId, executorId)
   }
 
   /**
@@ -63,19 +63,20 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId, true)) {
+    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId, true, true)) {
       return false
     }
 
     try {
       val startTime = System.currentTimeMillis
-      val file = disaggManager.createFile(blockId)
+      val file = disaggManager.createFile(blockId, executorId)
 
       if (file != null) {
         val out = new CountingWritableChannel(Channels.newChannel(
           file.getBufferedOutputStream(file.getCapacity)))
         var threwException: Boolean = true
         try {
+
           writeFunc(out)
           // blockSizes.put(blockId, out.getCount)
           logInfo(s"Attempting to put block $blockId  " +
@@ -89,7 +90,12 @@ private[spark] class DisaggStore(
         } finally {
           try {
             out.close()
-            disaggManager.writeEnd(blockId, out.getCount)
+            disaggManager.writeEnd(blockId, executorId, out.getCount)
+
+            val endTime = System.currentTimeMillis()
+            // send metric
+            disaggManager.sendSerMetric(blockId, out.getCount, endTime - startTime)
+
           } catch {
             case ioe: IOException =>
               if (!threwException) {
@@ -158,7 +164,7 @@ private[spark] class DisaggStore(
       throw new RuntimeException("Block size should be greater than 0 for getting bytes " + blockId)
     }
 
-    val disaggFetchStart = System.nanoTime
+    val disaggFetchStart = System.currentTimeMillis()
     val channel = Channels.newChannel(file.getBufferedInputStream(blockSize))
     Utils.tryWithSafeFinally {
 
@@ -166,7 +172,8 @@ private[spark] class DisaggStore(
       JavaUtils.readFully(channel, buf)
       buf.flip()
 
-      val disaggFetchTime = System.nanoTime - disaggFetchStart
+      val disaggFetchTime = System.currentTimeMillis() - disaggFetchStart
+
       logInfo(s"jy: getMultiStream $executorId $blockId fs.lookup succeeded, $disaggFetchTime ns")
 
       new ByteBufferBlockData(new ChunkedByteBuffer(buf), true)
@@ -176,11 +183,11 @@ private[spark] class DisaggStore(
   }
 
   def remove(blockId: BlockId): Boolean = {
-    disaggManager.remove(blockId)
+    disaggManager.remove(blockId, executorId)
   }
 
   def contains(blockId: BlockId): Boolean = {
-    disaggManager.blockExists(blockId)
+    disaggManager.blockExists(blockId, executorId)
   }
 
   def readLock(blockId: BlockId): Boolean = {

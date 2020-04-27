@@ -184,7 +184,7 @@ private[spark] class OnlyDisaggMemoryManager private[memory] (
       executionPool.decrementPoolSize(memoryBorrowedFromExecution)
       storagePool.incrementPoolSize(memoryBorrowedFromExecution)
     }
-    storagePool.acquireMemory(blockId, numBytes)
+    storagePool.acquireMemory(blockId, numBytes, 0)
   }
 
   override def acquireUnrollMemory(

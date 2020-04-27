@@ -15,31 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage
+package org.apache.spark.storage.disagg
 
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.storage.BlockManagerMessages.UpdateBlockInfo
+import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
-/**
- * :: DeveloperApi ::
- * Stores information about a block status in a block manager.
- */
-@DeveloperApi
-case class BlockUpdatedInfo(
-    blockManagerId: BlockManagerId,
-    blockId: BlockId,
-    storageLevel: StorageLevel,
-    memSize: Long,
-    diskSize: Long)
+private[spark] class LRCCostAnalyzer(val rddJobDag: RDDJobDag,
+                                     metricTracker: MetricTracker)
+  extends CostAnalyzer(metricTracker) with Logging {
 
-private[spark] object BlockUpdatedInfo {
-
-  private[spark] def apply(updateBlockInfo: UpdateBlockInfo): BlockUpdatedInfo = {
-    BlockUpdatedInfo(
-      updateBlockInfo.blockManagerId,
-      updateBlockInfo.blockId,
-      updateBlockInfo.storageLevel,
-      updateBlockInfo.memSize,
-      updateBlockInfo.diskSize)
+  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+    val refCnt = rddJobDag.getRefCnt(blockId)
+    // we do not consider disagg overhead here
+    new CompDisaggCost(blockId, 0, refCnt)
   }
 }

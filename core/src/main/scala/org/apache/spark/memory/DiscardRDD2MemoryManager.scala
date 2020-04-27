@@ -77,7 +77,7 @@ private[spark] class DiscardRDD2MemoryManager(
         s"memory limit ($maxOnHeapStorageMemory bytes)")
       false
     } else {
-      onHeapStorageMemoryPool.acquireMemory(blockId, numBytes)
+      onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, 0)
     }
   }
 
@@ -102,7 +102,7 @@ private[spark] class DiscardRDD2MemoryManager(
     val maxNumBytesToFree = math.max(0, maxUnrollMemory - currentUnrollMemory - freeMemory)
     // Keep it within the range 0 <= X <= maxNumBytesToFree
     val numBytesToFree = math.max(0, math.min(maxNumBytesToFree, numBytes - freeMemory))
-    onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, numBytesToFree)
+    onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, numBytesToFree, 0)
   }
 
   private[memory]

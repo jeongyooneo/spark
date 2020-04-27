@@ -102,6 +102,10 @@ private[spark] abstract class MemoryManager(
    */
   def acquireUnrollMemory(blockId: BlockId, numBytes: Long, memoryMode: MemoryMode): Boolean
 
+  def canStoreBytesWithoutEviction(numBytes: Long, memoryMode: MemoryMode): Boolean = {
+    true
+  }
+
   /**
    * Try to acquire up to `numBytes` of execution memory for the current task and return the
    * number of bytes obtained, or 0 if none can be allocated.

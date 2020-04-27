@@ -19,6 +19,7 @@ package org.apache.spark.memory
 
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.BlockId
+import org.apache.spark.storage.disagg.BlazeParameters
 
 /**
  * A [[MemoryManager]] that enforces a soft boundary between execution and storage such that
@@ -145,7 +146,40 @@ private[spark] class UnifiedMemoryManager private[memory] (
     }
 
     executionPool.acquireMemory(
-      numBytes, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
+      numBytes + SLACK, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
+  }
+
+  // MB
+  val SLACK = conf.get(BlazeParameters.MEMORY_SLACK) * 1024 * 1024
+
+  override def canStoreBytesWithoutEviction(numBytes: Long,
+                                            memoryMode: MemoryMode): Boolean = {
+    val (executionPool, storagePool, maxMemory) = memoryMode match {
+      case MemoryMode.ON_HEAP => (
+        onHeapExecutionMemoryPool,
+        onHeapStorageMemoryPool,
+        maxOnHeapStorageMemory)
+      case MemoryMode.OFF_HEAP => (
+        offHeapExecutionMemoryPool,
+        offHeapStorageMemoryPool,
+        maxOffHeapStorageMemory)
+    }
+
+    // logInfo(s"Storage Pool: ${storagePool.memoryFree}/ bytes: ${adjustBytes}")
+    if (numBytes > storagePool.memoryFree) {
+      // There is not enough free memory in the storage pool, so try to borrow free memory from
+      // the execution pool.
+      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree - SLACK,
+        numBytes - storagePool.memoryFree)
+      if (memoryBorrowedFromExecution > 0) {
+        val free = storagePool.memoryFree + memoryBorrowedFromExecution
+        numBytes <= free
+      } else {
+        false
+      }
+    } else {
+      true
+    }
   }
 
   override def acquireStorageMemory(
@@ -167,19 +201,23 @@ private[spark] class UnifiedMemoryManager private[memory] (
 
     if (numBytes > maxMemory) {
       // Fail fast if the block simply won't fit
-      logInfo(s"Will not store $blockId as the required space ($numBytes bytes) exceeds our " +
+      logInfo(s"Will not store $blockId as the required space " +
+        s"(${numBytes} bytes) exceeds our " +
         s"memory limit ($maxMemory bytes)")
       return false
     }
+
     if (numBytes > storagePool.memoryFree) {
       // There is not enough free memory in the storage pool, so try to borrow free memory from
       // the execution pool.
-      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree,
+      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree - SLACK,
         numBytes - storagePool.memoryFree)
-      executionPool.decrementPoolSize(memoryBorrowedFromExecution)
-      storagePool.incrementPoolSize(memoryBorrowedFromExecution)
+      if (memoryBorrowedFromExecution > 0) {
+        executionPool.decrementPoolSize(memoryBorrowedFromExecution)
+        storagePool.incrementPoolSize(memoryBorrowedFromExecution)
+      }
     }
-    storagePool.acquireMemory(blockId, numBytes)
+    storagePool.acquireMemory(blockId, numBytes, SLACK)
   }
 
   override def acquireUnrollMemory(

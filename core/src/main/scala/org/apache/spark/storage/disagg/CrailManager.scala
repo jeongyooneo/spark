@@ -19,9 +19,10 @@ package org.apache.spark.storage.disagg
 
 import org.apache.crail._
 import org.apache.crail.conf.CrailConfiguration
+import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] trait CrailManager {
+private[spark] abstract class CrailManager(isDriver: Boolean) extends Logging {
 
   val rootDir = "/spark"
   val broadcastDir = rootDir + "/broadcast"
@@ -36,6 +37,35 @@ private[spark] trait CrailManager {
   var fs : CrailStore = _
   fs = CrailStore.newInstance(crailConf)
 
+  if (isDriver) {
+    logInfo("creating main dir " + rootDir)
+    val baseDirExists: Boolean = fs.lookup(rootDir).get() != null
+    if (baseDirExists) {
+      fs.delete(rootDir, true).get().syncDir()
+    }
+
+    fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + rootDir + " done")
+    fs.create(broadcastDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + broadcastDir + " done")
+    fs.create(shuffleDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + shuffleDir + " done")
+    fs.create(rddDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + rddDir + " done")
+    fs.create(tmpDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + tmpDir + " done")
+    fs.create(metaDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + metaDir + " done")
+    fs.create(hostsDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating main dir done " + rootDir)
+  }
 
   def getPath(blockId: BlockId): String = {
     var name = tmpDir + "/" + blockId.name

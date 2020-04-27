@@ -23,14 +23,12 @@ import java.util.{Date, Locale}
 
 import scala.collection.immutable.Map
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.{Configurable, Configuration}
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapred.lib.CombineFileSplit
 import org.apache.hadoop.mapreduce.TaskType
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
 import org.apache.hadoop.util.ReflectionUtils
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.broadcast.Broadcast
@@ -40,6 +38,7 @@ import org.apache.spark.internal.config._
 import org.apache.spark.rdd.HadoopRDD.HadoopMapPartitionsWithSplitRDD
 import org.apache.spark.scheduler.{HDFSCacheTaskLocation, HostTaskLocation}
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.disagg.BlazeParameters
 import org.apache.spark.util.{NextIterator, SerializableConfiguration, ShutdownHookManager}
 
 /**
@@ -223,8 +222,7 @@ class HadoopRDD[K, V](
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
 
-      private val sampledRun = SparkEnv.get.conf
-        .getBoolean("spark.disagg.sampledRun", defaultValue = false)
+      private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
 
       logInfo(s"Sampled run $sampledRun")
 

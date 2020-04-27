@@ -17,15 +17,16 @@
 
 package org.apache.spark.storage.disagg
 
-import org.apache.spark.storage._
+import org.apache.spark.internal.Logging
 
-/**
-* This policy does not cache the data into memory.
-*/
-class DefaultDisaggStoringPolicy()
-                 extends DisaggStoringPolicy {
+private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
+  extends CachingPolicy with Logging {
 
-  override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
-    true
+  def isRDDNodeCached(rddId: Int): Boolean = {
+    val refcnt = rddJobDag.getRefCntRDD(rddId)
+    // logInfo(s"Reference count of RDD $rddId: $refcnt")
+    refcnt > 1
   }
 }
+
+

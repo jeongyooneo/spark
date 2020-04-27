@@ -17,15 +17,15 @@
 
 package org.apache.spark.storage.disagg
 
-import org.apache.spark.storage._
+import scala.util.Random
 
-/**
-* This policy does not cache the data into memory.
-*/
-class Rdd2DisaggStoringPolicy()
-                 extends DisaggStoringPolicy {
+private[spark] class RandomCachingPolicy(val percentage: Double) extends CachingPolicy {
 
-  override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
-    blockId.name.startsWith("rdd_2_")
+  val random = new Random
+
+  def isRDDNodeCached(rddId: Int): Boolean = {
+    random.nextDouble() <= percentage
   }
 }
+
+

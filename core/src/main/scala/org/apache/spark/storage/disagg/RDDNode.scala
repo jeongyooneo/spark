@@ -16,36 +16,21 @@
  */
 package org.apache.spark.storage.disagg
 
-import java.util.concurrent.ConcurrentHashMap
-
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.BlockId
-
-import scala.collection.convert.decorateAsScala._
-import scala.collection.{mutable, _}
 
 class RDDNode(val rddId: Int,
-              var cached: Boolean,
               var stageId: Int) extends Logging {
 
-  val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
-  var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
-  var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+  // val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
+  // var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
+  // var cachedChildren: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
 
   // <blockId, size>
-  val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
-    new ConcurrentHashMap[BlockId, Boolean]().asScala
+  // val currentStoredBlocks: concurrent.Map[BlockId, Boolean] =
+  //  new ConcurrentHashMap[BlockId, Boolean]().asScala
 
-  val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
-    new ConcurrentHashMap[BlockId, Long]().asScala
-
-  def setCachedParents(cp: mutable.Set[RDDNode]): Unit = {
-    cachedParents = cp
-  }
-
-  def setCachedChildren(cp: mutable.Set[RDDNode]): Unit = {
-    cachedChildren = cp
-  }
+  // val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
+  //  new ConcurrentHashMap[BlockId, Long]().asScala
 
   override def equals(that: Any): Boolean =
     that match
@@ -63,6 +48,6 @@ class RDDNode(val rddId: Int,
   }
 
   override def toString: String = {
-    s"(rdd: $rddId, cached: $cached, stage: $stageId)"
+    s"(rdd: $rddId, stage: $stageId)"
   }
 }

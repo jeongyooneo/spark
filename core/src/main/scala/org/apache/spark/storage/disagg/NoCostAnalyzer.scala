@@ -17,15 +17,13 @@
 
 package org.apache.spark.storage.disagg
 
-import org.apache.spark.storage._
+import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
-/**
-* This policy does not cache the data into memory.
-*/
-class NoStoringEvictBlockDPolicy()
-                 extends DisaggStoringPolicy {
+private[spark] class NoCostAnalyzer(metricTracker: MetricTracker)
+  extends CostAnalyzer(metricTracker) with Logging {
 
-  override def isStoringEvictedBlockToDisagg(blockId: BlockId): Boolean = {
-    false
+  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+    new CompDisaggCost(blockId, 0, 0)
   }
 }

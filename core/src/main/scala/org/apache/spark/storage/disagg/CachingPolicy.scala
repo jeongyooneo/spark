@@ -15,31 +15,33 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage
+package org.apache.spark.storage.disagg
 
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.storage.BlockManagerMessages.UpdateBlockInfo
+import org.apache.spark.SparkConf
 
-/**
- * :: DeveloperApi ::
- * Stores information about a block status in a block manager.
- */
-@DeveloperApi
-case class BlockUpdatedInfo(
-    blockManagerId: BlockManagerId,
-    blockId: BlockId,
-    storageLevel: StorageLevel,
-    memSize: Long,
-    diskSize: Long)
+private[spark] trait CachingPolicy {
 
-private[spark] object BlockUpdatedInfo {
+  def isRDDNodeCached(rddId: Int): Boolean
+}
 
-  private[spark] def apply(updateBlockInfo: UpdateBlockInfo): BlockUpdatedInfo = {
-    BlockUpdatedInfo(
-      updateBlockInfo.blockManagerId,
-      updateBlockInfo.blockId,
-      updateBlockInfo.storageLevel,
-      updateBlockInfo.memSize,
-      updateBlockInfo.diskSize)
+object CachingPolicy {
+  def apply(rddJobDag: Option[RDDJobDag],
+            sparkConf: SparkConf): CachingPolicy = {
+
+    val policy = sparkConf.get(BlazeParameters.CACHING_POLICY)
+
+    if (policy.equals("Blaze")) {
+      if (rddJobDag.isDefined) {
+        new BlazeCachingPolicy(rddJobDag.get)
+      } else {
+        new RandomCachingPolicy(sparkConf.get(BlazeParameters.RAND_CACHING_POLICY_PARAM))
+      }
+    } else if (policy.equals("Random")) {
+      new RandomCachingPolicy(sparkConf.get(BlazeParameters.RAND_CACHING_POLICY_PARAM))
+    } else {
+      throw new RuntimeException(s"No caching policy for $policy")
+    }
   }
 }
+
+

@@ -39,7 +39,7 @@ import org.apache.spark.partial.BoundedDouble
 import org.apache.spark.partial.CountEvaluator
 import org.apache.spark.partial.GroupedCountEvaluator
 import org.apache.spark.partial.PartialResult
-import org.apache.spark.storage.disagg.{RDDJobDag, RDDNode}
+import org.apache.spark.storage.disagg.{BlazeParameters, RDDJobDag, RDDNode}
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
@@ -205,15 +205,15 @@ abstract class RDD[T: ClassTag](
    */
   def cache(): this.type = persist()
 
+  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   /**
    * Mark the RDD as non-persistent, and remove all blocks for it from memory and disk.
-   *
    * @param blocking Whether to block until all blocks are deleted.
-   * @return This RDD.
-   */
+    * @return This RDD.
+    *
+    */
   def unpersist(blocking: Boolean = true): this.type = {
 
-    val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
     if (!autocaching) {
       sc.unpersistRDD(id, blocking)
     }
@@ -284,10 +284,20 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
-    if (storageLevel != StorageLevel.NONE) {
-      getOrCompute(split, context)
+    if (autocaching) {
+      if (SparkEnv.get.blockManager.isRDDCache(this.id)) {
+        this.storageLevel = StorageLevel.DISAGG
+        getOrCompute(split, context)
+      } else {
+        this.storageLevel = StorageLevel.NONE
+        computeOrReadCheckpoint(split, context)
+      }
     } else {
-      computeOrReadCheckpoint(split, context)
+      if (storageLevel != StorageLevel.NONE) {
+        getOrCompute(split, context)
+      } else {
+        computeOrReadCheckpoint(split, context)
+      }
     }
   }
 
@@ -416,7 +426,7 @@ abstract class RDD[T: ClassTag](
     def visit(rdd: RDD[_]) {
       if (!visited(rdd)) {
         visited += rdd
-        val node = new RDDNode(rdd.id, rdd.storageLevel != StorageLevel.NONE, stageId)
+        val node = new RDDNode(rdd.id, stageId)
 
         // update stage id
         if (!dag.contains(node)) {
@@ -429,7 +439,7 @@ abstract class RDD[T: ClassTag](
         for (dep <- rdd.dependencies) {
           // add edges
           val parent = dep.rdd
-          val parentNode = new RDDNode(parent.id, parent.storageLevel != StorageLevel.NONE, -1)
+          val parentNode = new RDDNode(parent.id, -1)
           if (!dag.contains(parentNode)) {
             dag.put(parentNode, new HashSet[RDDNode])
           }

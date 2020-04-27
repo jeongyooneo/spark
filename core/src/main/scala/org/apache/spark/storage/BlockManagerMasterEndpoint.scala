@@ -18,9 +18,7 @@
 package org.apache.spark.storage
 
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
-import java.util.{HashMap => JHashMap}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.annotation.DeveloperApi
@@ -28,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.{DisaggBlockManagerEndpoint, RDDJobDag}
+import org.apache.spark.storage.disagg.{LocalDisaggBlockManagerEndpoint, MetricTracker}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
@@ -46,6 +44,7 @@ class BlockManagerMasterEndpoint(
     val isLocal: Boolean,
     conf: SparkConf,
     listenerBus: LiveListenerBus,
+    metricTracker: MetricTracker,
     dagPath: String)
   extends ThreadSafeRpcEndpoint with Logging {
 
@@ -59,8 +58,9 @@ class BlockManagerMasterEndpoint(
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
+  import scala.collection.convert.decorateAsScala._
   // Mapping from block id to the set of block managers that have the block.
-  private val blockLocations = new JHashMap[BlockId, mutable.HashSet[BlockManagerId]]
+  private val blockLocations = new ConcurrentHashMap[BlockId, mutable.HashSet[BlockManagerId]]
 
   private val askThreadPool =
     ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool", 100)
@@ -76,10 +76,8 @@ class BlockManagerMasterEndpoint(
     mapper
   }
 
-  val autocaching = conf.getBoolean("spark.disagg.autocaching", false)
-
-  var disaggBlockManager: DisaggBlockManagerEndpoint = null
-  def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
+  var disaggBlockManager: LocalDisaggBlockManagerEndpoint = null
+  def setDisaggBlockManager(bm: LocalDisaggBlockManagerEndpoint): Unit = {
     disaggBlockManager = bm
   }
 
@@ -99,16 +97,6 @@ class BlockManagerMasterEndpoint(
     }
   }
 
-  val totalDisaggSize: AtomicLong = new AtomicLong(0)
-
-
-  val rddJobDag: Option[RDDJobDag] = RDDJobDag(dagPath, conf)
-
-
-  if (rddJobDag.isDefined) {
-    logInfo(rddJobDag.get.toString)
-  }
-
   val scheduler = Executors.newSingleThreadScheduledExecutor()
 
 
@@ -121,29 +109,10 @@ class BlockManagerMasterEndpoint(
       var diskSize = 0L
 
       // MB
-      val unit = 1000000
+      val unit = 1024 * 1024
 
       val builder: mutable.StringBuilder = new mutable.StringBuilder()
       builder.append("------- stat logging start ------\n")
-
-      if (rddJobDag.isDefined) {
-        rddJobDag.get.updateCostAndSort
-        /*
-        rddJobDag.get.sortedBlockCost match {
-          case None =>
-          case Some(l) =>
-            val costLog: mutable.StringBuilder = new mutable.StringBuilder()
-            loggingCnt += 1
-            l.foreach {
-              pair =>
-                val bid = pair._1
-                val cost = pair._2.cost
-                costLog.append(s"CostLog\t$loggingCnt\t$bid\t$cost\n")
-            }
-            logInfo(costLog.toString())
-        }
-        */
-      }
 
       blockManagerInfo.foreach {
         case (k: BlockManagerId, v: BlockManagerInfo) =>
@@ -165,14 +134,10 @@ class BlockManagerMasterEndpoint(
             s"disk ${diskSizeForManager/unit}\n")
       }
 
-      val disaggSize = if (disaggBlockManager != null) {
-        disaggBlockManager.totalSize.get()
-      } else {
-        0L
-      }
+      // val disaggSize = metricTracker.disaggTotalSize.get()
 
       builder.append(s"Total size memory: ${memSize/unit}, " +
-        s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")
+        s"disk: ${diskSize/unit}, disagg: ${metricTracker.disaggTotalSize.get()/unit}\n")
 
       builder.append("------- stat logging end ------\n")
 
@@ -187,13 +152,10 @@ class BlockManagerMasterEndpoint(
 
     case _updateBlockInfo @
         UpdateBlockInfo(blockManagerId, blockId, storageLevel,
-        deserializedSize, size, disaggSize) =>
+        deserializedSize, size) =>
       context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel,
-        deserializedSize, size, disaggSize, totalDisaggSize))
+        deserializedSize, size))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
-
-    case GetBlockSize(blockId) =>
-      context.reply(getBlockSize(blockId))
 
     case GetLocations(blockId) =>
       context.reply(getLocations(blockId))
@@ -270,14 +232,11 @@ class BlockManagerMasterEndpoint(
     val blocks = blockLocations.asScala.keys.flatMap(_.asRDDId).filter(_.rddId == rddId)
     blocks.foreach { blockId =>
       val bms: mutable.HashSet[BlockManagerId] = blockLocations.get(blockId)
-      bms.foreach(bm => blockManagerInfo.get(bm).foreach(_.removeBlock(blockId, totalDisaggSize)))
-      blockLocations.remove(blockId)
+      if (bms != null) {
+        bms.foreach(bm => blockManagerInfo.get(bm)
+          .foreach(_.removeBlock(blockId)))
 
-      if (blockId.isRDD) {
-        rddJobDag match {
-          case None =>
-          case Some(dag) => dag.removingBlock(blockId)
-        }
+        blockLocations.remove(blockId)
       }
     }
 
@@ -521,9 +480,7 @@ class BlockManagerMasterEndpoint(
       blockId: BlockId,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long,
-      disaggSize: Long,
-      totalDisaggSize: AtomicLong): Boolean = {
+      diskSize: Long): Boolean = {
 
     // logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
 
@@ -542,21 +499,15 @@ class BlockManagerMasterEndpoint(
       return true
     }
 
-    // update disagg info
-    if (storageLevel.useDisagg && disaggSize > 0) {
-      // logInfo(s"Update disagg block info $blockId size $disaggSize")
-      disaggBlockSizeInfo(blockId) = disaggSize
-    }
-
     blockManagerInfo(blockManagerId).updateBlockInfo(
-      blockId, storageLevel, memSize, diskSize, disaggSize, totalDisaggSize)
+      blockId, storageLevel, memSize, diskSize)
 
     var locations: mutable.HashSet[BlockManagerId] = null
     if (blockLocations.containsKey(blockId)) {
       locations = blockLocations.get(blockId)
     } else {
       locations = new mutable.HashSet[BlockManagerId]
-      blockLocations.put(blockId, locations)
+      blockLocations.putIfAbsent(blockId, locations)
     }
 
     if (storageLevel.isValid) {
@@ -568,12 +519,6 @@ class BlockManagerMasterEndpoint(
     // Remove the block from master tracking if it has been removed on all slaves.
     if (locations.size == 0) {
       blockLocations.remove(blockId)
-      if (blockId.isRDD) {
-        rddJobDag match {
-          case None =>
-          case Some(dag) => dag.removingBlock(blockId)
-        }
-      }
     }
     true
   }
@@ -629,15 +574,14 @@ class BlockManagerMasterEndpoint(
 @DeveloperApi
 case class BlockStatus(storageLevel: StorageLevel,
                        memSize: Long,
-                       diskSize: Long,
-                       disaggSize: Long) {
+                       diskSize: Long) {
   def isCached: Boolean = memSize + diskSize > 0
 }
 
 @DeveloperApi
 object BlockStatus {
   def empty: BlockStatus = BlockStatus(
-    StorageLevel.NONE, memSize = 0L, diskSize = 0L, disaggSize = 0L)
+    StorageLevel.NONE, memSize = 0L, diskSize = 0L)
 }
 
 private[spark] class BlockManagerInfo(
@@ -670,16 +614,13 @@ private[spark] class BlockManagerInfo(
       blockId: BlockId,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long,
-      disaggSize: Long,
-      totalDisaggSize: AtomicLong) {
+      diskSize: Long) {
 
     updateLastSeenMs()
 
     val blockExists = _blocks.contains(blockId)
     var originalMemSize: Long = 0
     var originalDiskSize: Long = 0
-    var originalDisaggSize: Long = 0
     var originalLevel: StorageLevel = StorageLevel.NONE
 
     if (blockExists) {
@@ -688,16 +629,12 @@ private[spark] class BlockManagerInfo(
       originalLevel = blockStatus.storageLevel
       originalMemSize = blockStatus.memSize
       originalDiskSize = blockStatus.diskSize
-      originalDisaggSize = blockStatus.disaggSize
-
 
       if (originalLevel.useMemory) {
         _remainingMem += originalMemSize
       }
     }
 
-
-    totalDisaggSize.addAndGet(disaggSize - originalDisaggSize)
 
     if (storageLevel.isValid) {
       /* isValid means it is either stored in-memory or on-disk.
@@ -708,7 +645,7 @@ private[spark] class BlockManagerInfo(
        * Therefore, a safe way to set BlockStatus is to set its info in accurate modes. */
       var blockStatus: BlockStatus = null
       if (storageLevel.useMemory) {
-        blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = 0, disaggSize = 0)
+        blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = 0)
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
         if (blockExists) {
@@ -726,7 +663,7 @@ private[spark] class BlockManagerInfo(
 
       }
       if (storageLevel.useDisk) {
-        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize, disaggSize)
+        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
           logInfo(s"Updated $blockId on disk on ${blockManagerId.hostPort}" +
@@ -735,15 +672,6 @@ private[spark] class BlockManagerInfo(
         } else {
           logInfo(s"Added $blockId on disk on ${blockManagerId.hostPort}" +
             s" (size: ${Utils.bytesToString(diskSize)})")
-        }
-      }
-      if (storageLevel.useDisagg) {
-        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = 0, disaggSize)
-        _blocks.put(blockId, blockStatus)
-        if (blockExists) {
-          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
-        } else {
-          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
         }
       }
       if (!blockId.isBroadcast && blockStatus.isCached) {
@@ -768,13 +696,11 @@ private[spark] class BlockManagerInfo(
     }
   }
 
-  def removeBlock(blockId: BlockId,
-                  totalDisaggSize: AtomicLong) {
+  def removeBlock(blockId: BlockId) {
     if (_blocks.contains(blockId)) {
       val status: BlockStatus = _blocks.get(blockId).get
       _remainingMem += status.memSize
       _blocks.remove(blockId)
-      totalDisaggSize.addAndGet(-status.disaggSize)
     }
     _cachedBlocks -= blockId
   }
