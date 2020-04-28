@@ -67,7 +67,7 @@ private[spark] class DisaggBlockManager(
   }
 
   def sendRDDCompTime(rddId: Int, time: Long): Unit = {
-    driverEndpoint.ask(SendRecompTime(blockId, time))
+    driverEndpoint.ask(SendNoCachedRDDCompTime(rddId, time))
   }
 
   def sendRecompTime(blockId: BlockId, time: Long): Unit = {
