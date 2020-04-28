@@ -119,8 +119,8 @@ private[spark] class MetricTracker extends Logging {
   def removeExecutorBlocks(executorId: String): Unit = synchronized {
     localStoredBlocksMap.remove(executorId).foreach {
       blockId => {
-        localBlockSizeMap.remove(blockId)
-        BlazeLogger.removeLocal(blockId, executorId)
+        val size = localBlockSizeMap.remove(blockId)
+        BlazeLogger.removeLocal(blockId, executorId, size)
       }
     }
   }

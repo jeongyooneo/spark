@@ -57,6 +57,8 @@ private[spark] object EvictionPolicy {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker)
     } else if (policy.equals("Cost-size-ratio")) {
       new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker)
+    } else if (policy.equals("Cost-size-ratio2")) {
+      new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker)
     } else {
       throw new RuntimeException(s"Unsupported evictionPolicy $policy")
     }

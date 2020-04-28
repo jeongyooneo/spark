@@ -29,34 +29,37 @@ private[spark] object BlazeLogger extends Logging {
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
                       comp: Double, disaggCost: Long, msg: String): Unit = {
-    logInfo(s"CACHING_L\t$executor\t$blockId\t$msg")
+    logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
   }
   def logDisaggCaching(blockId: BlockId,
                        size: Long,
                       comp: Double, disaggCost: Long): Unit = {
-    logInfo(s"CACHING_D\t$blockId\t$size\t$comp\t$disaggCost")
+    logInfo(s"CACHING_D\t$blockId\t$size\t$comp\t$disaggCost\t$size")
   }
 
   // local caching fail
-  def cachingFailure(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"FAIL_CACHING_L\t$executorId\t$blockId")
+  def cachingFailure(blockId: BlockId, executorId: String,
+                     size: Long): Unit = {
+    logInfo(s"FAIL_CACHING_L\t$executorId\t$blockId\t$size")
   }
 
   // For executor failure
-  def removeLocal(blockId: BlockId, executor: String): Unit = {
-    logInfo(s"REMOVE_L\t$executor\t$blockId")
+  def removeLocal(blockId: BlockId, executor: String,
+                  size: Long): Unit = {
+    logInfo(s"REMOVE_L\t$executor\t$blockId\t$size")
   }
 
   // Discard: this rdd is never cached in local/disagg
   def discardLocal(blockId: BlockId, executor: String,
                    reduction: Double,
                    disaggCost: Long,
+                   size: Long,
                    msg: String): Unit = {
-    logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$disaggCost\t$msg")
+    logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
   }
   def discardDisagg(blockId: BlockId, reduction: Double,
-                    disagg: Long, msg: String): Unit = {
-    logInfo(s"DISCARD_D\t$blockId\t$reduction\t$disagg\t$msg")
+                    disagg: Long, size: Long, msg: String): Unit = {
+    logInfo(s"DISCARD_D\t$blockId\t$reduction\t$disagg\t$size\t$msg")
   }
 
   def recacheDisaggToLocal(blockId: BlockId, executorId: String): Unit = {
@@ -65,13 +68,15 @@ private[spark] object BlazeLogger extends Logging {
 
   // Evict: this rdd is cached in local/disagg
   def evictLocal(blockId: BlockId, executor: String,
-                 comp: Double, disaggCost: Long): Unit = {
-    logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost")
+                 comp: Double, disaggCost: Long,
+                 size: Long): Unit = {
+    logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
   }
   def evictDisagg(blockId: BlockId,
                   comp: Double,
-                  disagg: Long): Unit = {
-    logInfo(s"EVICT_D\t$blockId\t$comp\t$disagg")
+                  disagg: Long,
+                  size: Long): Unit = {
+    logInfo(s"EVICT_D\t$blockId\t$comp\t$disagg\t$size")
   }
 
   def evictDisaggByLocal(blockId: BlockId, executorId: String): Unit = {
