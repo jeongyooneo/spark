@@ -218,8 +218,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                               putDisagg: Boolean, localFull: Boolean): Boolean = {
 
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    logInfo(s"Caching decision call " +
-      s"$blockId, $estimateSize, $executorId, $putDisagg, $localFull")
+    // logInfo(s"Caching decision call " +
+    //  s"$blockId, $estimateSize, $executorId, $putDisagg, $localFull")
 
     val t = System.currentTimeMillis()
     metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
@@ -411,8 +411,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                               executorId: String,
                               enoughSpace: Boolean): Boolean = {
 
-    logInfo(s"Maybe cache into memory " +
-      s"$blockId, $size, $executorId, $enoughSpace")
+    // logInfo(s"Maybe cache into memory " +
+    //  s"$blockId, $size, $executorId, $enoughSpace")
 
     /*
     val costForStoredBlock = costAnalyzer.compDisaggCost(blockId)
@@ -746,7 +746,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   }
 
   private def blockWriteUnlock(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"Release writelock $blockId, $executorId")
+    // logInfo(s"Release writelock $blockId, $executorId")
     executorWriteLockCount(executorId).remove(blockId)
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
@@ -754,7 +754,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private def tryWriteLockHeldForDisagg(blockId: BlockId): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
-      logInfo(s"Hold tryWritelock $blockId")
+      // logInfo(s"Hold tryWritelock $blockId")
       true
     } else {
       false
@@ -762,12 +762,12 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   }
 
   private def releaseWriteLockForDisagg(blockId: BlockId): Unit = {
-    logInfo(s"Release tryWritelock $blockId")
+    // logInfo(s"Release tryWritelock $blockId")
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
 
   private def blockReadLock(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"Hold readlock $blockId, $executorId")
+    // logInfo(s"Hold readlock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     disaggBlockLockMap(blockId).readLock().lock()
     executorReadLockCount.putIfAbsent(executorId,
@@ -777,7 +777,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
-    logInfo(s"Release readlock $blockId, $executorId")
+    // logInfo(s"Release readlock $blockId, $executorId")
     val result = executorReadLockCount(executorId).get(blockId).decrementAndGet()
     disaggBlockLockMap(blockId).readLock().unlock()
     result >= 0
@@ -824,14 +824,14 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       val result = fileRead(blockId, executorId)
 
       if (result == 0) {
-        logInfo(s"File unlock $blockId at $executorId for empty")
+        // logInfo(s"File unlock $blockId at $executorId for empty")
         blockReadUnlock(blockId, executorId)
       }
 
       context.reply(result)
 
     case FileReadUnlock(blockId, executorId) =>
-      logInfo(s"File read unlock $blockId from $executorId")
+      // logInfo(s"File read unlock $blockId from $executorId")
       // unlock
       // We unlock here because the lock is already hold by FileRead
       if (!executorReadLockCount.contains(executorId)) {
