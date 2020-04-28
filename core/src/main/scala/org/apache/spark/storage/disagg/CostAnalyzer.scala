@@ -32,7 +32,14 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     new AtomicReference[Map[String, List[CompDisaggCost]]](null)
 
   @volatile
+  var sortedBlockByCompSizeRatioInLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
+    new AtomicReference[Map[String, List[CompDisaggCost]]](null)
+
+  @volatile
   var sortedBlockByCompCostInDisagg: Option[List[CompDisaggCost]] = None
+
+  @volatile
+  var sortedBlockByCompSizeRatioInDisagg: Option[List[CompDisaggCost]] = None
 
   // For cost analysis
   def compDisaggCost(blockId: BlockId): CompDisaggCost
@@ -153,10 +160,27 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInDisagg =
       Some(disaggL.sortWith(_.reduction < _.reduction))
 
+    sortedBlockByCompSizeRatioInDisagg =
+      Some(disaggL.sortWith((x, y) => {
+        val b1 = x.reduction / metricTracker.getBlockSize(x.blockId).toDouble
+        val b2 = y.reduction / metricTracker.getBlockSize(y.blockId).toDouble
+        b1 < b2
+      }))
+
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.reduction < _.reduction))
+      }))
+
+    sortedBlockByCompSizeRatioInLocal.set(
+      localLMap.map(entry => {
+        val l = entry._2
+        (entry._1, l.sortWith((x, y) => {
+          val b1 = x.reduction / metricTracker.getBlockSize(x.blockId).toDouble
+          val b2 = y.reduction / metricTracker.getBlockSize(y.blockId).toDouble
+          b1 < b2
+        }))
       }))
 
     /*
