@@ -555,9 +555,10 @@ abstract class RDD[T: ClassTag](
        firstParent[T].iterator(split, context)
     } else {
       val st = System.currentTimeMillis()
-      compute(split, context)
+      val v = compute(split, context)
       val et = System.currentTimeMillis()
       SparkEnv.get.blockManager.disaggManager.sendRDDCompTime(this.id, et - st)
+      v
     }
   }
 
