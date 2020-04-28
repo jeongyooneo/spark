@@ -66,6 +66,10 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.ask(LocalEvictionDone(blockId, executorId))
   }
 
+  def sendRecompTime(blockId: BlockId, time: Long): Unit = {
+    driverEndpoint.ask(SendRecompTime(blockId, time))
+  }
+
   def sendSerMetric(blockId: BlockId, size: Long, cost: Long): Unit = {
     driverEndpoint.ask(WriteDisaggBlock(blockId, cost))
   }

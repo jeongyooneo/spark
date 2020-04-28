@@ -26,6 +26,18 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"DECISION_CACHING\t$rddId")
   }
 
+  def serTime(blockId: BlockId, time: Long): Unit = {
+    logInfo(s"SER\t$blockId\t$time")
+  }
+
+  def deserTime(blockId: BlockId, time: Long): Unit = {
+    logInfo(s"DESER\t$blockId\t$time")
+  }
+
+  def recompTime(blockId: BlockId, time: Long): Unit = {
+    logInfo(s"RECOMP\t$blockId\t$time")
+  }
+
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
                       comp: Double, disaggCost: Long, msg: String): Unit = {

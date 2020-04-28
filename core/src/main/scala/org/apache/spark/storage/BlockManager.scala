@@ -1036,6 +1036,7 @@ private[spark] class BlockManager(
     }
 
     // Initially we hold no locks on this block.
+    val st = System.currentTimeMillis()
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
@@ -1046,12 +1047,22 @@ private[spark] class BlockManager(
           releaseLock(blockId)
           throw new SparkException(s"get() failed for block $blockId even though we held a lock")
         }
+
+        val et = System.currentTimeMillis()
+        val elapsed = et - st
+        // logInfo(s"Recomp\t$blockId\t$et")
+        disaggManager.sendRecompTime(blockId, elapsed)
         // We already hold a read lock on the block from the doPut() call and getLocalValues()
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
         Left(blockResult)
       case Some(iter) =>
+        val et = System.currentTimeMillis()
+        val elapsed = et - st
+        // logInfo(s"Recomp\t$blockId\t$et")
+        disaggManager.sendRecompTime(blockId, elapsed)
+
         if (level.useDisagg) {
           putIteratorToDisagg(blockId, iter, classTag, true)
         } else {

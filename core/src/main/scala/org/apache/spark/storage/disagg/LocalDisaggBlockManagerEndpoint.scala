@@ -857,10 +857,15 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       context.reply(contains(blockId))
 
     case ReadDisaggBlock(blockId, time) =>
+      BlazeLogger.deserTime(blockId, time)
       metricTracker.blockDeserCostMap.putIfAbsent(blockId, time)
 
     case WriteDisaggBlock(blockId, time) =>
+      BlazeLogger.serTime(blockId, time)
       metricTracker.blockSerCostMap.putIfAbsent(blockId, time)
+
+    case SendRecompTime(blockId, time) =>
+      BlazeLogger.recompTime(blockId, time)
 
     case GetSize(blockId, executorId) =>
       blockReadLock(blockId, executorId)
