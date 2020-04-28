@@ -554,7 +554,10 @@ abstract class RDD[T: ClassTag](
     if (isCheckpointedAndMaterialized) {
        firstParent[T].iterator(split, context)
     } else {
+      val st = System.currentTimeMillis()
       compute(split, context)
+      val et = System.currentTimeMillis()
+      SparkEnv.get.blockManager.disaggManager.sendRDDCompTime(this.id, et - st)
     }
   }
 

@@ -38,6 +38,10 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"RECOMP\t$blockId\t$time")
   }
 
+  def rddCompTime(rddId: Int, time: Long): Unit = {
+    logInfo(s"CMP\t$rddId\t$time")
+  }
+
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
                       comp: Double, disaggCost: Long, msg: String): Unit = {

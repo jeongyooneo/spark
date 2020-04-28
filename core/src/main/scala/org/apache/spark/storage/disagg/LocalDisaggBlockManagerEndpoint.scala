@@ -867,6 +867,9 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     case SendRecompTime(blockId, time) =>
       BlazeLogger.recompTime(blockId, time)
 
+    case SendNoCachedRDDCompTime(rddId, time) =>
+      BlazeLogger.rddCompTime(rddId, time)
+
     case GetSize(blockId, executorId) =>
       blockReadLock(blockId, executorId)
       try {
