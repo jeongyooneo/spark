@@ -92,6 +92,7 @@ class BlockManagerMasterEndpoint(
           var diskSizeForManager = 0L
           freeMemSize += v.remainingMem
           val evictions = v.getEvictions(k)
+          val evictedSizes = v.getEvictedBlockSizes(k)
 
           v.blocks.values.foreach {
             stat: BlockStatus =>
@@ -102,9 +103,10 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager${k.host}: memUsed ${memSizeForManager/unit} " +
-            s"memFree ${v.remainingMem/unit} evictions $evictions " +
-            s"disk ${diskSizeForManager/unit}\n")
+          builder.append(s"BlockManager${k.host}: " +
+            s"memUsed ${memSizeForManager/unit} memFree ${v.remainingMem/unit} " +
+            s"evictions $evictions evictedSize $evictedSizes " +
+            s"disk ${diskSizeForManager/unit}\t")
       }
 
       builder.append(s"Total size memUsed ${memSize/unit} " +
@@ -563,6 +565,17 @@ private[spark] class BlockManagerInfo(
   private val _cachedBlocks = new mutable.HashSet[BlockId]
   private val evictionsPerBlockManager =
     new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
+  private val evictedBlockSizePerBlockManager =
+    new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
+
+  def getEvictedBlockSizes(bm: BlockManagerId): Long = {
+    if (evictedBlockSizePerBlockManager.contains(bm)) {
+      evictedBlockSizePerBlockManager(bm).getOrElse(0L)
+    } else {
+      evictedBlockSizePerBlockManager(bm) = Some(0L)
+      0L
+    }
+  }
 
   def getEvictions(bm: BlockManagerId): Long = {
     if (evictionsPerBlockManager.contains(bm)) {
@@ -628,7 +641,6 @@ private[spark] class BlockManagerInfo(
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
-
       }
       if (storageLevel.useDisk) {
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
@@ -660,6 +672,8 @@ private[spark] class BlockManagerInfo(
       }
       evictionsPerBlockManager(blockManagerId) =
         Some(evictionsPerBlockManager(blockManagerId).getOrElse(0L) + 1L)
+      evictedBlockSizePerBlockManager(blockManagerId) =
+        Some(evictedBlockSizePerBlockManager(blockManagerId).getOrElse(0L) + originalMemSize)
     }
   }
 
