@@ -357,14 +357,13 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             s"for evicting $blockId, size $evictionSize")
           List.empty
         } else {
-          var costSum = 0.0
+          // var costSum = 0.0
 
           iter.foreach {
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
-                && discardingBlock.reduction <= storingCost.reduction
-                && costSum <= storingCost.reduction) {
+                && discardingBlock.reduction <= storingCost.reduction) {
                 val elapsed = currTime -
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
@@ -372,7 +371,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                    costSum += discardingBlock.reduction
                     sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
                     evictionList.append(discardingBlock.blockId)
                   }
@@ -525,7 +523,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
           val iterator = iter.toList.iterator
           val currTime = System.currentTimeMillis()
-          var costSum = 0.0
+          // var costSum = 0.0
 
           while (iterator.hasNext) {
             val discardBlock = iterator.next()
@@ -544,9 +542,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                       rmBlocks.append(discardBlock)
                     } else if (timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardBlock.reduction <= cost.reduction
-                    && costSum <= cost.reduction) {
-                      costSum += discardBlock.reduction
+                      && discardBlock.reduction <= cost.reduction) {
+                      // costSum += discardBlock.reduction
                       totalDiscardSize += blockInfo.getActualBlockSize
                       removeBlocks.append((bid, blockInfo))
                       rmBlocks.append(discardBlock)
