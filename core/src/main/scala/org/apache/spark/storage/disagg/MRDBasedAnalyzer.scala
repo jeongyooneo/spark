@@ -50,7 +50,8 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
     if (refStages.isEmpty) {
       new CompDisaggCost(blockId, 0, 0)
     } else {
-      new CompDisaggCost(blockId, 0, refStages.map(x => x.distance).max)
+      new CompDisaggCost(blockId, 0,
+        1/Math.max(1.0, refStages.map(x => x.distance).min.toDouble))
     }
 
   }
