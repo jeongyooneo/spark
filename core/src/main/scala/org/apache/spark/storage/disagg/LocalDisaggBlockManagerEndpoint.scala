@@ -363,8 +363,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
-                && discardingBlock.reduction < storingCost.reduction
-                && costSum < storingCost.reduction) {
+                && discardingBlock.reduction <= storingCost.reduction
+                && costSum <= storingCost.reduction) {
                 val elapsed = currTime -
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
@@ -544,8 +544,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                       rmBlocks.append(discardBlock)
                     } else if (timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardBlock.reduction < cost.reduction
-                    && costSum < cost.reduction) {
+                      && discardBlock.reduction <= cost.reduction
+                    && costSum <= cost.reduction) {
                       costSum += discardBlock.reduction
                       totalDiscardSize += blockInfo.getActualBlockSize
                       removeBlocks.append((bid, blockInfo))
