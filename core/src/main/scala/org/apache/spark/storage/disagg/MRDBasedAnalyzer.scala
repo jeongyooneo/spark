@@ -24,26 +24,6 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
                                       metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-
-  // 10Gib per sec to byte per sec
-  private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
-
-  private def disaggCostCalc(blockId: BlockId, size: Long, refCnt: Int): Long = {
-    val serCost = if (metricTracker.blockSerCostMap.contains(blockId)) {
-      metricTracker.blockSerCostMap.get(blockId)
-    } else {
-      size  / BANDWIDTH
-    }
-
-    val deserCost = if (metricTracker.blockDeserCostMap.contains(blockId)) {
-      metricTracker.blockDeserCostMap.get(blockId)
-    } else {
-      size / BANDWIDTH
-    }
-
-    (serCost + deserCost * refCnt).toLong
-  }
-
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
     val refStages = rddJobDag.getReferenceStages(blockId)
 

@@ -684,19 +684,23 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private def removeFromDisagg(blockId: BlockId): Option[CrailBlockInfo] = {
     logInfo(s"Disagg endpoint: file removed: $blockId")
 
-    if (disaggBlockInfo.get(blockId).isDefined) {
-      val info = disaggBlockInfo.get(blockId).get
-      val path = getPath(blockId)
-      fs.delete(path, false).get()
-      metricTracker.removeDisaggBlock(blockId)
-      disaggBlockInfo.remove(blockId)
-      recentlyRemoved.remove(blockId)
-      Some(info)
-    } else {
-      logWarning(s"Block is already removed !! $blockId")
-      recentlyRemoved.remove(blockId)
-      Option.empty
-
+    disaggBlockInfo.get(blockId) match {
+      case None =>
+        logWarning(s"Block is already removed !! $blockId")
+        recentlyRemoved.remove(blockId)
+        Option.empty
+      case Some(info) =>
+        if (info.writeDone) {
+          val path = getPath(blockId)
+          fs.delete(path, false).get()
+          metricTracker.removeDisaggBlock(blockId)
+          disaggBlockInfo.remove(blockId)
+          recentlyRemoved.remove(blockId)
+          Some(info)
+        } else {
+          logWarning(s"Block $blockId is being written")
+          Option.empty
+        }
     }
   }
 
