@@ -695,6 +695,9 @@ private[spark] class DAGScheduler(
     }
 
     val jobId = nextJobId.getAndIncrement()
+
+    logInfo(s"RDDs of Job ${jobId}: ${rdd.getAllAncestors}")
+
     sc.perJobDisaggLineage += (jobId -> rdd.createCachedAncestors)
     sc.perJobDisaggLineage.foreach(entry => {
       val jobId = entry._1
@@ -1064,6 +1067,7 @@ private[spark] class DAGScheduler(
     clearCacheLocs()
     logInfo("Got map stage job %s (%s) with %d output partitions".format(
       jobId, callSite.shortForm, dependency.rdd.partitions.length))
+    logInfo(s"Job ${jobId} RDDs: ${dependency.rdd.get}")
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
     logInfo("Parents of final stage: " + finalStage.parents)
     logInfo("Missing parents: " + getMissingParentStages(finalStage))

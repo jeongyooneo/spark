@@ -325,7 +325,7 @@ abstract class RDD[T: ClassTag](
     ancestors.filterNot(_ == this).toSeq
   }
 
-  private[spark] def printAllAncestors: Unit = {
+  private[spark] def getAllAncestors: Set[RDD[_]] = {
     val allAncestors = new mutable.HashSet[RDD[_]]
 
     def visit(rdd: RDD[_]) {
@@ -341,12 +341,7 @@ abstract class RDD[T: ClassTag](
     visit(this)
 
     // In case there is a cycle, do not include the root itself
-    val ret = allAncestors.filterNot(_ == this).toSeq
-    ret.foreach(ancestor =>
-      if (ancestor.getStorageLevel != StorageLevel.NONE) {
-        logInfo("jy: All cached ancestors of " + name + " " + id + ": "
-          + ancestor.name + " " + ancestor.id)
-      })
+    allAncestors.toSet
   }
 
   private[spark] def createCachedAncestorsWithSize: OpenHashMap[RDD[_], Int] = {
