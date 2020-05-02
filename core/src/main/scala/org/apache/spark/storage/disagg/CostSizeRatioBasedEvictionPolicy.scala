@@ -55,7 +55,7 @@ private[spark] class CostSizeRatioBasedEvictionPolicy(
       if (l.isEmpty) {
         false
       } else {
-        val index = (l.size * 0.3).toInt
+        val index = ((l.size - 1) * promoteRatio).toInt
         if (l(index).reduction > storingCost.reduction) {
           false
         } else {
