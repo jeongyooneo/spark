@@ -17,12 +17,14 @@
 
 package org.apache.spark.storage.disagg
 
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
 private[spark] class CostSizeRatioBased2EvictionPolicy(
            val costAnalyzer: CostAnalyzer,
-           val metricTracker: MetricTracker) extends EvictionPolicy with Logging {
+           val metricTracker: MetricTracker,
+           conf: SparkConf) extends EvictionPolicy(conf) with Logging {
 
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,

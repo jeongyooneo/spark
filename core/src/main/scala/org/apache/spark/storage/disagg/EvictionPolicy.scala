@@ -20,7 +20,9 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.BlockId
 
-private[spark] trait EvictionPolicy {
+private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
+
+  val promoteRatio = sparkConf.get(BlazeParameters.PROMOTE_RATIO)
 
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,
@@ -52,13 +54,13 @@ private[spark] object EvictionPolicy {
     val policy = sparkConf.get(BlazeParameters.EVICTION_POLICY)
 
     if (policy.equals("Default")) {
-      new DefaultEvictionPolicy(costAnalyzer, metricTracker)
+      new DefaultEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-based")) {
-      new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker)
+      new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-size-ratio")) {
-      new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker)
+      new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-size-ratio2")) {
-      new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker)
+      new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else {
       throw new RuntimeException(s"Unsupported evictionPolicy $policy")
     }

@@ -63,4 +63,8 @@ private[spark] object BlazeParameters extends Logging {
   private[spark] val MEMORY_SLACK = ConfigBuilder("spark.disagg.memoryslack")
     .intConf
     .createWithDefault(300)
+
+  private[spark] val PROMOTE_RATIO = ConfigBuilder("spark.disagg.promote")
+    .doubleConf
+    .createWithDefault(0.3)
 }
