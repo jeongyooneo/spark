@@ -875,6 +875,7 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
+        // Accessed again in this executor
         if (blockAccessHistory.contains(blockId)) {
           blockAccessHistory(blockId) += 1L
         } else {
@@ -916,8 +917,8 @@ private[spark] class BlockManager(
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
         val accessHistory = blockAccessHistory(blockId)
-        master.sendLog(s"RCTime\t$blockId\t$executorId\t$accessHistory\t" +
-          s"${TaskContext.get().stageId()}\t$elapsed")
+        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
+          s"stage${TaskContext.get().stageId()}\t$elapsed")
 
         Left(blockResult)
       case Some(iter) =>
@@ -1561,6 +1562,11 @@ private[spark] class BlockManager(
     }
     if (blockIsUpdated) {
       addUpdatedBlockStatusToTaskMetrics(blockId, status)
+    }
+    if (blockId.isRDD) {
+      logInfo(s"Dropping block $blockId from memory")
+      master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+        s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
     }
     status.storageLevel
   }

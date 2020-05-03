@@ -103,7 +103,7 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager${k.host}: " +
+          builder.append(s"BlockManager${k.host} " +
             s"memUsed ${memSizeForManager/unit} memFree ${v.remainingMem/unit} " +
             s"evictions $evictions evictedSize $evictedSizes " +
             s"disk ${diskSizeForManager/unit}\t")
@@ -112,7 +112,7 @@ class BlockManagerMasterEndpoint(
       builder.append(s"Total size memUsed ${memSize/unit} " +
         s"memFree ${freeMemSize/unit} disk ${diskSize/unit}\n")
 
-      logInfo("\n" + builder.toString())
+      logInfo(builder.toString() + "\n")
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
@@ -631,13 +631,13 @@ private[spark] class BlockManagerInfo(
         _remainingMem -= memSize
         if (blockExists) {
           logInfo(s"Updated $blockId in memory on " +
-            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
+            s"executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(memSize)}," +
             s" original size: ${Utils.bytesToString(originalMemSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         } else {
           logInfo(s"Added $blockId in memory on " +
-            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
+            s"${blockManagerId.hostPort}" +
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
@@ -646,11 +646,11 @@ private[spark] class BlockManagerInfo(
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
-          logInfo(s"Updated $blockId on disk on ${blockManagerId.hostPort}" +
+          logInfo(s"Updated $blockId on disk on executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(diskSize)}," +
             s" original size: ${Utils.bytesToString(originalDiskSize)})")
         } else {
-          logInfo(s"Added $blockId on disk on ${blockManagerId.hostPort}" +
+          logInfo(s"Added $blockId on disk on executor${blockManagerId.executorId}" +
             s" (size: ${Utils.bytesToString(diskSize)})")
         }
       }
