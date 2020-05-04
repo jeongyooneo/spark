@@ -170,24 +170,32 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     metricTracker.taskStarted(taskId)
   }
 
+  private var prevCleanupTime = System.currentTimeMillis()
+
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
-      // unpersist rdds
-      val zeroRDDs = costAnalyzer.findZeroCostRDDs
-      zeroRDDs.foreach {
-        rdd =>
-          logInfo(s"Remove zero cost rdd $rdd from memory")
-          // remove from local executors
-          blockManagerMaster.removeRdd(rdd)
-        // remove local info
-      }
+      autocaching.synchronized {
+        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+          // unpersist rdds
+          val zeroRDDs = costAnalyzer.findZeroCostRDDs
+          zeroRDDs.foreach {
+            rdd =>
+              logInfo(s"Remove zero cost rdd $rdd from memory")
+              // remove from local executors
+              blockManagerMaster.removeRdd(rdd)
+            // remove local info
+          }
 
-      // Here, we remove RDDs from local and disagg
-      removeRddsFromLocal(zeroRDDs)
-      removeRddsFromDisagg(zeroRDDs)
+          // Here, we remove RDDs from local and disagg
+          removeRddsFromLocal(zeroRDDs)
+          removeRddsFromDisagg(zeroRDDs)
+
+          prevCleanupTime = System.currentTimeMillis()
+        }
+      }
     }
   }
 
