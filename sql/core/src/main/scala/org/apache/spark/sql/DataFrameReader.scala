@@ -213,6 +213,7 @@ class DataFrameReader private[sql](sparkSession: SparkSession) extends Logging {
   }
 
   private def loadV1Source(paths: String*) = {
+    logInfo(s"TG:  Load data source here 11111 ")
     // Code path for data source v1.
     sparkSession.baseRelationToDataFrame(
       DataSource.apply(

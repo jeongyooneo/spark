@@ -26,20 +26,30 @@ import org.apache.hadoop.io.Text
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.lib.input.CombineFileSplit
 import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl
-
+import org.apache.spark.SparkEnv
 import org.apache.spark.input.WholeTextFileRecordReader
+import org.apache.spark.internal.Logging
+import org.apache.spark.storage.disagg.BlazeParameters
 
 /**
  * An adaptor from a [[PartitionedFile]] to an [[Iterator]] of [[Text]], which is all of the lines
  * in that file.
  */
 class HadoopFileWholeTextReader(file: PartitionedFile, conf: Configuration)
-  extends Iterator[Text] with Closeable {
+  extends Iterator[Text] with Closeable with Logging {
+
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
   private val iterator = {
     val fileSplit = new CombineFileSplit(
       Array(new Path(new URI(file.filePath))),
       Array(file.start),
-      Array(file.length),
+      Array(
+        if (sampledRun) {
+          1024
+        } else {
+          file.length
+        }),
       // TODO: Implement Locality
       Array.empty[String])
     val attemptId = new TaskAttemptID(new TaskID(new JobID(), TaskType.MAP, 0), 0)
@@ -49,9 +59,30 @@ class HadoopFileWholeTextReader(file: PartitionedFile, conf: Configuration)
     new RecordReaderIterator(reader)
   }
 
-  override def hasNext: Boolean = iterator.hasNext
+  private val CNT = 10
+  private var read = 0
 
-  override def next(): Text = iterator.next()
+  override def hasNext: Boolean = {
+    if (sampledRun) {
+      if (read >= CNT) {
+        logInfo(s"TG: Sampled run reading finished!!")
+        false
+      } else {
+        iterator.hasNext
+      }
+    } else {
+      iterator.hasNext
+    }
+  }
+
+  override def next(): Text = {
+    if (sampledRun) {
+      read += 1
+      iterator.next()
+    } else {
+      iterator.next()
+    }
+  }
 
   override def close(): Unit = iterator.close()
 }
