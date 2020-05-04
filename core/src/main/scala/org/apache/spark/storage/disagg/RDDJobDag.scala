@@ -255,6 +255,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
+    if (!dag.contains(rddNode)) {
+      logWarning(s"Not coressponding rdd Node ${rddNode.rddId}")
+      return 0
+    }
+
     val uncachedChildNum = collectUncachedChildBlocks(rddNode, blockId,
       new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0).size
 
