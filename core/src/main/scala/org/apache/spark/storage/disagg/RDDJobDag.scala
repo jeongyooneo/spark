@@ -327,31 +327,37 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       visitedRdds.add(rddNode.rddId)
     }
 
-    for (childnode <- dag(rddNode)) {
-      val childBlockId = getBlockId(childnode.rddId, blockId)
-      var newDist = distance
-      if (!metricTracker.blockStored(childBlockId)) {
+    try {
+      for (childnode <- dag(rddNode)) {
+        val childBlockId = getBlockId(childnode.rddId, blockId)
+        var newDist = distance
+        if (!metricTracker.blockStored(childBlockId)) {
 
-        if (map.contains(childnode.stageId)) {
-          // update
-          if (map(childnode.stageId).distance < distance) {
-            map(childnode.stageId).distance = distance
+          if (map.contains(childnode.stageId)) {
+            // update
+            if (map(childnode.stageId).distance < distance) {
+              map(childnode.stageId).distance = distance
+            }
           }
-        }
 
-        if (!stageSet.contains(childnode.stageId) &&
-          !metricTracker.completedStages.contains(childnode.stageId)) {
-          stageSet.add(childnode.stageId)
-          newDist += 1
-          map.put(childnode.stageId, new StageDistance(childnode.stageId, newDist))
-        }
+          if (!stageSet.contains(childnode.stageId) &&
+            !metricTracker.completedStages.contains(childnode.stageId)) {
+            stageSet.add(childnode.stageId)
+            newDist += 1
+            map.put(childnode.stageId, new StageDistance(childnode.stageId, newDist))
+          }
 
-        // if (getRefCntRDD(childnode.rddId) < 2) {
-        collectUncachedChildBlocks(childnode, blockId, stageSet, visitedRdds, newDist).foreach {
-          entry => map.put(entry._1, entry._2)
+          // if (getRefCntRDD(childnode.rddId) < 2) {
+          collectUncachedChildBlocks(childnode, blockId, stageSet, visitedRdds, newDist).foreach {
+            entry => map.put(entry._1, entry._2)
+          }
+          // }
         }
-        // }
       }
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
     }
 
     map.toMap
@@ -382,9 +388,11 @@ object RDDJobDag extends Logging {
             sparkConf: SparkConf,
             metricTracker: MetricTracker): Option[RDDJobDag] = {
 
-    val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]] = mutable.Map()
+    val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]] =
+      new ConcurrentHashMap[RDDNode, mutable.Set[RDDNode]]().asScala
     val edges: ListBuffer[(Int, Int)] = mutable.ListBuffer()
-    val vertices: mutable.Map[Int, RDDNode] = mutable.Map()
+    val vertices: mutable.Map[Int, RDDNode] =
+      new ConcurrentHashMap[Int, RDDNode]().asScala
     val sampling = sparkConf.get(BlazeParameters.SAMPLING)
 
     if (sampling) {
