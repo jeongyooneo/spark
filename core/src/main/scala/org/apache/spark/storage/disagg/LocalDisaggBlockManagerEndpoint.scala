@@ -221,6 +221,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     removeFromLocal(blockId, executorId)
   }
 
+  private val disaggFirst = conf.get(BlazeParameters.DISAGG_FIRST)
+
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean): Boolean = {
@@ -240,6 +242,13 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
     if (estimateSize == 0) {
       logInfo(s"RDD estimation size zero $blockId")
+    }
+
+    if (disaggFirst) {
+      val toDisagg = disaggDecision(blockId, estimateSize, executorId, true)
+      if (toDisagg) {
+        return false
+      }
     }
 
     if (!putDisagg) {

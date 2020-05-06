@@ -51,6 +51,10 @@ private[spark] object BlazeParameters extends Logging {
     .booleanConf
     .createWithDefault(false)
 
+  private[spark] val DISAGG_FIRST = ConfigBuilder("spark.disagg.first")
+    .booleanConf
+    .createWithDefault(false)
+
   private[spark] val COST_FUNCTION = ConfigBuilder("spark.disagg.costfunction")
     .stringConf
     .createWithDefault("Blaze")
