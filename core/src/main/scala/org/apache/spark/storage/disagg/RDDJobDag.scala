@@ -251,6 +251,28 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     dag(rddNode).size
   }
 
+  def getLRCRefCnt(blockId: BlockId): Int = {
+
+    var cnt = 0
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    try {
+      for (childnode <- dag(rddNode)) {
+        val childBlockId = getBlockId(childnode.rddId, blockId)
+        if (!metricTracker.blockStored(childBlockId)) {
+          cnt += 1
+        }
+      }
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
+    }
+
+    cnt
+  }
+
   def getRefCnt(blockId: BlockId): Int = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)

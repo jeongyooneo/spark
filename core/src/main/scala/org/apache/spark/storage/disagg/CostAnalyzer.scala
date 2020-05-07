@@ -266,9 +266,12 @@ object CostAnalyzer {
       } else if (costType.equals("Blaze-Time-Only")) {
         new BlazeCostOnlyRecompTimeAnalyzer(rDDJobDag.get, metricTracker)
       }
+      else if (costType.equals("Blaze-Ref-Only")) {
+        new BlazeCostOnlyRefCntAnalyzer(rDDJobDag.get, metricTracker)
+      }
       else if (costType.equals("Blaze-Linear-Dist")) {
         new BlazeCostLinearDistAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-LRC")) {
+      } else if (costType.equals("Blaze-Ref-Cnt")) {
         new BlazeCostRefCntAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("MRD")) {
         new MRDBasedAnalyzer(rDDJobDag.get, metricTracker)
