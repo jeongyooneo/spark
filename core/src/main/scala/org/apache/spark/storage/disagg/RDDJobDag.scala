@@ -261,7 +261,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     val uncachedChildNum = collectUncachedChildBlocks(rddNode, blockId,
-      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0).size
+      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0).size
 
     uncachedChildNum
   }
@@ -276,7 +276,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     collectUncachedChildBlocks(rddNode, blockId,
-      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0).values.toList
+      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0).values.toList
   }
 
   private val rddRootStartTimes = new ConcurrentHashMap[Int, Long].asScala
@@ -317,7 +317,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   private def collectUncachedChildBlocks(rddNode: RDDNode, blockId: BlockId,
                                          stageSet: mutable.HashSet[Int],
                                          visitedRdds: mutable.HashSet[Int],
-                                         distance: Int): Map[Int, StageDistance] = {
+                                         distance: Int,
+                                         absoluteDistance: Int): Map[Int, StageDistance] = {
 
     val map = new mutable.HashMap[Int, StageDistance]
 
@@ -331,12 +332,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       for (childnode <- dag(rddNode)) {
         val childBlockId = getBlockId(childnode.rddId, blockId)
         var newDist = distance
+        var absolute = absoluteDistance
         if (!metricTracker.blockStored(childBlockId)) {
+
+          absolute += 1
 
           if (map.contains(childnode.stageId)) {
             // update
             if (map(childnode.stageId).distance < distance) {
               map(childnode.stageId).distance = distance
+              map(childnode.stageId).absolute = absolute
             }
           }
 
@@ -344,11 +349,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             !metricTracker.completedStages.contains(childnode.stageId)) {
             stageSet.add(childnode.stageId)
             newDist += 1
-            map.put(childnode.stageId, new StageDistance(childnode.stageId, newDist))
+            map.put(childnode.stageId, new StageDistance(childnode.stageId, newDist, absolute))
           }
 
           // if (getRefCntRDD(childnode.rddId) < 2) {
-          collectUncachedChildBlocks(childnode, blockId, stageSet, visitedRdds, newDist).foreach {
+          collectUncachedChildBlocks(childnode, blockId,
+            stageSet, visitedRdds, newDist, absolute).foreach {
             entry => map.put(entry._1, entry._2)
           }
           // }
@@ -452,7 +458,8 @@ object RDDJobDag extends Logging {
   }
 
   class StageDistance(val stageId: Int,
-                      var distance: Int)
+                      var distance: Int,
+                      var absolute: Int)
 
   class BlockCost(val cost: Long,
                   val createTime: Long) {

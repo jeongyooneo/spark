@@ -263,6 +263,8 @@ object CostAnalyzer {
         new BlazeCostNoDisaggAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-MRD")) {
         new BlazeCostMRDAnalyzer(rDDJobDag.get, metricTracker)
+      } else if (costType.equals("Blaze-Linear-Dist")) {
+        new BlazeCostLinearDistAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-LRC")) {
         new BlazeCostRefCntAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("MRD")) {
