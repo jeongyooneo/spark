@@ -537,7 +537,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           val iterator = iter.toList.iterator
           val currTime = System.currentTimeMillis()
-          // var costSum = 0.0
+          var costSum = 0.0
 
           while (iterator.hasNext) {
             val discardBlock = iterator.next()
@@ -556,8 +556,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                       rmBlocks.append(discardBlock)
                     } else if (timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardBlock.reduction <= cost.reduction) {
-                      // costSum += discardBlock.reduction
+                      && discardBlock.reduction <= cost.reduction
+                      && costSum <= cost.reduction) {
+                      costSum += discardBlock.reduction
                       totalDiscardSize += blockInfo.getActualBlockSize
                       removeBlocks.append((bid, blockInfo))
                       rmBlocks.append(discardBlock)
