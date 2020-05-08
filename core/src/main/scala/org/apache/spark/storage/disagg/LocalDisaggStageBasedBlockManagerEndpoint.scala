@@ -382,16 +382,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
                     stageCostSum.values.sum  <= storingCost.reduction) {
-                    discardingBlock.rddNode match {
+                    discardingBlock.stages match {
                       case None =>
-                      case Some(node) =>
-                        val refStages = node.getStages.diff(metricTracker.completedStages)
+                      case Some(refStages) =>
                         refStages.foreach {
-                          refStage => if (stageCostSum.contains(refStage)) {
-                            stageCostSum(refStage) =
-                              Math.max(stageCostSum(refStage), discardingBlock.compTime)
+                          refStage => if (stageCostSum.contains(refStage.stageId)) {
+                            stageCostSum(refStage.stageId) =
+                              Math.max(stageCostSum(refStage.stageId), discardingBlock.compTime)
                           } else {
-                            stageCostSum(refStage) = discardingBlock.compTime
+                            stageCostSum(refStage.stageId) = discardingBlock.compTime
                           }
                         }
                     }

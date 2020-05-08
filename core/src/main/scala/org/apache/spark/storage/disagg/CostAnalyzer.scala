@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
+import org.apache.spark.storage.disagg.RDDJobDag.StageDistance
 
 import scala.collection.mutable
 
@@ -250,11 +251,11 @@ class CompDisaggCost(val blockId: BlockId,
     s"($blockId,$reduction,$disaggCost)"
   }
 
-  var rddNode: Option[RDDNode] = None
+  var stages: Option[List[StageDistance]] = None
   var compTime = 0L
 
-  def setStageInfo(node: RDDNode, time: Long): Unit = {
-    rddNode = Some(node)
+  def setStageInfo(s: List[StageDistance], time: Long): Unit = {
+    stages = Some(s)
     compTime = time
   }
 }
