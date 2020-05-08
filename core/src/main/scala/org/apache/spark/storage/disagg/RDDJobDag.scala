@@ -291,7 +291,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     val uncachedChildNum = collectUncachedChildBlocks(rddNode, blockId,
-      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0).size
+      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0, 0).size
 
     uncachedChildNum
   }
@@ -323,7 +323,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     collectUncachedChildBlocks(rddNode, blockId,
-      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0).values.toList
+      new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0, 0).values.toList
   }
 
   private val rddRootStartTimes = new ConcurrentHashMap[Int, Long].asScala
