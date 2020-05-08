@@ -269,6 +269,9 @@ object CostAnalyzer {
       else if (costType.equals("Blaze-Ref-Only")) {
         new BlazeCostOnlyRefCntAnalyzer(rDDJobDag.get, metricTracker)
       }
+      else if (costType.equals("Blaze-Leaf-Cnt")) {
+        new BlazeCostLeafCntAnalyzer(rDDJobDag.get, metricTracker)
+      }
       else if (costType.equals("Blaze-Linear-Dist")) {
         new BlazeCostLinearDistAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Ref-Cnt")) {

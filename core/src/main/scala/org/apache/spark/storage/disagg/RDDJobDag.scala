@@ -336,6 +336,58 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     */
   }
 
+  private val cachedMap = new ConcurrentHashMap[Int, (List[RDDNode], Long)]().asScala
+
+  def getLeaf(blockId: BlockId): List[RDDNode] = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    if (!dag.contains(rddNode)) {
+      logWarning(s"Not coressponding rdd Node ${rddNode.rddId}")
+      return List.empty
+    }
+
+    if (cachedMap.contains(rddId)) {
+      val v = cachedMap(rddId)
+      if (System.currentTimeMillis() - v._2 >= 2000) {
+        cachedMap.put(rddId,
+          (findLeaf(rddNode, new mutable.HashSet[Int]()), System.currentTimeMillis()))
+      }
+    } else {
+      cachedMap.putIfAbsent(rddId,
+        (findLeaf(rddNode, new mutable.HashSet[Int]()), System.currentTimeMillis()))
+    }
+
+    cachedMap(rddId)._1
+  }
+
+  private def findLeaf(rddNode: RDDNode,
+                       visitedRdds: mutable.HashSet[Int]): List[RDDNode] = {
+
+    val l = new mutable.ListBuffer[RDDNode]
+    if (visitedRdds.contains(rddNode.rddId)) {
+      return l.toList
+    } else {
+      visitedRdds.add(rddNode.rddId)
+    }
+
+    if (!dag.contains(rddNode) || dag(rddNode).isEmpty) {
+      // Leaf
+      if (!metricTracker.completedStages.contains(rddNode.stageId)) {
+        l.append(rddNode)
+      }
+      return l.toList
+    }
+
+    for (childnode <- dag(rddNode)) {
+      // if (!metricTracker.blockStored(childBlockId)) {
+      l.appendAll(findLeaf(childnode, visitedRdds))
+      // }
+    }
+
+    l.toList
+  }
+
   private def collectUncachedChildBlocks(rddNode: RDDNode, blockId: BlockId,
                                          stageSet: mutable.HashSet[Int],
                                          visitedRdds: mutable.HashSet[Int],
