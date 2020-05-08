@@ -375,7 +375,7 @@ object SparkEnv extends Logging {
       val evictionPolicy = EvictionPolicy(costAnalyzer, metricTracker, conf)
 
       disaggBlockManagerEndpoint =
-        if (conf.get(BlazeParameters.EVICTION_POLICY).contains("Stage")) {
+        if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
           new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
             blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
             metricTracker, cachingPolicy, evictionPolicy)
@@ -396,7 +396,7 @@ object SparkEnv extends Logging {
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-        if (conf.get(BlazeParameters.EVICTION_POLICY).contains("Stage")) {
+        if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
           new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
             new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
               listenerBus, metricTracker, dagPath),
