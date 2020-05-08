@@ -45,13 +45,16 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
   }
 
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+    val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
     val recompTime = rddJobDag.getRecompTime(blockId,
      metricTracker.blockCreatedTimeMap.get(blockId))
 
-    val c = new CompDisaggCost(blockId, 0, stages.size * recompTime)
-    logInfo(s"Block id: $blockId, refStages: ${stages}, time: $recompTime")
-    c.setStageInfo(stages, recompTime)
+    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+
+    val c = new CompDisaggCost(blockId, 0, realStages * recompTime)
+    // logInfo(s"Block id: $blockId, refStages: ${stages}, time: $recompTime")
+    c.setStageInfo(realStages, recompTime)
     c
   }
 
