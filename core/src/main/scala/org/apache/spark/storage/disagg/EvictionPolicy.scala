@@ -57,7 +57,10 @@ private[spark] object EvictionPolicy {
       new DefaultEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-based")) {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
-    } else if (policy.equals("Cost-size-ratio")) {
+    } else if (policy.equals("RDD-Ordering")) {
+      new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
+    }
+    else if (policy.equals("Cost-size-ratio")) {
       new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-size-ratio2")) {
       new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker, sparkConf)

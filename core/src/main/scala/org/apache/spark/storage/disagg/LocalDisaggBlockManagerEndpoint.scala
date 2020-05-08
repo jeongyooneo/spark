@@ -374,7 +374,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             s"for evicting $blockId, size $evictionSize")
           List.empty
         } else {
-          // var costSum = 0.0
 
           iter.foreach {
             discardingBlock => {
@@ -392,7 +391,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                     evictionList.append(discardingBlock.blockId)
                   }
 
-                  if (sizeSum > evictionSize) {
+                  if (sizeSum >= evictionSize) {
                     return evictionList.toList
                   }
                 }
@@ -400,8 +399,13 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             }
           }
 
-          logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, list: $evictionList")
-          List.empty
+          if (sizeSum >= evictionSize) {
+            return evictionList.toList
+          } else {
+            logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
+              s"for caching ${blockId} selected list: $evictionList")
+            List.empty
+          }
         }
     }
   }
