@@ -275,7 +275,7 @@ object CostAnalyzer {
       } else if (costType.equals("Blaze-Time-Only")) {
         new BlazeCostOnlyRecompTimeAnalyzer(rDDJobDag.get, metricTracker)
       }
-      else if (costType.equals("Blaze-Stage-Ref-Cnt")) {
+      else if (costType.equals("Blaze-Stage-Ref")) {
         new BlazeCostStageRefCntAnalyzer(rDDJobDag.get, metricTracker)
       }
       else if (costType.equals("Blaze-Ref-Only")) {
