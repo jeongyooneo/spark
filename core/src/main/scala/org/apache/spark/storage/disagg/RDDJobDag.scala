@@ -434,7 +434,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         var newDist = distance
         var prevc = prevcached
         var absolute = absoluteDistance
-        // if (!metricTracker.blockStored(childBlockId)) {
+        if (!metricTracker.blockStored(childBlockId)) {
 
           absolute += 1
 
@@ -465,7 +465,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             entry => map.put(entry._1, entry._2)
           }
           // }
-        // }
+        }
       }
     } catch {
       case e: Exception =>
