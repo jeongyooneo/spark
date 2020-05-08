@@ -62,6 +62,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           child =>
             if (!reverseDag.contains(child)) {
               reverseDag(child) = new mutable.HashSet[RDDNode]()
+            } else {
+              reverseDag.keys.filter(p => p.rddId == child.rddId).foreach {
+                p => p.addRefStages(child.getStages)
+              }
             }
             reverseDag(child).add(parent)
         }
@@ -71,6 +75,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           dag.put(pair._1, pair._2)
           dagChanged.set(true)
         } else {
+
+          dag.keys.filter(p => p.rddId == pair._1.rddId).foreach {
+            p => p.addRefStages(pair._1.getStages)
+          }
 
           // TODO: if autocaching false, we should set cached here
 
@@ -152,13 +160,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     dagChanged.synchronized {
       if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
-        val rootTaskId = getTaskId(rddNode.stageId, blockId)
+        val rootTaskId = getTaskId(rddNode.rootStage, blockId)
         metricTracker.taskStartTime.get(rootTaskId) match {
           case None =>
-            metricTracker.getTaskStartTimeFromBlockId(rddNode.stageId, blockId) match {
+            metricTracker.getTaskStartTimeFromBlockId(rddNode.rootStage, blockId) match {
               case None =>
                 b.append(blockId)
-                l.append(metricTracker.stageStartTime(rddNode.stageId))
+                l.append(metricTracker.stageStartTime(rddNode.rootStage))
               case Some(startTime) =>
                 b.append(blockId)
                 l.append(startTime)
@@ -260,7 +268,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     try {
       for (childnode <- dag(rddNode)) {
         val childBlockId = getBlockId(childnode.rddId, blockId)
-        if (!metricTracker.completedStages.contains(childnode.stageId)) {
+        if (!metricTracker.completedStages.contains(childnode.rootStage)) {
           cnt += 1
         }
       }
@@ -286,6 +294,23 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0).size
 
     uncachedChildNum
+  }
+
+  def getRDDNode(blockId: BlockId): RDDNode = {
+    val rddId = blockIdToRDDId(blockId)
+    vertices(rddId)
+  }
+
+  def getStageRefCnt(blockId: BlockId): Int = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    if (!dag.contains(rddNode)) {
+      logWarning(s"Not coressponding rdd Node ${rddNode.rddId}")
+      return 0
+    }
+
+    rddNode.getStages.diff(metricTracker.completedStages).size
   }
 
   def getReferenceStages(blockId: BlockId): List[StageDistance] = {
@@ -373,7 +398,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!dag.contains(rddNode) || dag(rddNode).isEmpty) {
       // Leaf
-      if (!metricTracker.completedStages.contains(rddNode.stageId)) {
+      if (!metricTracker.completedStages.contains(rddNode.rootStage)) {
         l.append(rddNode)
       }
       return l.toList
@@ -411,19 +436,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
           absolute += 1
 
-          if (map.contains(childnode.stageId)) {
+          if (map.contains(childnode.rootStage)) {
             // update
-            if (map(childnode.stageId).distance < distance) {
-              map(childnode.stageId).distance = distance
-              map(childnode.stageId).absolute = absolute
+            if (map(childnode.rootStage).distance < distance) {
+              map(childnode.rootStage).distance = distance
+              map(childnode.rootStage).absolute = absolute
             }
           }
 
-          if (!stageSet.contains(childnode.stageId) &&
-            !metricTracker.completedStages.contains(childnode.stageId)) {
-            stageSet.add(childnode.stageId)
+          if (!stageSet.contains(childnode.rootStage) &&
+            !metricTracker.completedStages.contains(childnode.rootStage)) {
+            stageSet.add(childnode.rootStage)
             newDist += 1
-            map.put(childnode.stageId, new StageDistance(childnode.stageId, newDist, absolute))
+            map.put(childnode.rootStage, new StageDistance(childnode.rootStage, newDist, absolute))
           }
 
           // if (getRefCntRDD(childnode.rddId) < 2) {
@@ -502,6 +527,7 @@ object RDDJobDag extends Logging {
               .asInstanceOf[Long].toInt
             val cached = numCachedPartitions > 0
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
+
             val rdd_object = new RDDNode(rdd_id, stageId)
 
             if (!dag.contains(rdd_object)) {
@@ -509,6 +535,10 @@ object RDDJobDag extends Logging {
               dag(rdd_object) = new mutable.HashSet()
               for (parent_id <- parents) {
                 edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
+              }
+            } else {
+              dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
+                p => p.addRefStage(stageId)
               }
             }
           }
@@ -528,7 +558,7 @@ object RDDJobDag extends Logging {
   }
 
   private def findSameStage(l: mutable.Set[RDDNode], n: RDDNode): Boolean = {
-    l.exists(nn => nn.stageId.equals(n.stageId))
+    l.exists(nn => nn.rootStage.equals(n.rootStage))
   }
 
   class StageDistance(val stageId: Int,

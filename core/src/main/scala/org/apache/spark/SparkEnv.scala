@@ -64,7 +64,7 @@ class SparkEnv (
                  val shuffleManager: ShuffleManager,
                  val broadcastManager: BroadcastManager,
                  val blockManager: BlockManager,
-                 val disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint,
+                 val disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
                  val rddJobDag: Option[RDDJobDag],
                  val metricTracker: MetricTracker,
                  val securityManager: SecurityManager,
@@ -353,7 +353,7 @@ object SparkEnv extends Logging {
     var blockManagerMaster: BlockManagerMaster = null
     var disaggBlockManager: DisaggBlockManager = null
 
-    var disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint = null
+    var disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint = null
     val metricTracker: MetricTracker = new MetricTracker
 
     var rddJobDag: Option[RDDJobDag] = Option.empty
@@ -375,9 +375,15 @@ object SparkEnv extends Logging {
       val evictionPolicy = EvictionPolicy(costAnalyzer, metricTracker, conf)
 
       disaggBlockManagerEndpoint =
+        if (conf.get(BlazeParameters.EVICTION_POLICY).contains("Stage")) {
+          new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+            blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
+            metricTracker, cachingPolicy, evictionPolicy)
+        } else {
         new LocalDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
           metricTracker, cachingPolicy, evictionPolicy)
+        }
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
@@ -390,11 +396,20 @@ object SparkEnv extends Logging {
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
+        if (conf.get(BlazeParameters.EVICTION_POLICY).contains("Stage")) {
+          new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+            new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
+              listenerBus, metricTracker, dagPath),
+            thresholdMB, new NoCostAnalyzer(metricTracker),
+            metricTracker, new RandomCachingPolicy(0.2), null)
+        } else {
         new LocalDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
           new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
             listenerBus, metricTracker, dagPath),
           thresholdMB, new NoCostAnalyzer(metricTracker),
-          metricTracker, new RandomCachingPolicy(0.2), null)), conf)
+          metricTracker, new RandomCachingPolicy(0.2), null)
+        }
+      ), conf)
     }
 
     // NB: blockManager is not valid until initialize() is called later.

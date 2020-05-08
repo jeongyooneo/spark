@@ -18,8 +18,16 @@ package org.apache.spark.storage.disagg
 
 import org.apache.spark.internal.Logging
 
+import scala.collection.mutable
+
 class RDDNode(val rddId: Int,
-              var stageId: Int) extends Logging {
+              stageId: Int) extends Logging {
+
+  private val stageIds = new mutable.HashSet[Int]()
+
+  if (stageId >= 0) {
+    stageIds.add(stageId)
+  }
 
   // val parents: mutable.ListBuffer[RDDNode] = new mutable.ListBuffer[RDDNode]
   // var cachedParents: mutable.Set[RDDNode] = new mutable.HashSet[RDDNode]()
@@ -31,6 +39,31 @@ class RDDNode(val rddId: Int,
 
   // val storedBlocksCreatedTime: concurrent.Map[BlockId, Long] =
   //  new ConcurrentHashMap[BlockId, Long]().asScala
+
+  private var root = if (stageId >= 0) {
+    stageId
+  } else {
+    100000
+  }
+
+  def getStages: Set[Int] = synchronized {
+    stageIds.toSet
+  }
+
+  def addRefStages(s: Set[Int]): Unit = synchronized {
+    s.foreach { ss => stageIds.add(ss) }
+  }
+
+  def addRefStage(stageId: Int): Unit = synchronized {
+    stageIds.add(stageId)
+    if (root > stageId) {
+      root = stageId
+    }
+  }
+
+  def rootStage: Int = synchronized {
+    root
+  }
 
   override def equals(that: Any): Boolean =
     that match
@@ -48,6 +81,6 @@ class RDDNode(val rddId: Int,
   }
 
   override def toString: String = {
-    s"(rdd: $rddId, stage: $stageId)"
+    s"(rdd: $rddId, stage: $stageIds)"
   }
 }

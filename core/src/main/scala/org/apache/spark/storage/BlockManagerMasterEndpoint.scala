@@ -26,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.{LocalDisaggBlockManagerEndpoint, MetricTracker}
+import org.apache.spark.storage.disagg.{DisaggBlockManagerEndpoint, MetricTracker}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
@@ -76,8 +76,8 @@ class BlockManagerMasterEndpoint(
     mapper
   }
 
-  var disaggBlockManager: LocalDisaggBlockManagerEndpoint = null
-  def setDisaggBlockManager(bm: LocalDisaggBlockManagerEndpoint): Unit = {
+  var disaggBlockManager: DisaggBlockManagerEndpoint = null
+  def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
     disaggBlockManager = bm
   }
 

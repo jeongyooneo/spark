@@ -42,7 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
-import org.apache.spark.storage.disagg.{LocalDisaggBlockManagerEndpoint, MetricTracker, RDDJobDag}
+import org.apache.spark.storage.disagg.{DisaggBlockManagerEndpoint, MetricTracker, RDDJobDag}
 import org.apache.spark.util._
 
 /**
@@ -118,7 +118,7 @@ private[spark] class DAGScheduler(
     mapOutputTracker: MapOutputTrackerMaster,
     blockManagerMaster: BlockManagerMaster,
     rddJobDag: Option[RDDJobDag],
-    disaggBlockManagerEndpoint: LocalDisaggBlockManagerEndpoint,
+    disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
     env: SparkEnv,
     clock: Clock = new SystemClock())
   extends Logging {

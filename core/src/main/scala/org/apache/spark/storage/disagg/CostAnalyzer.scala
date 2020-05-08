@@ -249,7 +249,16 @@ class CompDisaggCost(val blockId: BlockId,
   override def toString: String = {
     s"($blockId,$reduction,$disaggCost)"
   }
+
+  var rddNode: Option[RDDNode] = None
+  var compTime = 0L
+
+  def setStageInfo(node: RDDNode, time: Long): Unit = {
+    rddNode = Some(node)
+    compTime = time
+  }
 }
+
 
 object CostAnalyzer {
   def apply(sparkConf: SparkConf,
@@ -265,6 +274,9 @@ object CostAnalyzer {
         new BlazeCostMRDAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Time-Only")) {
         new BlazeCostOnlyRecompTimeAnalyzer(rDDJobDag.get, metricTracker)
+      }
+      else if (costType.equals("Blaze-Stage-Ref-Cnt")) {
+        new BlazeCostStageRefCntAnalyzer(rDDJobDag.get, metricTracker)
       }
       else if (costType.equals("Blaze-Ref-Only")) {
         new BlazeCostOnlyRefCntAnalyzer(rDDJobDag.get, metricTracker)

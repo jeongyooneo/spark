@@ -428,7 +428,7 @@ abstract class RDD[T: ClassTag](
           dag.put(node, new HashSet[RDDNode])
         } else {
           dag.keys.filter(key => key.rddId == node.rddId)
-            .foreach { key => key.stageId = stageId }
+            .foreach { key => key.addRefStage(stageId) }
         }
 
         for (dep <- rdd.dependencies) {

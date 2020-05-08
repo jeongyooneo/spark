@@ -22,8 +22,7 @@ import java.util.concurrent.locks.{ReadWriteLock, StampedLock}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
 
 import org.apache.spark.SparkConf
-import org.apache.spark.internal.Logging
-import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
+import org.apache.spark.rpc.{RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
@@ -36,16 +35,17 @@ import scala.concurrent.ExecutionContext
 
 /**
  */
-private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv,
-                                          val isLocal: Boolean,
-                                          conf: SparkConf,
-                                          listenerBus: LiveListenerBus,
-                                          blockManagerMaster: BlockManagerMasterEndpoint,
-                                          disaggCapacityMB: Long,
-                                          val costAnalyzer: CostAnalyzer,
-                                          val metricTracker: MetricTracker,
-                                          val cachingPolicy: CachingPolicy,
-                                          val evictionPolicy: EvictionPolicy)
+private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
+                          override val rpcEnv: RpcEnv,
+                          val isLocal: Boolean,
+                          conf: SparkConf,
+                          listenerBus: LiveListenerBus,
+                          blockManagerMaster: BlockManagerMasterEndpoint,
+                          disaggCapacityMB: Long,
+                          val costAnalyzer: CostAnalyzer,
+                          val metricTracker: MetricTracker,
+                          val cachingPolicy: CachingPolicy,
+                          val evictionPolicy: EvictionPolicy)
   extends DisaggBlockManagerEndpoint {
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
@@ -244,13 +244,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       logInfo(s"RDD estimation size zero $blockId")
     }
 
-    if (disaggFirst) {
-      val toDisagg = disaggDecision(blockId, estimateSize, executorId, true)
-      if (toDisagg) {
-        return false
-      }
-    }
-
     if (!putDisagg) {
       if (disableLocalCaching) {
         // Do not cache blocks in local
@@ -374,7 +367,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             s"for evicting $blockId, size $evictionSize")
           List.empty
         } else {
-          var costSum = 0.0
+          val stageCostSum = new mutable.HashMap[Int, Double]()
 
           iter.foreach {
             discardingBlock => {
@@ -387,9 +380,21 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
-                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId)
-                    && costSum <= storingCost.reduction) {
-                    costSum += discardingBlock.reduction
+                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
+                    stageCostSum.values.sum  <= storingCost.reduction) {
+                    discardingBlock.rddNode match {
+                      case None =>
+                      case Some(node) =>
+                        val refStages = node.getStages.diff(metricTracker.completedStages)
+                        refStages.foreach {
+                          refStage => if (stageCostSum.contains(refStage)) {
+                            stageCostSum(refStage) =
+                              Math.max(stageCostSum(refStage), discardingBlock.compTime)
+                          } else {
+                            stageCostSum(refStage) = discardingBlock.compTime
+                          }
+                        }
+                    }
                     sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
                     evictionList.append(discardingBlock.blockId)
                   }
@@ -399,6 +404,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
           }
 
           if (sizeSum >= evictionSize) {
+            logInfo(s"StageCostSum: $stageCostSum, block: $blockId")
             return evictionList.toList
           } else {
             logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
