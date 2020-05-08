@@ -417,7 +417,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                                          stageSet: mutable.HashSet[Int],
                                          visitedRdds: mutable.HashSet[Int],
                                          distance: Int,
-                                         absoluteDistance: Int): Map[Int, StageDistance] = {
+                                         absoluteDistance: Int,
+                                         prevcached: Int): Map[Int, StageDistance] = {
 
     val map = new mutable.HashMap[Int, StageDistance]
 
@@ -431,8 +432,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       for (childnode <- dag(rddNode)) {
         val childBlockId = getBlockId(childnode.rddId, blockId)
         var newDist = distance
+        var prevc = prevcached
         var absolute = absoluteDistance
-        if (!metricTracker.blockStored(childBlockId)) {
+        // if (!metricTracker.blockStored(childBlockId)) {
 
           absolute += 1
 
@@ -441,23 +443,29 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             if (map(childnode.rootStage).distance < distance) {
               map(childnode.rootStage).distance = distance
               map(childnode.rootStage).absolute = absolute
+              map(childnode.rootStage).prevCached = prevc
             }
           }
+
+        if (dag(childnode).size >= 2) {
+          prevc += 1
+        }
 
           if (!stageSet.contains(childnode.rootStage) &&
             !metricTracker.completedStages.contains(childnode.rootStage)) {
             stageSet.add(childnode.rootStage)
             newDist += 1
-            map.put(childnode.rootStage, new StageDistance(childnode.rootStage, newDist, absolute))
+            map.put(childnode.rootStage,
+              new StageDistance(childnode.rootStage, newDist, absolute, prevc))
           }
 
           // if (getRefCntRDD(childnode.rddId) < 2) {
           collectUncachedChildBlocks(childnode, blockId,
-            stageSet, visitedRdds, newDist, absolute).foreach {
+            stageSet, visitedRdds, newDist, absolute, prevc).foreach {
             entry => map.put(entry._1, entry._2)
           }
           // }
-        }
+        // }
       }
     } catch {
       case e: Exception =>
@@ -529,6 +537,7 @@ object RDDJobDag extends Logging {
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
             val rdd_object = new RDDNode(rdd_id, stageId)
+            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId")
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
@@ -552,6 +561,10 @@ object RDDJobDag extends Logging {
         dag(parent_rdd_object).add(child_rdd_object)
       }
 
+      dag.keys.foreach {
+        node => logInfo(s"PRDD ${node.rddId}, STAGES: ${node.getStages}")
+      }
+
       Option(new RDDJobDag(dag, buildReverseDag(dag),
         metricTracker))
     }
@@ -563,7 +576,8 @@ object RDDJobDag extends Logging {
 
   class StageDistance(val stageId: Int,
                       var distance: Int,
-                      var absolute: Int)
+                      var absolute: Int,
+                      var prevCached: Int)
 
   class BlockCost(val cost: Long,
                   val createTime: Long) {
