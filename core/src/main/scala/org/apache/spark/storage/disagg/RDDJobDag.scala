@@ -286,15 +286,25 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    val l = collectMRDBlocks(rddNode, blockId, new mutable.HashSet[Int](),
-      new mutable.HashSet[Int](), 0, 0, 0)
-      .values
+    val list = new ListBuffer[Int]
 
-    if (l.isEmpty) {
+    try {
+      for (childnode <- dag(rddNode)) {
+        val childBlockId = getBlockId(childnode.rddId, blockId)
+        if (!metricTracker.completedStages.contains(childnode.rootStage)) {
+          list.append(childnode.rootStage)
+        }
+      }
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
+    }
+
+    if (list.isEmpty) {
       0
     } else {
-      l.map(p => p.distance)
-        .min
+      list.min
     }
   }
 

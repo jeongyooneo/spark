@@ -392,6 +392,10 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                 }
               }
             }
+
+              if (sizeSum >= evictionSize) {
+                return evictionList.toList
+              }
           }
 
           if (sizeSum >= evictionSize) {
