@@ -494,6 +494,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                              executorId: String,
                              putDisagg: Boolean): Boolean = {
 
+    return false
+
     val cost = costAnalyzer.compDisaggCost(blockId)
     val estimateBlockSize = DisaggUtils.calculateDisaggBlockSize(estimateSize)
     val rddId = blockId.asRDDId.get.rddId
