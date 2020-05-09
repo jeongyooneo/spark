@@ -1115,7 +1115,7 @@ private[spark] class DAGScheduler(
         }
       }
 
-      disaggBlockManagerEndpoint.stageSubmitted(stage.id)
+      disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId)
     } else {
       abortStage(stage, "No active job for stage " + stage.id, None)
     }

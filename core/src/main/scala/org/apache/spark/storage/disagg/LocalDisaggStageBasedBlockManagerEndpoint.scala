@@ -172,6 +172,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private var prevCleanupTime = System.currentTimeMillis()
+  private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
+  private val currJob = new AtomicInteger(-1)
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
@@ -180,14 +182,18 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     if (autocaching) {
       autocaching.synchronized {
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
-
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
             .filter {
-              p => val rddNode = rddJobDag.get.getRDDNode(p)
+              p =>
+                val rddNode = rddJobDag.get.getRDDNode(p)
                 val lastStage = rddNode.getStages.max
-                // we hold 3 stages
-                stageId > lastStage
+
+                if (!fullyProfiled) {
+                  currJob.get() > stageJobMap.get(lastStage)
+                } else {
+                  stageId >= lastStage
+                }
             }
 
           zeroRDDs.foreach {
@@ -208,8 +214,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  def stageSubmitted(stageId: Int): Unit = {
+  private def stageJobMap = new ConcurrentHashMap[Int, Int]()
+
+  def stageSubmitted(stageId: Int, jobId: Int): Unit = {
     logInfo(s"Stage submitted ${stageId}")
+    stageJobMap.putIfAbsent(stageId, jobId)
+    currJob.set(jobId)
     metricTracker.stageSubmitted(stageId)
   }
 

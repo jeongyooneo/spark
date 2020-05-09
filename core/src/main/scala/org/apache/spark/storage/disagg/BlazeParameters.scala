@@ -63,6 +63,10 @@ private[spark] object BlazeParameters extends Logging {
     .stringConf
     .createWithDefault("Default")
 
+  private[spark] val FULLY_PROFILED = ConfigBuilder("spark.disagg.fullyProfiled")
+    .booleanConf
+    .createWithDefault(true)
+
   // MB
   private[spark] val MEMORY_SLACK = ConfigBuilder("spark.disagg.memoryslack")
     .intConf
