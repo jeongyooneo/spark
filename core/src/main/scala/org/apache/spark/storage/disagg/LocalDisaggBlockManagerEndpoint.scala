@@ -254,10 +254,14 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       BlazeLogger.recacheDisaggToLocal(blockId, executorId)
     }
 
-    addToLocal(blockId, executorId, estimateSize)
-    BlazeLogger.logLocalCaching(blockId, executorId,
-      estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
-    return true
+    if (!putDisagg) {
+      addToLocal(blockId, executorId, estimateSize)
+      BlazeLogger.logLocalCaching(blockId, executorId,
+        estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+      return true
+    } else {
+      return false
+    }
 
 
     if (!putDisagg) {
