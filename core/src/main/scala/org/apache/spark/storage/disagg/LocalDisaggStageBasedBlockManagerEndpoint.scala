@@ -45,7 +45,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val costAnalyzer: CostAnalyzer,
                           val metricTracker: MetricTracker,
                           val cachingPolicy: CachingPolicy,
-                          val evictionPolicy: EvictionPolicy)
+                          val evictionPolicy: EvictionPolicy,
+                          val rddJobDag: Option[RDDJobDag])
   extends DisaggBlockManagerEndpoint {
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
@@ -179,8 +180,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     if (autocaching) {
       autocaching.synchronized {
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
+            .filter {
+              p => val rddNode = rddJobDag.get.getRDDNode(p)
+                val lastStage = rddNode.getStages.max
+                // we hold 3 stages
+                stageId > lastStage
+            }
+
           zeroRDDs.foreach {
             rdd =>
               logInfo(s"Remove zero cost rdd $rdd from memory")

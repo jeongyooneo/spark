@@ -383,6 +383,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     uncachedChildNum
   }
 
+  def getRDDNode(rddId: Int): RDDNode = {
+    vertices(rddId)
+  }
+
   def getRDDNode(blockId: BlockId): RDDNode = {
     val rddId = blockIdToRDDId(blockId)
     vertices(rddId)
