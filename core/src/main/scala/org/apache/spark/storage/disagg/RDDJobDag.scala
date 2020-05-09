@@ -286,14 +286,69 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
-    val list = new ListBuffer[Int]
+    val l = collectMRDBlocks(rddNode, blockId, new mutable.HashSet[Int](),
+      new mutable.HashSet[Int](), 0, 0, 0)
+
+    if (l.isEmpty) {
+      0
+    } else {
+      l.values
+        .filter(p => rddNode.getStages.contains(p.stageId))
+        .map(p => p.distance)
+        .min
+    }
+  }
+
+  private def collectMRDBlocks(rddNode: RDDNode, blockId: BlockId,
+                                         stageSet: mutable.HashSet[Int],
+                                         visitedRdds: mutable.HashSet[Int],
+                                         distance: Int,
+                                         absoluteDistance: Int,
+                                         prevcached: Int): Map[Int, StageDistance] = {
+
+    val map = new mutable.HashMap[Int, StageDistance]
+
+    if (visitedRdds.contains(rddNode.rddId)) {
+      return map.toMap
+    } else {
+      visitedRdds.add(rddNode.rddId)
+    }
 
     try {
       for (childnode <- dag(rddNode)) {
         val childBlockId = getBlockId(childnode.rddId, blockId)
-        if (!metricTracker.completedStages.contains(childnode.rootStage)) {
-          list.append(childnode.rootStage)
+        var newDist = distance
+        var prevc = prevcached
+        var absolute = absoluteDistance
+        absolute += 1
+
+        if (map.contains(childnode.rootStage)) {
+          // update
+          if (map(childnode.rootStage).distance < distance) {
+            map(childnode.rootStage).distance = distance
+            map(childnode.rootStage).absolute = absolute
+            map(childnode.rootStage).prevCached = prevc
+          }
         }
+
+        if (dag(childnode).size >= 2) {
+          prevc += 1
+        }
+
+        if (!stageSet.contains(childnode.rootStage) &&
+          !metricTracker.completedStages.contains(childnode.rootStage)) {
+          stageSet.add(childnode.rootStage)
+          newDist += 1
+          map.put(childnode.rootStage,
+            new StageDistance(childnode.rootStage, newDist, absolute, prevc))
+        }
+
+        // if (getRefCntRDD(childnode.rddId) < 2) {
+        collectMRDBlocks(childnode, blockId,
+          stageSet, visitedRdds, newDist, absolute, prevc).foreach {
+          entry => map.put(entry._1, entry._2)
+        }
+        // }
       }
     } catch {
       case e: Exception =>
@@ -301,11 +356,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
     }
 
-    if (list.isEmpty) {
-      0
-    } else {
-      list.min
-    }
+    map.toMap
   }
 
   def getRefCnt(blockId: BlockId): Int = {

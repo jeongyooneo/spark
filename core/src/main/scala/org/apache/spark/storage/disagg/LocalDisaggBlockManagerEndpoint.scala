@@ -22,8 +22,7 @@ import java.util.concurrent.locks.{ReadWriteLock, StampedLock}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
 
 import org.apache.spark.SparkConf
-import org.apache.spark.internal.Logging
-import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
+import org.apache.spark.rpc.{RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
