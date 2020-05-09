@@ -250,7 +250,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     // logInfo(s"Caching decision call " +
     //  s"$blockId, $estimateSize, $executorId, $putDisagg, $localFull")
 
-    val firstTime = metricTracker.blockCreatedTimeMap.containsKey(blockId)
+    val firstTime = !metricTracker.blockCreatedTimeMap.containsKey(blockId)
 
     val t = System.currentTimeMillis()
     metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
