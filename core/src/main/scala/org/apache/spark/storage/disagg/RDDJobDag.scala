@@ -288,13 +288,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     val l = collectMRDBlocks(rddNode, blockId, new mutable.HashSet[Int](),
       new mutable.HashSet[Int](), 0, 0, 0)
+      .values
+      .filter(p => rddNode.getStages.contains(p.stageId))
 
     if (l.isEmpty) {
       0
     } else {
-      l.values
-        .filter(p => rddNode.getStages.contains(p.stageId))
-        .map(p => p.distance)
+      l.map(p => p.distance)
         .min
     }
   }
