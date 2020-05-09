@@ -26,12 +26,14 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
 
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
     val refStages = rddJobDag.getReferenceStages(blockId)
+    val mrdStage = rddJobDag.getMRDStage(blockId)
 
-    if (refStages.isEmpty) {
+
+    if (mrdStage == 0) {
       new CompDisaggCost(blockId, 0, 0)
     } else {
       new CompDisaggCost(blockId, 0,
-        1/Math.max(1.0, refStages.map(x => x.distance).min.toDouble))
+        1/Math.max(1.0, mrdStage.toDouble))
     }
 
   }

@@ -281,6 +281,33 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     cnt
   }
 
+  def getMRDStage(blockId: BlockId): Int = {
+    var cnt = 0
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    val list = new ListBuffer[Int]
+
+    try {
+      for (childnode <- dag(rddNode)) {
+        val childBlockId = getBlockId(childnode.rddId, blockId)
+        if (!metricTracker.completedStages.contains(childnode.rootStage)) {
+          list.append(childnode.rootStage)
+        }
+      }
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
+    }
+
+    if (list.isEmpty) {
+      0
+    } else {
+      list.min
+    }
+  }
+
   def getRefCnt(blockId: BlockId): Int = {
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)

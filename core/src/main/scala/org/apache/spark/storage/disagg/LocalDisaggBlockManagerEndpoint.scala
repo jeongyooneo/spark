@@ -374,7 +374,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
             s"for evicting $blockId, size $evictionSize")
           List.empty
         } else {
-          var costSum = 0.0
 
           iter.foreach {
             discardingBlock => {
@@ -387,9 +386,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
-                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId)
-                    && costSum <= storingCost.reduction) {
-                    costSum += discardingBlock.reduction
+                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
                     sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
                     evictionList.append(discardingBlock.blockId)
                   }
