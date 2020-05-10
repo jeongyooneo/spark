@@ -190,6 +190,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 val rddNode = rddJobDag.get.getRDDNode(p)
                 val lastStage = rddNode.getStages.max
 
+                logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                  s"${rddNode.rddId}: stage $lastStage, " +
+                  s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+
                 if (stageJobMap.contains(lastStage)) {
                   logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
                     s"${rddNode.rddId}: stage $lastStage, " +
@@ -199,13 +203,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   if (!fullyProfiled) {
                     currJob.get() > stageJobMap(lastStage)
                   } else {
-                    stageId >= lastStage
+                    // stageId >= lastStage
+                    true
                   }
                 } else {
                   if (!fullyProfiled) {
                     false
                   } else {
-                    stageId >= lastStage
+                    // stageId >= lastStage
+                    true
                   }
                 }
             }
