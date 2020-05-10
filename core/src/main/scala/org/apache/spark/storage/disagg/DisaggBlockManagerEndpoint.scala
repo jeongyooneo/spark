@@ -18,21 +18,10 @@
 package org.apache.spark.storage.disagg
 
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.{ReadWriteLock, StampedLock}
-import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
 
-import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
-import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
-import org.apache.spark.scheduler._
-import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
-import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
-import org.apache.spark.util.ThreadUtils
-
-import scala.collection.convert.decorateAsScala._
-import scala.collection.mutable.ListBuffer
-import scala.collection.{mutable, _}
-import scala.concurrent.ExecutionContext
+import org.apache.spark.rpc.RpcEndpoint
+import org.apache.spark.storage.BlockId
 
 /**
  */
@@ -47,7 +36,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint()
   def taskStarted(taskId: String): Unit
 
   def stageCompleted(stageId: Int): Unit
-  def stageSubmitted(stageId: Int): Unit
+  def stageSubmitted(stageId: Int, jobId: Int): Unit
   def removeFromLocal(blockId: BlockId, executorId: String): Unit
 
   class CrailBlockInfo(blockId: BlockId,

@@ -45,7 +45,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val costAnalyzer: CostAnalyzer,
                           val metricTracker: MetricTracker,
                           val cachingPolicy: CachingPolicy,
-                          val evictionPolicy: EvictionPolicy)
+                          val evictionPolicy: EvictionPolicy,
+                          val rddJobDag: Option[RDDJobDag])
   extends DisaggBlockManagerEndpoint {
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
@@ -60,6 +61,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
   val localExecutorLockMap = new ConcurrentHashMap[String, Object]().asScala
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
+  private val stageJobMap = new mutable.HashMap[Int, Int]()
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
@@ -171,6 +173,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private var prevCleanupTime = System.currentTimeMillis()
+  private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
+  private val currJob = new AtomicInteger(-1)
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
@@ -181,6 +185,37 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
+            .filter {
+              p =>
+                val rddNode = rddJobDag.get.getRDDNode(p)
+                val lastStage = rddNode.getStages.max
+
+                logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                  s"${rddNode.rddId}: stage $lastStage, " +
+                  s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+
+                if (stageJobMap.contains(lastStage)) {
+                  logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                    s"${rddNode.rddId}: stage $lastStage, " +
+                    s"jobId: ${stageJobMap(lastStage)}, " +
+                    s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+
+                  if (!fullyProfiled) {
+                    currJob.get() > stageJobMap(lastStage)
+                  } else {
+                    // stageId >= lastStage
+                    true
+                  }
+                } else {
+                  if (!fullyProfiled) {
+                    false
+                  } else {
+                    // stageId >= lastStage
+                    true
+                  }
+                }
+            }
+
           zeroRDDs.foreach {
             rdd =>
               logInfo(s"Remove zero cost rdd $rdd from memory")
@@ -199,8 +234,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  def stageSubmitted(stageId: Int): Unit = {
-    logInfo(s"Stage submitted ${stageId}")
+
+  def stageSubmitted(stageId: Int, jobId: Int): Unit = synchronized {
+    stageJobMap.put(stageId, jobId)
+    logInfo(s"Stage submitted ${stageId}, jobId: $jobId, jobMap: $stageJobMap")
+    currJob.set(jobId)
     metricTracker.stageSubmitted(stageId)
   }
 
@@ -389,6 +427,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 }
               }
             }
+
+              if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
+                logInfo(s"CostSum: $sum, block: $blockId")
+                return evictionList.toList
+              }
           }
 
           if (sizeSum >= evictionSize) {

@@ -198,7 +198,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     }
   }
 
-  def stageSubmitted(stageId: Int): Unit = {
+  def stageSubmitted(stageId: Int, jobId: Int): Unit = {
     logInfo(s"Stage submitted ${stageId}")
     metricTracker.stageSubmitted(stageId)
   }
