@@ -250,8 +250,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     // logInfo(s"Caching decision call " +
     //  s"$blockId, $estimateSize, $executorId, $putDisagg, $localFull")
 
-    val firstTime = !metricTracker.blockCreatedTimeMap.containsKey(blockId)
-
     val t = System.currentTimeMillis()
     metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
     metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
@@ -274,17 +272,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         recentlyRecachedBlocks.remove(blockId)
         false
       } else {
-        if (firstTime) {
-          if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-            BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-          }
-
-          addToLocal(blockId, executorId, estimateSize)
-          BlazeLogger.logLocalCaching(blockId, executorId,
-            estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
-          return true
-        }
-
         if (localFull) {
           if (disaggThreshold < estimateSize) {
             val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
