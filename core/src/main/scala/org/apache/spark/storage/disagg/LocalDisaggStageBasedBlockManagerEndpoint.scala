@@ -61,6 +61,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
   val localExecutorLockMap = new ConcurrentHashMap[String, Object]().asScala
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
+  private val stageJobMap = new mutable.HashMap[Int, Int]()
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
@@ -189,10 +190,23 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 val rddNode = rddJobDag.get.getRDDNode(p)
                 val lastStage = rddNode.getStages.max
 
-                if (!fullyProfiled) {
-                  currJob.get() > stageJobMap.get(lastStage)
+                if (stageJobMap.contains(lastStage)) {
+                  logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                    s"${rddNode.rddId}: stage $lastStage, " +
+                    s"jobId: ${stageJobMap(lastStage)}, " +
+                    s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+
+                  if (!fullyProfiled) {
+                    currJob.get() > stageJobMap(lastStage)
+                  } else {
+                    stageId >= lastStage
+                  }
                 } else {
-                  stageId >= lastStage
+                  if (!fullyProfiled) {
+                    false
+                  } else {
+                    stageId >= lastStage
+                  }
                 }
             }
 
@@ -214,11 +228,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  private def stageJobMap = new ConcurrentHashMap[Int, Int]()
 
-  def stageSubmitted(stageId: Int, jobId: Int): Unit = {
-    logInfo(s"Stage submitted ${stageId}")
-    stageJobMap.putIfAbsent(stageId, jobId)
+  def stageSubmitted(stageId: Int, jobId: Int): Unit = synchronized {
+    stageJobMap.put(stageId, jobId)
+    logInfo(s"Stage submitted ${stageId}, jobId: $jobId, jobMap: $stageJobMap")
     currJob.set(jobId)
     metricTracker.stageSubmitted(stageId)
   }
