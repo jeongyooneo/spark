@@ -60,6 +60,7 @@ object ALSExample {
 
     // Build the recommendation model using ALS on the training data
     val als = new ALS()
+      .setRank(5)
       .setMaxIter(5)
       .setRegParam(0.01)
       .setUserCol("userId")

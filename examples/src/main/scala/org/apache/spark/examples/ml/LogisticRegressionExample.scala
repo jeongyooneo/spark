@@ -45,8 +45,8 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 object LogisticRegressionExample {
 
   case class Params(
-      input: String = null,
-      testInput: String = "",
+      input: String = "criteo-train",
+      testInput: String = "criteo-test",
       dataFormat: String = "libsvm",
       regParam: Double = 0.0,
       elasticNetParam: Double = 0.0,

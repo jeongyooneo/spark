@@ -436,6 +436,7 @@ private[spark] class MemoryStore(
       space: Long,
       memoryMode: MemoryMode): Long = {
     assert(space > 0)
+    val newBlockId = blockId
     memoryManager.synchronized {
       var freedMemory = 0L
       val rddToAdd = blockId.flatMap(getRddId)
@@ -496,6 +497,11 @@ private[spark] class MemoryStore(
             // blocks and removing entries. However the check is still here for
             // future safety.
             if (entry != null) {
+              if (newBlockId.isEmpty) {
+                logInfo(s"EvictCause: EM asked")
+              } else {
+                logInfo(s"EvictCause: SM full")
+              }
               dropBlock(blockId, entry)
               afterDropAction(blockId)
             }
