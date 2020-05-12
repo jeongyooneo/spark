@@ -116,6 +116,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val parents = pair._2
             val prevParents = reverseDag(child)
             val diff = prevParents.diff(parents)
+            reverseDag(child) = parents
             diff.foreach {
               prevParent =>
                 dag(prevParent).remove(child)
@@ -256,7 +257,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def getRefCntRDD(rddId: Int): Int = {
     val rddNode = vertices(rddId)
-    dag(rddNode).size
+    val edges = dag(rddNode)
+
+    edges.map(p => p.rootStage).toSet.size
   }
 
   def getLRCRefCnt(blockId: BlockId): Int = {
@@ -656,8 +659,11 @@ object RDDJobDag extends Logging {
         node => logInfo(s"PRDD ${node.rddId}, STAGES: ${node.getStages}")
       }
 
-      Option(new RDDJobDag(dag, buildReverseDag(dag),
-        metricTracker))
+      val rddjobdag = new RDDJobDag(dag, buildReverseDag(dag),
+        metricTracker)
+
+      logInfo(s"RddJobDagPrint $rddjobdag")
+      Option(rddjobdag)
     }
   }
 
@@ -689,3 +695,4 @@ object RDDJobDag extends Logging {
     }
   }
 }
+
