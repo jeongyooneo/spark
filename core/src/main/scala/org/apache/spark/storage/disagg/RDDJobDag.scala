@@ -116,9 +116,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val parents = pair._2
             val prevParents = reverseDag(child)
             val diff = prevParents.diff(parents)
-            reverseDag(child) = parents
             diff.foreach {
               prevParent =>
+                reverseDag(child).remove(prevParent)
                 dag(prevParent).remove(child)
             }
         }
@@ -537,13 +537,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             if (map(childnode.rootStage).distance < distance) {
               map(childnode.rootStage).distance = distance
               map(childnode.rootStage).absolute = absolute
+            }
+
+            if (map(childnode.rootStage).prevCached > prevc) {
               map(childnode.rootStage).prevCached = prevc
             }
           }
 
-        if (dag(childnode).size >= 2) {
-          prevc += 1
-        }
+          if (dag(childnode).size >= 2) {
+            prevc += 1
+          }
 
           if (!stageSet.contains(childnode.rootStage) &&
             !metricTracker.completedStages.contains(childnode.rootStage)) {
