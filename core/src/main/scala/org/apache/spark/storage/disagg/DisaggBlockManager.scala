@@ -138,6 +138,7 @@ private[spark] class DisaggBlockManager(
     } else if (result == 2) {
       // retry... the block is being written
       Thread.sleep(500)
+      logInfo(s"Try read again... $blockId, executor $executorId")
       read(blockId, executorId)
     } else if (result == 0) {
       false
@@ -188,7 +189,7 @@ private[spark] class DisaggBlockManager(
     try {
       var result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
       while (result == 2) {
-        logInfo(s"blockExist check again $blockId")
+        logInfo(s"blockExist check again $blockId, executorId: $executorId")
         Thread.sleep(1000)
         result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
       }
@@ -202,6 +203,12 @@ private[spark] class DisaggBlockManager(
 
   def getSize(blockId: BlockId, executorId: String): Long = {
     val size = driverEndpoint.askSync[Long](GetSize(blockId, executorId))
+
+    if (size == -1) {
+      logInfo(s"Get size again !! $blockId, $executorId")
+      Thread.sleep(500)
+    }
+
     logInfo(s"Disagg get block size $blockId, size $size")
     size
   }

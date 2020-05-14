@@ -561,9 +561,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
         disaggBlockInfo.put(blockId, blockInfo)
         // We should unlock it after file is created
-        blockWriteLock(blockId, executorId)
-
-        return true
+        if (tryWriteLockHeldForDisagg(blockId)) {
+          logInfo(s"Writelock for writing $blockId")
+          return true
+        } else {
+          throw new RuntimeException(s"Cannot lock block $blockId")
+        }
       }
 
       evictionPolicy.selectEvictFromDisagg(cost, blockId) {
@@ -638,9 +641,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       disaggBlockInfo.put(blockId, blockInfo)
       // We should unlock it after file is created
-      blockWriteLock(blockId, executorId)
 
-      true
+      if (tryWriteLockHeldForDisagg(blockId)) {
+        logInfo(s"Writelock for writing $blockId")
+        true
+      } else {
+        throw new RuntimeException(s"Cannot get writelock $blockId 22")
+      }
     }
   }
 
@@ -813,7 +820,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private def tryWriteLockHeldForDisagg(blockId: BlockId): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
-      // logInfo(s"Hold tryWritelock $blockId")
+      logInfo(s"Hold tryWritelock $blockId")
       true
     } else {
       false
@@ -821,18 +828,22 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def releaseWriteLockForDisagg(blockId: BlockId): Unit = {
-    // logInfo(s"Release tryWritelock $blockId")
+    logInfo(s"Release tryWritelock $blockId")
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
 
-  private def blockReadLock(blockId: BlockId, executorId: String): Unit = {
+  private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
     // logInfo(s"Hold readlock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    disaggBlockLockMap(blockId).readLock().lock()
-    executorReadLockCount.putIfAbsent(executorId,
-      new ConcurrentHashMap[BlockId, AtomicInteger]())
-    executorReadLockCount(executorId).putIfAbsent(blockId, new AtomicInteger(0))
-    executorReadLockCount(executorId).get(blockId).incrementAndGet()
+    if (disaggBlockLockMap(blockId).readLock().tryLock()) {
+      executorReadLockCount.putIfAbsent(executorId,
+        new ConcurrentHashMap[BlockId, AtomicInteger]())
+      executorReadLockCount(executorId).putIfAbsent(blockId, new AtomicInteger(0))
+      executorReadLockCount(executorId).get(blockId).incrementAndGet()
+      true
+    } else {
+      false
+    }
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
@@ -879,15 +890,20 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     case FileRead(blockId, executorId) =>
       // lock
       // logInfo(s"File read $blockId")
-      blockReadLock(blockId, executorId)
-      val result = fileRead(blockId, executorId)
+      if (blockReadLock(blockId, executorId)) {
 
-      if (result == 0) {
-        // logInfo(s"File unlock $blockId at $executorId for empty")
-        blockReadUnlock(blockId, executorId)
+        val result = fileRead(blockId, executorId)
+
+        if (result == 0) {
+          // logInfo(s"File unlock $blockId at $executorId for empty")
+          blockReadUnlock(blockId, executorId)
+        }
+
+        context.reply(result)
+      } else {
+        // try again
+        context.reply(2)
       }
-
-      context.reply(result)
 
     case FileReadUnlock(blockId, executorId) =>
       // logInfo(s"File read unlock $blockId from $executorId")
@@ -907,13 +923,17 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       throw new RuntimeException("not supported")
 
     case Contains(blockId, executorId) =>
-      blockReadLock(blockId, executorId)
-      try {
-        val result = contains(blockId)
-      } finally {
-        blockReadUnlock(blockId, executorId)
+      if (blockReadLock(blockId, executorId)) {
+        try {
+          val result = contains(blockId)
+        } finally {
+          blockReadUnlock(blockId, executorId)
+        }
+        context.reply(contains(blockId))
+      } else {
+        // try again
+        context.reply(2)
       }
-      context.reply(contains(blockId))
 
     case ReadDisaggBlock(blockId, time) =>
       BlazeLogger.deserTime(blockId, time)
@@ -930,17 +950,20 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       BlazeLogger.rddCompTime(rddId, time)
 
     case GetSize(blockId, executorId) =>
-      blockReadLock(blockId, executorId)
-      try {
-        val size = if (disaggBlockInfo.get(blockId).isEmpty) {
-          logWarning(s"disagg block is empty.. no size $blockId")
-          0L
-        } else {
-          disaggBlockInfo.get(blockId).get.getSize
+      if (blockReadLock(blockId, executorId)) {
+        try {
+          val size = if (disaggBlockInfo.get(blockId).isEmpty) {
+            logWarning(s"disagg block is empty.. no size $blockId")
+            0L
+          } else {
+            disaggBlockInfo.get(blockId).get.getSize
+          }
+          context.reply(size)
+        } finally {
+          blockReadUnlock(blockId, executorId)
         }
-        context.reply(size)
-      } finally {
-        blockReadUnlock(blockId, executorId)
+      } else {
+        context.reply(-1)
       }
 
     // FOR LOCAL
