@@ -561,7 +561,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
         disaggBlockInfo.put(blockId, blockInfo)
         // We should unlock it after file is created
-        if (tryWriteLockHeldForDisagg(blockId)) {
+        if (blockWriteLock(blockId, executorId)) {
           logInfo(s"Writelock for writing $blockId")
           return true
         } else {
@@ -642,7 +642,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       disaggBlockInfo.put(blockId, blockInfo)
       // We should unlock it after file is created
 
-      if (tryWriteLockHeldForDisagg(blockId)) {
+      if (blockWriteLock(blockId, executorId)) {
         logInfo(s"Writelock for writing $blockId")
         true
       } else {
@@ -803,12 +803,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     new ConcurrentHashMap[String, ConcurrentHashMap[BlockId, AtomicInteger]].asScala
   private val executorWriteLockCount = new ConcurrentHashMap[String, mutable.Set[BlockId]].asScala
 
-  private def blockWriteLock(blockId: BlockId, executorId: String): Unit = {
+  private def blockWriteLock(blockId: BlockId, executorId: String): Boolean = {
     logInfo(s"Hold writelock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    disaggBlockLockMap(blockId).writeLock().lock()
-    executorWriteLockCount.putIfAbsent(executorId, new mutable.HashSet[BlockId])
-    executorWriteLockCount(executorId).add(blockId)
+    if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
+      executorWriteLockCount.putIfAbsent(executorId, new mutable.HashSet[BlockId])
+      executorWriteLockCount(executorId).add(blockId)
+      true
+    } else {
+      false
+    }
   }
 
   private def blockWriteUnlock(blockId: BlockId, executorId: String): Unit = {
