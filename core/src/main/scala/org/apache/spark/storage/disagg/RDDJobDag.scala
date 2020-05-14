@@ -118,6 +118,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val diff = prevParents.diff(parents)
             diff.foreach {
               prevParent =>
+                reverseDag(child).remove(prevParent)
                 dag(prevParent).remove(child)
             }
         }
@@ -256,7 +257,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def getRefCntRDD(rddId: Int): Int = {
     val rddNode = vertices(rddId)
-    dag(rddNode).size
+    val edges = dag(rddNode)
+
+    edges.map(p => p.rootStage).toSet.size
   }
 
   def getLRCRefCnt(blockId: BlockId): Int = {
@@ -534,13 +537,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             if (map(childnode.rootStage).distance < distance) {
               map(childnode.rootStage).distance = distance
               map(childnode.rootStage).absolute = absolute
+            }
+
+            if (map(childnode.rootStage).prevCached > prevc) {
               map(childnode.rootStage).prevCached = prevc
             }
           }
 
-        if (dag(childnode).size >= 2) {
-          prevc += 1
-        }
+          if (dag(childnode).size >= 2) {
+            prevc += 1
+          }
 
           if (!stageSet.contains(childnode.rootStage) &&
             !metricTracker.completedStages.contains(childnode.rootStage)) {
@@ -656,8 +662,11 @@ object RDDJobDag extends Logging {
         node => logInfo(s"PRDD ${node.rddId}, STAGES: ${node.getStages}")
       }
 
-      Option(new RDDJobDag(dag, buildReverseDag(dag),
-        metricTracker))
+      val rddjobdag = new RDDJobDag(dag, buildReverseDag(dag),
+        metricTracker)
+
+      logInfo(s"RddJobDagPrint $rddjobdag")
+      Option(rddjobdag)
     }
   }
 
@@ -689,3 +698,4 @@ object RDDJobDag extends Logging {
     }
   }
 }
+
