@@ -1063,7 +1063,7 @@ private[spark] class BlockManager(
         // logInfo(s"Recomp\t$blockId\t$et")
         disaggManager.sendRecompTime(blockId, elapsed)
 
-        if (level.useDisagg) {
+        if (level.useDisagg && blockId.isRDD) {
           putIteratorToDisagg(blockId, iter, classTag, true)
         } else {
           Right(iter)
@@ -1142,7 +1142,10 @@ private[spark] class BlockManager(
         true
       case Some(iter) =>
         // TODO: 여기서 disagg에 store
-        putIteratorToDisagg(blockId, iter, implicitly[ClassTag[T]], false)
+
+        if (level.useDisagg && blockId.isRDD) {
+          putIteratorToDisagg(blockId, iter, implicitly[ClassTag[T]], false)
+        }
         // Caller doesn't care about the iterator values, so we can close the iterator here
         // to free resources earlier
         iter.close()
