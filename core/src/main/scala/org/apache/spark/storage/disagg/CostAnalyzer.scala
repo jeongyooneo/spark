@@ -163,8 +163,8 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     sortedBlockByCompSizeRatioInDisagg =
       Some(disaggL.sortWith((x, y) => {
-        val b1 = x.reduction / metricTracker.getBlockSize(x.blockId).toDouble
-        val b2 = y.reduction / metricTracker.getBlockSize(y.blockId).toDouble
+        val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
+        val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
         b1 < b2
       }))
 
@@ -178,8 +178,8 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith((x, y) => {
-          val b1 = x.reduction / metricTracker.getBlockSize(x.blockId).toDouble
-          val b2 = y.reduction / metricTracker.getBlockSize(y.blockId).toDouble
+          val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
+          val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
           b1 < b2
         }))
       }))
