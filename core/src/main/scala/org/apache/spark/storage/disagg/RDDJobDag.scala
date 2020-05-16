@@ -567,7 +567,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     } catch {
       case e: Exception =>
         e.printStackTrace()
-        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
+        logWarning(s"Ehappend !! for finding rdd node ${rddNode.rddId}")
     }
 
     map.toMap
