@@ -1565,8 +1565,13 @@ private[spark] class BlockManager(
     }
     if (blockId.isRDD) {
       logInfo(s"Dropping block $blockId from memory")
-      master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
-        s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
+      if (TaskContext.get() != null) {
+        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+          s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
+      } else {
+        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+          s"-1\t$droppedMemorySize bytes")
+      }
     }
     status.storageLevel
   }
