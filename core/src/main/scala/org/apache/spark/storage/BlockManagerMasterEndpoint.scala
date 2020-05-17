@@ -77,6 +77,7 @@ class BlockManagerMasterEndpoint(
     def run(): Unit = {
       // MB
       var memSize = 0L
+      var freeMemSize = 0L
       var diskSize = 0L
 
       // MB
@@ -89,6 +90,9 @@ class BlockManagerMasterEndpoint(
 
           var memSizeForManager = 0L
           var diskSizeForManager = 0L
+          freeMemSize += v.remainingMem
+          val evictions = v.getEvictions(k)
+          val evictedSizes = v.getEvictedBlockSizes(k)
 
           v.blocks.values.foreach {
             stat: BlockStatus =>
@@ -99,14 +103,16 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager${k.host}: memory ${memSizeForManager/unit}, " +
-            s"disk ${diskSizeForManager/unit}\n")
+          builder.append(s"BlockManager${k.host} " +
+            s"memUsed ${memSizeForManager/unit} memFree ${v.remainingMem/unit} " +
+            s"evictions $evictions evictedSize $evictedSizes " +
+            s"disk ${diskSizeForManager/unit}\t")
       }
 
-      builder.append(s"Total size memory: ${memSize/unit}, " +
-        s"disk: ${diskSize/unit}\n")
+      builder.append(s"Total size memUsed ${memSize/unit} " +
+        s"memFree ${freeMemSize/unit} disk ${diskSize/unit}\n")
 
-      logInfo("\n" + builder.toString())
+      logInfo(builder.toString() + "\n")
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)
@@ -171,6 +177,9 @@ class BlockManagerMasterEndpoint(
 
     case BlockManagerHeartbeat(blockManagerId) =>
       context.reply(heartbeatReceived(blockManagerId))
+
+    case LogInfo(log) =>
+      logInfo(log)
 
     case HasCachedBlocks(executorId) =>
       blockManagerIdByExecutor.get(executorId) match {
@@ -269,7 +278,7 @@ class BlockManagerMasterEndpoint(
         blockLocations.remove(blockId)
         logWarning(s"No more replicas available for $blockId !")
       } else if (proactivelyReplicate && (blockId.isRDD || blockId.isInstanceOf[TestBlockId])) {
-        // As a heursitic, assume single executor failure to find out the number of replicas that
+        // As a heuristic, assume single executor failure to find out the number of replicas that
         // existed before failure
         val maxReplicas = locations.size + 1
         val i = (new Random(blockId.hashCode)).nextInt(locations.size)
@@ -554,6 +563,28 @@ private[spark] class BlockManagerInfo(
 
   // Cached blocks held by this BlockManager. This does not include broadcast blocks.
   private val _cachedBlocks = new mutable.HashSet[BlockId]
+  private val evictionsPerBlockManager =
+    new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
+  private val evictedBlockSizePerBlockManager =
+    new ConcurrentHashMap[BlockManagerId, Option[Long]]().asScala
+
+  def getEvictedBlockSizes(bm: BlockManagerId): Long = {
+    if (evictedBlockSizePerBlockManager.contains(bm)) {
+      evictedBlockSizePerBlockManager(bm).getOrElse(0L)
+    } else {
+      evictedBlockSizePerBlockManager(bm) = Some(0L)
+      0L
+    }
+  }
+
+  def getEvictions(bm: BlockManagerId): Long = {
+    if (evictionsPerBlockManager.contains(bm)) {
+      evictionsPerBlockManager(bm).getOrElse(0L)
+    } else {
+      evictionsPerBlockManager(bm) = Some(0L)
+      0L
+    }
+  }
 
   def getStatus(blockId: BlockId): Option[BlockStatus] = _blocks.get(blockId)
 
@@ -600,27 +631,26 @@ private[spark] class BlockManagerInfo(
         _remainingMem -= memSize
         if (blockExists) {
           logInfo(s"Updated $blockId in memory on " +
-            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
+            s"executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(memSize)}," +
             s" original size: ${Utils.bytesToString(originalMemSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         } else {
           logInfo(s"Added $blockId in memory on " +
-            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
+            s"${blockManagerId.hostPort}" +
             s" (size: ${Utils.bytesToString(memSize)}," +
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
-
       }
       if (storageLevel.useDisk) {
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
-          logInfo(s"Updated $blockId on disk on ${blockManagerId.hostPort}" +
+          logInfo(s"Updated $blockId on disk on executor${blockManagerId.executorId}" +
             s" (current size: ${Utils.bytesToString(diskSize)}," +
             s" original size: ${Utils.bytesToString(originalDiskSize)})")
         } else {
-          logInfo(s"Added $blockId on disk on ${blockManagerId.hostPort}" +
+          logInfo(s"Added $blockId on disk on executor${blockManagerId.executorId}" +
             s" (size: ${Utils.bytesToString(diskSize)})")
         }
       }
@@ -640,6 +670,10 @@ private[spark] class BlockManagerInfo(
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
       }
+      evictionsPerBlockManager(blockManagerId) =
+        Some(evictionsPerBlockManager(blockManagerId).getOrElse(0L) + 1L)
+      evictedBlockSizePerBlockManager(blockManagerId) =
+        Some(evictedBlockSizePerBlockManager(blockManagerId).getOrElse(0L) + originalMemSize)
     }
   }
 

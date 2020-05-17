@@ -34,33 +34,27 @@ object RandomForestClassifierExample {
       .getOrCreate()
 
     val prefix = "data/mllib/"
-    var path = "sample_libsvm_data.txt"
+    var path = "mnist8m"
     var train_path = ""
     var test_path = ""
 
     var numCategories: Int = 4
     var numTrees = 10
-    val isCacheSet = false
+    val isCacheSet = true
 
-    if (args.length == 4) {
-      numCategories = args(0).toInt
-      numTrees = args(1).toInt
-      train_path = args(2)
-      test_path = args(3)
-    } else if (args.length == 3) {
-      numCategories = args(0).toInt
-      numTrees = args(1).toInt
-      path = args(2)
-    }
+    println("ARGS **********************" + args.length)
+
+    // numCategories = args(0).toInt
+    // numTrees = args(1).toInt
+    // train_path = args(2)
+    // test_path = args(3)
 
     // Load and parse the data file, converting it to a DataFrame.
     val data = spark.read.format("libsvm").load(prefix + path)
     var Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
 
-    if (args.length > 2) {
-      trainingData = spark.read.format("libsvm").load(prefix + train_path)
-      testData = spark.read.format("libsvm").load(prefix + test_path)
-    }
+    // trainingData = spark.read.format("libsvm").load(prefix + train_path)
+    // testData = spark.read.format("libsvm").load(prefix + test_path)
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
@@ -110,8 +104,8 @@ object RandomForestClassifierExample {
     val accuracy = evaluator.evaluate(predictions)
     println(s"Test Error = ${(1.0 - accuracy)}")
 
-    val rfModel = model.stages(2).asInstanceOf[RandomForestClassificationModel]
-    println(s"Learned classification forest model:\n ${rfModel.toDebugString}")
+    // val rfModel = model.stages(2).asInstanceOf[RandomForestClassificationModel]
+    // println(s"Learned classification forest model:\n ${rfModel.toDebugString}")
     // $example off$
 
     spark.stop()

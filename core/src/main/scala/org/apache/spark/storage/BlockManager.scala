@@ -24,6 +24,7 @@ import java.nio.channels.Channels
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
 import scala.concurrent.{ExecutionContext, Future}
@@ -33,7 +34,6 @@ import scala.util.Random
 import scala.util.control.NonFatal
 
 import com.codahale.metrics.{MetricRegistry, MetricSet}
-import com.google.common.io.CountingOutputStream
 
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
@@ -145,6 +145,7 @@ private[spark] class BlockManager(
 
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
+  private val blockAccessHistory = new ConcurrentHashMap[BlockId, Long]().asScala
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -874,10 +875,29 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
+        // Accessed again in this executor
+        if (blockAccessHistory.contains(blockId)) {
+          blockAccessHistory(blockId) += 1L
+        } else {
+          // Fetched from other executors
+          blockAccessHistory(blockId) = 1L
+        }
+        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
-        // Need to compute the block.
+        if (blockAccessHistory.contains(blockId)) {
+          // Cache miss in this executor
+          blockAccessHistory(blockId) += 1L
+        } else {
+          // First time generating this block *in this executor*
+          // (might have been generated and evicted in other executors)
+          blockAccessHistory(blockId) = 1L
+        }
+        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+      // Need to compute the block.
     }
+
+    val blockCompStartTime = System.currentTimeMillis()
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
@@ -893,11 +913,20 @@ private[spark] class BlockManager(
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
+
+        val blockCompEndTime = System.currentTimeMillis()
+        val elapsed = blockCompEndTime - blockCompStartTime
+        val accessHistory = blockAccessHistory(blockId)
+        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
+          s"stage${TaskContext.get().stageId()}\t$elapsed")
+
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
+        val blockCompEndTime = System.currentTimeMillis()
+
        Right(iter)
     }
   }
@@ -1495,7 +1524,6 @@ private[spark] class BlockManager(
   private[storage] override def dropFromMemory[T: ClassTag](
       blockId: BlockId,
       data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
-    logInfo(s"Dropping block $blockId from memory")
     val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
     var blockIsUpdated = false
     val level = info.level
@@ -1534,6 +1562,11 @@ private[spark] class BlockManager(
     }
     if (blockIsUpdated) {
       addUpdatedBlockStatusToTaskMetrics(blockId, status)
+    }
+    if (blockId.isRDD) {
+      logInfo(s"Dropping block $blockId from memory")
+      master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+        s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
     }
     status.storageLevel
   }
