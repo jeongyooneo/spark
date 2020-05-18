@@ -485,7 +485,7 @@ class LogisticRegression @Since("1.2.0") (
   }
 
   override protected[spark] def train(dataset: Dataset[_]): LogisticRegressionModel = {
-    val handlePersistence = dataset.storageLevel == StorageLevel.NONE
+    val handlePersistence = true
     train(dataset, handlePersistence)
   }
 
@@ -499,7 +499,7 @@ class LogisticRegression @Since("1.2.0") (
           Instance(label, weight, features)
       }
 
-    if (handlePersistence) instances.persist(StorageLevel.MEMORY_ONLY)
+    if (handlePersistence) instances.persist(StorageLevel.MEMORY_AND_DISK)
 
     instr.logPipelineStage(this)
     instr.logDataset(dataset)

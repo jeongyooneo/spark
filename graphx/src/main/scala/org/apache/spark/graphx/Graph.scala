@@ -87,11 +87,11 @@ abstract class Graph[VD: ClassTag, ED: ClassTag] protected () extends Serializab
    *
    * @return A reference to this graph for convenience.
    */
-  def persist(newLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED]
+  def persist(newLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK): Graph[VD, ED]
 
   /**
    * Caches the vertices and edges associated with this graph at the previously-specified target
-   * storage levels, which default to `MEMORY_ONLY`. This is used to pin a graph in memory enabling
+   * storage levels, which default to `MEMORY_AND_DISK`. This is used to pin a graph in memory enabling
    * multiple queries to reuse the same construction process.
    */
   def cache(): Graph[VD, ED]
@@ -473,8 +473,8 @@ object Graph {
       rawEdges: RDD[(VertexId, VertexId)],
       defaultValue: VD,
       uniqueEdges: Option[PartitionStrategy] = None,
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
-      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, Int] =
+      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK): Graph[VD, Int] =
   {
     val edges = rawEdges.map(p => Edge(p._1, p._2, 1))
     val graph = GraphImpl(edges, defaultValue, edgeStorageLevel, vertexStorageLevel)
@@ -498,8 +498,8 @@ object Graph {
   def fromEdges[VD: ClassTag, ED: ClassTag](
       edges: RDD[Edge[ED]],
       defaultValue: VD,
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
-      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED] = {
+      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK): Graph[VD, ED] = {
     GraphImpl(edges, defaultValue, edgeStorageLevel, vertexStorageLevel)
   }
 
@@ -522,8 +522,8 @@ object Graph {
       vertices: RDD[(VertexId, VD)],
       edges: RDD[Edge[ED]],
       defaultVertexAttr: VD = null.asInstanceOf[VD],
-      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY,
-      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY): Graph[VD, ED] = {
+      edgeStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+      vertexStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK): Graph[VD, ED] = {
     GraphImpl(vertices, edges, defaultVertexAttr, edgeStorageLevel, vertexStorageLevel)
   }
 
