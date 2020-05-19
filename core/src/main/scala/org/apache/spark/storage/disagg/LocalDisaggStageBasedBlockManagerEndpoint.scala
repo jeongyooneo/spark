@@ -804,9 +804,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val executorWriteLockCount = new ConcurrentHashMap[String, mutable.Set[BlockId]].asScala
 
   private def blockWriteLock(blockId: BlockId, executorId: String): Boolean = {
-    logInfo(s"Hold writelock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
+      logInfo(s"Hold writelock $blockId, $executorId")
       executorWriteLockCount.putIfAbsent(executorId, new mutable.HashSet[BlockId])
       executorWriteLockCount(executorId).add(blockId)
       true
@@ -816,7 +816,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def blockWriteUnlock(blockId: BlockId, executorId: String): Unit = {
-    // logInfo(s"Release writelock $blockId, $executorId")
+    logInfo(s"Release writelock $blockId, $executorId")
     executorWriteLockCount(executorId).remove(blockId)
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
@@ -837,9 +837,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
-    // logInfo(s"Hold readlock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).readLock().tryLock()) {
+      logInfo(s"Hold readlock $blockId, $executorId")
       executorReadLockCount.putIfAbsent(executorId,
         new ConcurrentHashMap[BlockId, AtomicInteger]())
       executorReadLockCount(executorId).putIfAbsent(blockId, new AtomicInteger(0))
@@ -851,7 +851,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
-    // logInfo(s"Release readlock $blockId, $executorId")
+    logInfo(s"Release readlock $blockId, $executorId")
     val result = executorReadLockCount(executorId).get(blockId).decrementAndGet()
     disaggBlockLockMap(blockId).readLock().unlock()
     result >= 0
