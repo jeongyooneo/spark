@@ -40,15 +40,50 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
    * directory, create multiple subdirectories that we will hash files into, in order to avoid
    * having really large inodes at the top level. */
   private[spark] val localDirs: Array[File] = createLocalDirs(conf)
+
+  private[spark] val shuffleLocalDirs: Array[File] = createShuffleLocalDirs(conf)
   if (localDirs.isEmpty) {
     logError("Failed to create any local dir.")
     System.exit(ExecutorExitCode.DISK_STORE_FAILED_TO_CREATE_DIR)
   }
+
+  if (shuffleLocalDirs.isEmpty) {
+    logError("Failed to create any local dir for shuffle.")
+    System.exit(ExecutorExitCode.DISK_STORE_FAILED_TO_CREATE_DIR)
+  }
+
   // The content of subDirs is immutable but the content of subDirs(i) is mutable. And the content
   // of subDirs(i) is protected by the lock of subDirs(i)
   private val subDirs = Array.fill(localDirs.length)(new Array[File](subDirsPerLocalDir))
+  private val shuffleSubDirs = Array
+    .fill(shuffleLocalDirs.length)(new Array[File](subDirsPerLocalDir))
 
   private val shutdownHook = addShutdownHook()
+
+
+  def getShuffleFile(filename: String): File = {
+    // Figure out which local directory it hashes to, and which subdirectory in that
+    val hash = Utils.nonNegativeHash(filename)
+    val dirId = hash % shuffleLocalDirs.length
+    val subDirId = (hash / shuffleLocalDirs.length) % subDirsPerLocalDir
+
+    // Create the subdirectory if it doesn't already exist
+    val subDir = shuffleSubDirs(dirId).synchronized {
+      val old = shuffleSubDirs(dirId)(subDirId)
+      if (old != null) {
+        old
+      } else {
+        val newDir = new File(shuffleLocalDirs(dirId), "%02x".format(subDirId))
+        if (!newDir.exists() && !newDir.mkdir()) {
+          throw new IOException(s"Failed to create local dir in $newDir.")
+        }
+        shuffleSubDirs(dirId)(subDirId) = newDir
+        newDir
+      }
+    }
+
+    new File(subDir, filename)
+  }
 
   /** Looks up a file by hashing it into one of our local subdirectories. */
   // This method should be kept in sync with
@@ -77,6 +112,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
     new File(subDir, filename)
   }
 
+  def getShuffleFile(blockId: BlockId): File = getShuffleFile(blockId.name)
   def getFile(blockId: BlockId): File = getFile(blockId.name)
 
   /** Check if disk block manager has a block. */
@@ -87,7 +123,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
   /** List all the files currently stored on disk by the disk manager. */
   def getAllFiles(): Seq[File] = {
     // Get all the files inside the array of array of directories
-    subDirs.flatMap { dir =>
+    (shuffleSubDirs ++ subDirs).flatMap { dir =>
       dir.synchronized {
         // Copy the content of dir because it may be modified in other threads
         dir.clone()
@@ -124,10 +160,26 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
   /** Produces a unique block id and File suitable for storing shuffled intermediate results. */
   def createTempShuffleBlock(): (TempShuffleBlockId, File) = {
     var blockId = new TempShuffleBlockId(UUID.randomUUID())
-    while (getFile(blockId).exists()) {
+    while (getShuffleFile(blockId).exists()) {
       blockId = new TempShuffleBlockId(UUID.randomUUID())
     }
     (blockId, getFile(blockId))
+  }
+
+  private def createLocalDirs(conf: SparkConf): Array[File] = {
+    conf.get("spark.caching.dir")
+      .split(File.pathSeparator)
+      .flatMap { rootDir =>
+        try {
+          val localDir = Utils.createDirectory(rootDir, "blockmgr")
+          logInfo(s"Created local directory at $localDir")
+          Some(localDir)
+        } catch {
+          case e: IOException =>
+            logError(s"Failed to create local dir in $rootDir. Ignoring this directory.", e)
+            None
+        }
+    }
   }
 
   /**
@@ -135,7 +187,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
    * located inside configured local directories and won't
    * be deleted on JVM exit when using the external shuffle service.
    */
-  private def createLocalDirs(conf: SparkConf): Array[File] = {
+  private def createShuffleLocalDirs(conf: SparkConf): Array[File] = {
     Utils.getConfiguredLocalDirs(conf).flatMap { rootDir =>
       try {
         val localDir = Utils.createDirectory(rootDir, "blockmgr")
@@ -171,7 +223,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
 
   private def doStop(): Unit = {
     if (deleteFilesOnStop) {
-      localDirs.foreach { localDir =>
+      (shuffleLocalDirs ++ localDirs).foreach { localDir =>
         if (localDir.isDirectory() && localDir.exists()) {
           try {
             if (!ShutdownHookManager.hasRootAsShutdownDeleteDir(localDir)) {

@@ -22,6 +22,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 import java.nio.channels.FileChannel.MapMode
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,6 +38,7 @@ import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.Utils
 import org.apache.spark.util.io.ChunkedByteBuffer
 
+
 /**
  * Stores BlockManager blocks on disk.
  */
@@ -48,6 +50,8 @@ private[spark] class DiskStore(
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
   private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
+  private val THRESHOLD = conf.getSizeAsGb("spark.storage.threshold")
+  private val totalSize = new AtomicLong(0)
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
 
@@ -68,6 +72,29 @@ private[spark] class DiskStore(
     try {
       writeFunc(out)
       blockSizes.put(blockId, out.getCount)
+      synchronized {
+      totalSize.addAndGet(out.getCount)
+
+        if (totalSize.get() > THRESHOLD) {
+          // Eviction
+          val requiredEviction = THRESHOLD - totalSize.get()
+          var evictionSize = 0L
+          val iterator = blockSizes.entrySet().iterator()
+          while (iterator.hasNext && evictionSize < requiredEviction) {
+            val pair = iterator.next()
+            val file = diskManager.getFile(blockId.name)
+            if (file.exists()) {
+              logInfo(s"Eviction $blockId from disk, size ${pair.getValue}")
+              val ret = file.delete()
+              evictionSize += pair.getValue
+              if (!ret) {
+                logWarning(s"Error deleting ${file.getPath()}")
+              }
+            }
+            blockSizes.remove(pair.getKey)
+          }
+        }
+      }
       threwException = false
     } finally {
       try {
@@ -113,16 +140,19 @@ private[spark] class DiskStore(
   }
 
   def remove(blockId: BlockId): Boolean = {
-    blockSizes.remove(blockId)
-    val file = diskManager.getFile(blockId.name)
-    if (file.exists()) {
-      val ret = file.delete()
-      if (!ret) {
-        logWarning(s"Error deleting ${file.getPath()}")
+    synchronized {
+      val size = blockSizes.remove(blockId)
+      totalSize.addAndGet(-size)
+      val file = diskManager.getFile(blockId.name)
+      if (file.exists()) {
+        val ret = file.delete()
+        if (!ret) {
+          logWarning(s"Error deleting ${file.getPath()}")
+        }
+        ret
+      } else {
+        false
       }
-      ret
-    } else {
-      false
     }
   }
 
