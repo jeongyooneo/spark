@@ -67,6 +67,7 @@ private[spark] class DiskStore(
       throw new IllegalStateException(s"Block $blockId is already present in the disk store")
     }
     logDebug(s"Attempting to put block $blockId")
+    logInfo(s"Disk threshold: $THRESHOLD, totalSize: $totalSize")
     val startTime = System.currentTimeMillis
     val file = diskManager.getFile(blockId)
     val out = new CountingWritableChannel(openForWrite(file))
