@@ -153,7 +153,7 @@ private[spark] class BlockManager(
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
     new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this)
-  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
+  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager, this)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -1616,6 +1616,22 @@ private[spark] class BlockManager(
     }
   }
 
+  def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Unit = {
+    logDebug(s"Removing block $blockId")
+    blockInfoManager.lockForWriting(blockId) match {
+      case None =>
+        // The block has already been removed; do nothing.
+        logWarning(s"Asked to remove block $blockId, which does not exist")
+      case Some(info) =>
+        val removedFromDisk = diskStore.remove(blockId)
+        if (!removedFromDisk) {
+          logWarning(s"Block $blockId could not be removed as it was not found on disk")
+        }
+        blockInfoManager.removeBlock(blockId)
+        reportBlockStatus(blockId, BlockStatus.empty)
+        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+    }
+  }
   /**
    * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
    * lock on the block.

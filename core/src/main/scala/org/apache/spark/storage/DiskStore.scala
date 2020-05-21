@@ -45,7 +45,8 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 private[spark] class DiskStore(
     conf: SparkConf,
     diskManager: DiskBlockManager,
-    securityManager: SecurityManager) extends Logging {
+    securityManager: SecurityManager,
+    blockManager: BlockManager) extends Logging {
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
@@ -85,16 +86,8 @@ private[spark] class DiskStore(
           val iterator = blockSizes.entrySet().iterator()
           while (iterator.hasNext && evictionSize < requiredEviction) {
             val pair = iterator.next()
-            val file = diskManager.getFile(blockId.name)
-            if (file.exists()) {
-              logInfo(s"Eviction $blockId from disk, size ${pair.getValue}")
-              val ret = file.delete()
-              evictionSize += pair.getValue
-              if (!ret) {
-                logWarning(s"Error deleting ${file.getPath()}")
-              }
-            }
-            blockSizes.remove(pair.getKey)
+            logInfo(s"Evicting ${pair.getKey} from disk")
+            blockManager.removeBlockFromDisk(pair.getKey, true)
           }
         }
       }
@@ -143,19 +136,17 @@ private[spark] class DiskStore(
   }
 
   def remove(blockId: BlockId): Boolean = {
-    synchronized {
-      val size = blockSizes.remove(blockId)
-      totalSize.addAndGet(-size)
-      val file = diskManager.getFile(blockId.name)
-      if (file.exists()) {
-        val ret = file.delete()
-        if (!ret) {
-          logWarning(s"Error deleting ${file.getPath()}")
-        }
-        ret
-      } else {
-        false
+    val size = blockSizes.remove(blockId)
+    totalSize.addAndGet(-size)
+    val file = diskManager.getFile(blockId.name)
+    if (file.exists()) {
+      val ret = file.delete()
+      if (!ret) {
+        logWarning(s"Error deleting ${file.getPath()}")
       }
+      ret
+    } else {
+      false
     }
   }
 
