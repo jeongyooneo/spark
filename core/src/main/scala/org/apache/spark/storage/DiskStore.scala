@@ -50,10 +50,12 @@ private[spark] class DiskStore(
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
   private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
-  private val THRESHOLD = conf.getSizeAsGb("spark.storage.threshold")
+  private val THRESHOLD = conf.getSizeAsBytes("spark.storage.threshold")
   private val totalSize = new AtomicLong(0)
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
+
+  logInfo(s"Disk threshold: $THRESHOLD, totalSize: $totalSize")
 
   /**
    * Invokes the provided callback function to write the specific block.
