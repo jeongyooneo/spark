@@ -80,7 +80,7 @@ private[spark] class DiskStore(
 
         if (totalSize.get() > THRESHOLD) {
           // Eviction
-          val requiredEviction = THRESHOLD - totalSize.get()
+          val requiredEviction = totalSize.get() - THRESHOLD
           var evictionSize = 0L
           val iterator = blockSizes.entrySet().iterator()
           while (iterator.hasNext && evictionSize < requiredEviction) {
