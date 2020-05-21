@@ -73,7 +73,7 @@ private[spark] class DisaggStore(
 
       if (file != null) {
         val out = new CountingWritableChannel(Channels.newChannel(
-          file.getBufferedOutputStream(file.getCapacity)))
+          file.getBufferedOutputStream(estimateSize)))
         var threwException: Boolean = true
         try {
 
