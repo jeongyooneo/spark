@@ -87,7 +87,9 @@ private[spark] class DiskStore(
           while (iterator.hasNext && evictionSize < requiredEviction) {
             val pair = iterator.next()
             logInfo(s"Evicting ${pair.getKey} from disk")
-            blockManager.removeBlockFromDisk(pair.getKey, true)
+            if (blockManager.removeBlockFromDisk(pair.getKey, true)) {
+              evictionSize += pair.getValue
+            }
           }
         }
       }

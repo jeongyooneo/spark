@@ -1616,20 +1616,24 @@ private[spark] class BlockManager(
     }
   }
 
-  def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Unit = {
+  def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Boolean = {
     logDebug(s"Removing block $blockId")
-    blockInfoManager.lockForWriting(blockId) match {
+    blockInfoManager.lockForWriting(blockId, false) match {
       case None =>
         // The block has already been removed; do nothing.
         logWarning(s"Asked to remove block $blockId, which does not exist")
+        false
       case Some(info) =>
         val removedFromDisk = diskStore.remove(blockId)
         if (!removedFromDisk) {
           logWarning(s"Block $blockId could not be removed as it was not found on disk")
+        } else {
+          blockInfoManager.removeBlock(blockId)
+          reportBlockStatus(blockId, BlockStatus.empty)
+          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
         }
-        blockInfoManager.removeBlock(blockId)
-        reportBlockStatus(blockId, BlockStatus.empty)
-        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+
+        removedFromDisk
     }
   }
   /**
