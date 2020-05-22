@@ -63,7 +63,7 @@ public final class UnsafeSorterSpillWriter {
       ShuffleWriteMetrics writeMetrics,
       int numRecordsToWrite) throws IOException {
     final Tuple2<TempLocalBlockId, File> spilledFileInfo =
-      blockManager.diskBlockManager().createTempShuffleBlock();
+      blockManager.diskBlockManager().createTempLocalBlock();
     this.file = spilledFileInfo._2();
     this.blockId = spilledFileInfo._1();
     this.numRecordsToWrite = numRecordsToWrite;
