@@ -26,8 +26,8 @@ private[spark] object BlazeParameters extends Logging {
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("0g")
 
-    private[spark] val DISK_THRESHOLD_MB = ConfigBuilder("spark.disagg.disk.threshold")
-    .bytesConf(ByteUnit.MiB)
+    private[spark] val DISK_THRESHOLD = ConfigBuilder("spark.disagg.disk.threshold")
+    .bytesConf(ByteUnit.BYTE)
     .createWithDefaultString("0g")
 
   private[spark] val JOB_DAG_PATH = ConfigBuilder("spark.disagg.dagpath")

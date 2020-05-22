@@ -359,6 +359,7 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     recentlyEvictedFromDisk(executorId).remove(blockId)
   }
 
+  private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean): Boolean = {
@@ -389,6 +390,18 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
         recentlyRecachedBlocks.remove(blockId)
         false
       } else {
+        if (USE_DISK) {
+          if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+            BlazeLogger.recacheDisaggToLocal(blockId, executorId)
+          }
+
+          addToLocal(blockId, executorId, estimateSize)
+          BlazeLogger.logLocalCaching(blockId, executorId,
+            estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+          true
+          return true
+        }
+
         if (localFull) {
           if (disaggThreshold < estimateSize) {
             val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
@@ -477,7 +490,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
       val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
       l.foreach {
         discardingBlock => {
-          if (!prevEvicted.contains(discardingBlock.blockId)) {
+          if (!prevEvicted.contains(discardingBlock.blockId) &&
+            !recentEvictionInExecutor.contains(discardingBlock.blockId)) {
             val elapsed = currTime -
               recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
             val createdTime = metricTracker

@@ -55,7 +55,7 @@ private[spark] class DiskStore(
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
   private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
 
-  private val THRESHOLD = conf.get(BlazeParameters.DISK_THRESHOLD_MB)
+  private val THRESHOLD = conf.get(BlazeParameters.DISK_THRESHOLD)
   private val totalSize = new AtomicLong(0)
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
