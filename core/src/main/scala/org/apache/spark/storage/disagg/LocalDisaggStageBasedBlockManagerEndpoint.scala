@@ -90,7 +90,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           s" / ${disaggThreshold / 1024 / 1024}")
 
 
-        removeDupRDDsFromDisagg
 
         // logInfo(s"Disagg blocks: ${disaggBlockInfo.keySet}")
       } catch {
@@ -182,7 +181,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     if (autocaching) {
       autocaching.synchronized {
+
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+          removeDupRDDsFromDisagg
+
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
             .filter {
@@ -736,6 +738,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         BlazeLogger.removeZeroBlocksInDisagg(bid)
         removeFromDisagg(bid)
         releaseWriteLockForDisagg(bid)
+      } else {
+        logInfo(s"Failure of lock block for removing $bid")
       }
     })
   }
