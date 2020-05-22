@@ -493,6 +493,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       return false
     }
 
+    /*
     if (enoughSpace) {
       if (recentlyRecachedBlocks.putIfAbsent(blockId, true).isEmpty) {
         return true
@@ -500,6 +501,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         return false
       }
     }
+    */
 
     val costForStoredBlock = costAnalyzer.compDisaggCost(blockId)
 
