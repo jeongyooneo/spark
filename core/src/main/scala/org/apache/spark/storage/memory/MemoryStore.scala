@@ -524,9 +524,9 @@ private[spark] class MemoryStore(
         case SerializedMemoryEntry(buffer, _, _) => buffer.dispose()
         case _ =>
       }
-      memoryManager.releaseStorageMemory(entry.size, entry.memoryMode)
-      logDebug(s"Block $blockId of size ${entry.size} dropped " +
+      logInfo(s"Block $blockId of size ${entry.size} dropped " +
         s"from memory (free ${maxMemory - blocksMemoryUsed})")
+      memoryManager.releaseStorageMemory(entry.size, entry.memoryMode)
       true
     } else {
       false

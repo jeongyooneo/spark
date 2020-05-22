@@ -164,7 +164,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
     while (getShuffleFile(blockId).exists()) {
         blockId = new TempShuffleBlockId(UUID.randomUUID())
     }
-    (blockId, getFile(blockId))
+    (blockId, getShuffleFile(blockId))
   }
 
   private def createLocalDirs(conf: SparkConf): Array[File] = {

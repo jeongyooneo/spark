@@ -108,6 +108,7 @@ private[memory] class StorageMemoryPool(
         s"memory when we only have ${_memoryUsed} bytes")
       _memoryUsed = 0
     } else {
+      // logInfo(s"Release memory $size")
       _memoryUsed -= size
     }
   }

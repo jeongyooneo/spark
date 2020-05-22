@@ -214,7 +214,7 @@ class ExternalAppendOnlyMap[K, V, C](
    */
   private[this] def spillMemoryIteratorToDisk(inMemoryIterator: Iterator[(K, C)])
       : DiskMapIterator = {
-    val (blockId, file) = diskBlockManager.createTempLocalBlock()
+    val (blockId, file) = diskBlockManager.createTempShuffleBlock()
     val writer = blockManager.getDiskWriter(blockId, file, ser, fileBufferSize, writeMetrics)
     var objectsWritten = 0
 

@@ -480,7 +480,7 @@ private[spark] class BlockManager(
     // TODO if we're going to only put the data in the disk store, we should just write it directly
     // to the final location, but that would require a deeper refactor of this code.  So instead
     // we just write to a temp file, and call putBytes on the data in that file.
-    val tmpFile = diskBlockManager.createTempLocalBlock()._2
+    val tmpFile = diskBlockManager.createTempShuffleBlock()._2
     val channel = new CountingWritableChannel(
       Channels.newChannel(serializerManager.wrapForEncryption(new FileOutputStream(tmpFile))))
     logTrace(s"Streaming block $blockId to tmp file $tmpFile")
@@ -2024,7 +2024,7 @@ private[spark] object BlockManager {
     cleaningThread.start()
 
     override def createTempFile(transportConf: TransportConf): DownloadFile = {
-      val file = blockManager.diskBlockManager.createTempLocalBlock()._2
+      val file = blockManager.diskBlockManager.createTempShuffleBlock()._2
       encryptionKey match {
         case Some(key) =>
           // encryption is enabled, so when we read the decrypted data off the network, we need to
