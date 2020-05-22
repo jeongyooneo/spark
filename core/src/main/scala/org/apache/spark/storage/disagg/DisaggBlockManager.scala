@@ -57,6 +57,24 @@ class DisaggBlockManager(
     }
   }
 
+  // LOCAL DISK
+  def diskCaching(blockId: BlockId, size: Long, executorId: String): Unit = {
+    driverEndpoint.ask(CachingInDisk(blockId, size, executorId))
+  }
+
+  def diskEvictionDecision(blockId: BlockId,
+                           size: Long, executorId: String): List[BlockId] = {
+    driverEndpoint.askSync[List[BlockId]](DiskEvictionDecision(blockId, size, executorId))
+  }
+
+  def diskEvictionDone(blockId: BlockId, executorId: String, size: Long): Unit = {
+    driverEndpoint.ask(DiskBlockEvictionDone(blockId, executorId, size))
+  }
+
+  def diskEvictionFail(blockId: BlockId, executorId: String): Unit = {
+    driverEndpoint.ask(DiskBlockEvictionFail(blockId, executorId))
+  }
+
   def localEviction(blockId: Option[BlockId], executorId: String, size: Long,
                     prevEvicted: Set[BlockId]): List[BlockId] = {
     driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size, prevEvicted))

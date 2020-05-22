@@ -33,6 +33,10 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     new AtomicReference[Map[String, List[CompDisaggCost]]](null)
 
   @volatile
+  var sortedBlockByCompCostInDiskLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
+    new AtomicReference[Map[String, List[CompDisaggCost]]](null)
+
+  @volatile
   var sortedBlockByCompSizeRatioInLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
     new AtomicReference[Map[String, List[CompDisaggCost]]](null)
 
@@ -156,6 +160,16 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         (executorId, l)
       })
 
+    val diskLocalLMap = metricTracker.localDiskStoredBlocksMap.toMap
+      .map(entry => {
+        val executorId = entry._1
+        val blocks = entry._2
+        val l = blocks.map(blockId => {
+          compDisaggCost(blockId)
+        }).toList
+        (executorId, l)
+      })
+
     totalSize = Math.max(1, totalSize)
 
     sortedBlockByCompCostInDisagg =
@@ -169,6 +183,12 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       }))
 
     sortedBlockByCompCostInLocal.set(
+      localLMap.map(entry => {
+        val l = entry._2
+        (entry._1, l.sortWith(_.reduction < _.reduction))
+      }))
+
+    sortedBlockByCompCostInDiskLocal.set(
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.reduction < _.reduction))

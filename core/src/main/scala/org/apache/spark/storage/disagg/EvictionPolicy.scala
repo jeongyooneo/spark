@@ -40,6 +40,11 @@ private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
                            blockId: BlockId)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
 
+  def selectEvictFromDisk(storingCost: CompDisaggCost,
+                          executorId: String,
+                          blockId: BlockId)
+                         (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
+
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)
                            (func: List[CompDisaggCost] => Unit): Unit
@@ -58,14 +63,13 @@ private[spark] object EvictionPolicy {
     } else if (policy.equals("Cost-based")) {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("RDD-Ordering")) {
-      new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
+      // new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
+      throw new RuntimeException(s"Unsupported evictionPolicy $policy")
     }
     else if (policy.equals("Cost-size-ratio")) {
       new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-size-ratio2")) {
       new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker, sparkConf)
-    } else if (policy.equals("Cost-size-ratio3")) {
-      new CostSizeRatioBased3EvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     }
     else {
       throw new RuntimeException(s"Unsupported evictionPolicy $policy")

@@ -80,6 +80,14 @@ private[spark] class CostSizeRatioBasedEvictionPolicy(
     }
   }
 
+  def selectEvictFromDisk(storingCost: CompDisaggCost,
+                           executorId: String,
+                           blockId: BlockId)
+                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
+
+    throw new RuntimeException("not support")
+  }
+
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)
                            (func: List[CompDisaggCost] => Unit): Unit = {

@@ -41,6 +41,19 @@ private[spark] object DisaggBlockManagerMessages {
                              putDisagg: Boolean, localFull: Boolean)
     extends ToBlockManagerMaster
 
+
+  case class CachingInDisk(blockId: BlockId, size: Long, executorId: String)
+    extends ToBlockManagerMaster
+
+  case class DiskEvictionDecision(blockId: BlockId, size: Long, executorId: String)
+    extends ToBlockManagerMaster
+
+  case class DiskBlockEvictionDone(blockId: BlockId, executorId: String, size: Long)
+    extends ToBlockManagerMaster
+
+  case class DiskBlockEvictionFail(blockId: BlockId, executorId: String)
+    extends ToBlockManagerMaster
+
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
                              putDisagg: Boolean, localFull: Boolean)
     extends ToBlockManagerMaster

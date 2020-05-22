@@ -79,6 +79,18 @@ private[spark] class OnlyCostBasedEvictionPolicy(
     }
   }
 
+  def selectEvictFromDisk(storingCost: CompDisaggCost,
+                               executorId: String,
+                               blockId: BlockId)
+                              (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
+    if (costAnalyzer.sortedBlockByCompCostInDiskLocal.get() != null) {
+      val l = costAnalyzer.sortedBlockByCompCostInDiskLocal.get()(executorId)
+      func(l)
+    } else {
+      func(List.empty)
+    }
+  }
+
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)
                            (func: List[CompDisaggCost] => Unit): Unit = {

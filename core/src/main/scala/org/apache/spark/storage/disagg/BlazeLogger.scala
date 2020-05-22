@@ -47,9 +47,15 @@ private[spark] object BlazeLogger extends Logging {
                       comp: Double, disaggCost: Long, msg: String): Unit = {
     logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
   }
+  def logLocalDiskCaching(blockId: BlockId, executor: String,
+                          size: Long,
+                          comp: Double, disaggCost: Long, msg: String): Unit = {
+    logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$size\t$msg")
+  }
+
   def logDisaggCaching(blockId: BlockId,
                        size: Long,
-                      comp: Double, disaggCost: Long): Unit = {
+                       comp: Double, disaggCost: Long): Unit = {
     logInfo(s"CACHING_D\t$blockId\t$size\t$comp\t$disaggCost\t$size")
   }
 
@@ -87,6 +93,10 @@ private[spark] object BlazeLogger extends Logging {
                  comp: Double, disaggCost: Long,
                  size: Long): Unit = {
     logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+  }
+  def evictDisk(blockId: BlockId, executor: String,
+                size: Long): Unit = {
+    logInfo(s"EVICT_DISK_L\t$executor\t$blockId\t$size")
   }
   def evictDisagg(blockId: BlockId,
                   comp: Double,

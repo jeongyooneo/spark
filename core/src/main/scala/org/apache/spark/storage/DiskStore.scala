@@ -20,21 +20,19 @@ package org.apache.spark.storage
 import java.io._
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel.MapMode
-
-
-import io.netty.channel.DefaultFileRegion
-
-import org.apache.spark.internal.{config, Logging}
-import org.apache.spark.network.buffer.ManagedBuffer
-import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
-import org.apache.spark.unsafe.array.ByteArrayMethods
 import java.nio.channels.{Channels, ReadableByteChannel, WritableByteChannel}
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 import com.google.common.io.Closeables
-import org.apache.spark.internal.Logging
-import org.apache.spark.network.util.JavaUtils
+import io.netty.channel.DefaultFileRegion
+import org.apache.commons.io.IOUtils
+import org.apache.spark.internal.{Logging, config}
+import org.apache.spark.network.buffer.ManagedBuffer
+import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
 import org.apache.spark.security.CryptoStreamUtils
+import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManager, DisaggStore}
+import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.Utils
 import org.apache.spark.util.io.ChunkedByteBuffer
 import org.apache.spark.{SecurityManager, SparkConf}
@@ -47,11 +45,18 @@ import scala.collection.mutable.ListBuffer
 private[spark] class DiskStore(
     conf: SparkConf,
     diskManager: DiskBlockManager,
-    securityManager: SecurityManager) extends Logging {
+    securityManager: SecurityManager,
+    blockManager: BlockManager,
+    disaggManager: DisaggBlockManager,
+    disaggStore: DisaggStore,
+    executorId: String) extends Logging {
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
   private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
+
+  private val THRESHOLD = conf.get(BlazeParameters.DISK_THRESHOLD_MB)
+  private val totalSize = new AtomicLong(0)
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
 
@@ -64,8 +69,8 @@ private[spark] class DiskStore(
     if (contains(blockId)) {
       throw new IllegalStateException(s"Block $blockId is already present in the disk store")
     }
-
     logDebug(s"Attempting to put block $blockId")
+    logInfo(s"Disk threshold: $THRESHOLD, totalSize: $totalSize")
     val startTime = System.currentTimeMillis
     val file = diskManager.getFile(blockId)
     val out = new CountingWritableChannel(openForWrite(file))
@@ -73,6 +78,36 @@ private[spark] class DiskStore(
     try {
       writeFunc(out)
       blockSizes.put(blockId, out.getCount)
+
+      if (blockId.isRDD) {
+        disaggManager.diskCaching(blockId, out.getCount, executorId)
+      }
+
+      synchronized {
+        totalSize.addAndGet(out.getCount)
+
+        if (blockId.isRDD && totalSize.get() > THRESHOLD) {
+          // Eviction
+          val requiredEviction = totalSize.get() - THRESHOLD
+          var evictionSize = 0L
+          val l = disaggManager.diskEvictionDecision(blockId, requiredEviction, executorId)
+          val iterator = l.iterator
+          while (iterator.hasNext && evictionSize < requiredEviction) {
+            val bid = iterator.next()
+            val bsize = blockSizes.get(bid)
+            logInfo(s"Evicting block $bid from disk size $bsize")
+            if (blockManager.removeBlockFromDisk(bid, true)) {
+              // sent to disagg
+              disaggManager.diskEvictionDone(bid, executorId, bsize)
+              evictionSize += bsize
+              logInfo(s"Evicting done $bid")
+            } else {
+              disaggManager.diskEvictionFail(bid, executorId)
+            }
+          }
+        }
+      }
+
       threwException = false
     } finally {
       try {
@@ -84,13 +119,13 @@ private[spark] class DiskStore(
             throw ioe
           }
       } finally {
-         if (threwException) {
+        if (threwException) {
           remove(blockId)
         }
       }
     }
     val finishTime = System.currentTimeMillis
-    logDebug("Block %s stored as %s file on disk in %d ms".format(
+    logInfo("Block %s stored as %s file on disk in %d ms".format(
       file.getName,
       Utils.bytesToString(file.length()),
       finishTime - startTime))
@@ -117,15 +152,39 @@ private[spark] class DiskStore(
     }
   }
 
-  def remove(blockId: BlockId): Boolean = {
+  def remove(blockId: BlockId, toDisagg: Boolean = false): Boolean = {
+    val bsize = blockSizes.get(blockId)
     blockSizes.remove(blockId)
+    totalSize.addAndGet(-bsize)
     val file = diskManager.getFile(blockId.name)
     if (file.exists()) {
-      val ret = file.delete()
-      if (!ret) {
-        logWarning(s"Error deleting ${file.getPath()}")
-      }
+      if (blockId.isRDD && toDisagg) {
+        // Send to disagg or not?
+        if (disaggManager
+          .cachingDecision(blockId, bsize, executorId, true, true)) {
+          val inputStream = new FileInputStream(file)
+          logInfo(s"Caching from disk to disagg $blockId, executor $executorId")
+          disaggStore.put(blockId,
+            bsize,
+            executorId) { channel =>
+            val out = Channels.newOutputStream(channel)
+            IOUtils.copy(inputStream, out)
+            inputStream.close()
+          }
+        }
+
+        val ret = file.delete()
+        if (!ret) {
+          logWarning(s"Error deleting ${file.getPath()}")
+        }
+        ret
+      } else {
+        val ret = file.delete()
+        if (!ret) {
+          logWarning(s"Error deleting ${file.getPath()}")
+        }
       ret
+      }
     } else {
       false
     }

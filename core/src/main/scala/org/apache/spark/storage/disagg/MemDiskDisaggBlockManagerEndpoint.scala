@@ -35,7 +35,7 @@ import scala.concurrent.ExecutionContext
 
 /**
  */
-private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
+private[spark] class MemDiskDisaggBlockManagerEndpoint(
                           override val rpcEnv: RpcEnv,
                           val isLocal: Boolean,
                           conf: SparkConf,
@@ -261,6 +261,101 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private val disaggFirst = conf.get(BlazeParameters.DISAGG_FIRST)
+
+  private def cachingDoneInDisk(blockId: BlockId, estimateSize: Long,
+                                executorId: String): Unit = {
+
+    logInfo(s"Caching done in disk " + s"$blockId, $estimateSize, $executorId")
+    val storingCost = costAnalyzer.compDisaggCost(blockId)
+    val t = System.currentTimeMillis()
+    metricTracker.localDiskStoredBlocksMap
+      .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+    metricTracker.localDiskStoredBlocksMap(executorId).add(blockId)
+    metricTracker.localDiskStoredBlocksSizeMap.put(blockId, estimateSize)
+    BlazeLogger.logLocalDiskCaching(blockId, executorId,
+      estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+  }
+
+  private val recentlyEvictedFromDisk =
+    new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
+
+  private def diskEvictionDecision(blockId: BlockId,
+                                   evictionSize: Long,
+                                   executorId: String): List[BlockId] = {
+
+    val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
+    val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
+    val blockManagerInfo = blockManagerMaster.blockManagerInfo(blockManagerId)
+    val currTime = System.currentTimeMillis()
+    var sizeSum = 0L
+
+    val storingCost = costAnalyzer.compDisaggCost(blockId)
+
+   recentlyEvictedFromDisk
+      .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+
+    val recentEvictionInExecutor = recentlyEvictedFromDisk(executorId)
+
+    evictionPolicy.selectEvictFromDisk(storingCost, executorId, blockId) {
+      iter =>
+        if (iter.isEmpty) {
+          logWarning(s"Low comp disagg block is empty " +
+            s"for evicting $blockId")
+          List.empty
+        } else {
+          var sum = 0.0
+
+          iter.foreach {
+            discardingBlock => {
+              if (!recentEvictionInExecutor.contains(discardingBlock.blockId)
+                && discardingBlock.blockId != blockId
+                && discardingBlock.reduction <= storingCost.reduction) {
+                val createdTime = metricTracker
+                  .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
+                if (timeToRemove(createdTime, System.currentTimeMillis())) {
+                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
+                    sum <= storingCost.reduction) {
+                    sum += discardingBlock.reduction
+                    sizeSum += metricTracker.localDiskStoredBlocksSizeMap(discardingBlock.blockId)
+                    evictionList.append(discardingBlock.blockId)
+                  }
+                }
+              }
+            }
+
+              if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
+                logInfo(s"Disk CostSum: $sum, block: $blockId")
+                evictionList.foreach {
+                  bid => recentEvictionInExecutor.add(bid)
+                }
+                return evictionList.toList
+              }
+          }
+
+          if (sizeSum >= evictionSize) {
+            logInfo(s"Disk CostSum: $sum, block: $blockId")
+            evictionList.foreach {
+              bid => recentEvictionInExecutor.add(bid)
+            }
+            return evictionList.toList
+          } else {
+            logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
+              s"for caching ${blockId} selected list: $evictionList")
+            List.empty
+          }
+        }
+    }
+  }
+
+  private def diskEvictionDone(blockId: BlockId, executorId: String): Unit = {
+    recentlyEvictedFromDisk(executorId).remove(blockId)
+    metricTracker.localDiskStoredBlocksMap(executorId).remove(blockId)
+    metricTracker.localDiskStoredBlocksSizeMap.remove(blockId)
+  }
+
+  private def diskEvictionFail(blockId: BlockId, executorId: String): Unit = {
+    recentlyEvictedFromDisk(executorId).remove(blockId)
+  }
 
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
@@ -985,6 +1080,18 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       }
 
+    case CachingInDisk(blockId, size, executorId) =>
+      cachingDoneInDisk(blockId, size, executorId)
+
+    case DiskEvictionDecision(blockId, size, executorId) =>
+      context.reply(diskEvictionDecision(blockId, size, executorId))
+
+    case DiskBlockEvictionDone(blockId, executorId, size) =>
+      BlazeLogger.evictDisk(blockId, executorId, size)
+      diskEvictionDone(blockId, executorId)
+
+    case DiskBlockEvictionFail(blockId, executorId) =>
+      diskEvictionFail(blockId, executorId)
 
     case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)

@@ -72,6 +72,13 @@ private[spark] class DefaultEvictionPolicy(
     func(lowCompDisaggBlocks)
   }
 
+  def selectEvictFromDisk(storingCost: CompDisaggCost,
+                           executorId: String,
+                           blockId: BlockId)
+                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
+    throw new RuntimeException("todo")
+  }
+
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)
                            (func: List[CompDisaggCost] => Unit): Unit = {

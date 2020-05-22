@@ -375,7 +375,11 @@ object SparkEnv extends Logging {
       val evictionPolicy = EvictionPolicy(costAnalyzer, metricTracker, conf)
 
       disaggBlockManagerEndpoint =
-        if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
+        if (conf.get(BlazeParameters.USE_DISK)) {
+          new MemDiskDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+            blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
+            metricTracker, cachingPolicy, evictionPolicy, rddJobDag)
+        } else if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
           new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
             blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
             metricTracker, cachingPolicy, evictionPolicy, rddJobDag)
@@ -396,7 +400,13 @@ object SparkEnv extends Logging {
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
         DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-        if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
+        if (conf.get(BlazeParameters.USE_DISK)) {
+          new MemDiskDisaggBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
+            new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
+              listenerBus, metricTracker, dagPath),
+            thresholdMB, new NoCostAnalyzer(metricTracker),
+            metricTracker, new RandomCachingPolicy(0.2), null, None)
+        } else if (conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
           new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
             new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
               listenerBus, metricTracker, dagPath),

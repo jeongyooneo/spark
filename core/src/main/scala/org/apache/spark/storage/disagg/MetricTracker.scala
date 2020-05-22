@@ -29,6 +29,9 @@ import scala.collection.convert.decorateAsScala._
 private[spark] class MetricTracker extends Logging {
 
   // Private values
+  val localDiskStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
+  val localDiskStoredBlocksSizeMap = new ConcurrentHashMap[BlockId, Long]().asScala
+
   val localStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   val localStoredBlocksHistoryMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   private val disaggStoredBlocks = new mutable.HashSet[BlockId]()

@@ -198,6 +198,8 @@ private[spark] class BlockManager(
     new DiskBlockManager(conf, deleteFilesOnStop)
   }
 
+  private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
+
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
 
@@ -213,7 +215,9 @@ private[spark] class BlockManager(
     new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this,
       disaggStore, executorId)
 
-  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
+  private[spark] val diskStore = new DiskStore(
+    conf, diskBlockManager, securityManager, this,
+    disaggManager, disaggStore, executorId)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -600,7 +604,7 @@ private[spark] class BlockManager(
           BlockStatus.empty
         case level =>
           val inMem = level.useMemory && memoryStore.contains(blockId)
-          val onDisk = level.useDisk && diskStore.contains(blockId)
+          val onDisk = USE_DISK && diskStore.contains(blockId)
           val deserialized = if (inMem) level.deserialized else false
           val replication = if (inMem  || onDisk) level.replication else 1
           val storageLevel = StorageLevel(
@@ -730,7 +734,7 @@ private[spark] class BlockManager(
             releaseLock(blockId, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
-        } else if (level.useDisk && diskStore.contains(blockId)) {
+        } else if (USE_DISK && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
@@ -792,7 +796,7 @@ private[spark] class BlockManager(
       // serializing in-memory objects, and, finally, throw an exception
       // if the block does not exist.
       // Try to avoid expensive serialization by reading a pre-serialized copy from disk:
-      if (level.useDisk && diskStore.contains(blockId)) {
+      if (USE_DISK && diskStore.contains(blockId)) {
         // Note: we purposely do not try to put the block back into memory here. Since this branch
         // handles deserialized blocks, this block may only be cached in memory as objects, not
         // serialized bytes. Because the caller only requested bytes, it doesn't make sense to
@@ -808,7 +812,7 @@ private[spark] class BlockManager(
     } else {  // storage level is serialized
       if (level.useMemory && memoryStore.contains(blockId)) {
         new ByteBufferBlockData(memoryStore.getBytes(blockId).get, false)
-      } else if (level.useDisk && diskStore.contains(blockId)) {
+      } else if (USE_DISK && diskStore.contains(blockId)) {
         val diskData = diskStore.getBytes(blockId)
         maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
           .map(new ByteBufferBlockData(_, false))
@@ -1252,7 +1256,7 @@ private[spark] class BlockManager(
           })
         }
 
-        if (!putSucceeded && level.useDisk) {
+        if (!putSucceeded && USE_DISK) {
           logWarning(s"Persisting block $blockId to disk instead.")
           diskStore.putBytes(blockId, bytes)
         }
@@ -1262,7 +1266,7 @@ private[spark] class BlockManager(
           disaggStore.putBytes(blockId, executorId, bytes)
         }
 
-      } else if (level.useDisk) {
+      } else if (USE_DISK) {
         diskStore.putBytes(blockId, bytes)
       } else if (level.useDisagg) {
         disaggStore.putBytes(blockId, executorId, bytes)
@@ -1422,7 +1426,7 @@ private[spark] class BlockManager(
               size = s
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
-              if (level.useDisk) {
+              if (USE_DISK) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
@@ -1439,7 +1443,7 @@ private[spark] class BlockManager(
               size = s
             case Left(partiallySerializedValues) =>
               // Not enough space to unroll this block; drop to disk if applicable
-              if (level.useDisk) {
+              if (USE_DISK) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
@@ -1451,7 +1455,7 @@ private[spark] class BlockManager(
               }
           }
         }
-      } else if (level.useDisk) {
+      } else if (USE_DISK) {
         diskStore.put(blockId) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
@@ -1759,21 +1763,25 @@ private[spark] class BlockManager(
     val level = info.level
 
     // Drop to disk, if storage level requires
-    if (level.useDisk && !diskStore.contains(blockId)) {
-      logInfo(s"Writing block $blockId to disk")
-      data() match {
-        case Left(elements) =>
-          diskStore.put(blockId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            serializerManager.dataSerializeStream(
-              blockId,
-              out,
-              elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
-          }
-        case Right(bytes) =>
-          diskStore.putBytes(blockId, bytes)
+    if (USE_DISK) {
+      if (!diskStore.contains(blockId)) {
+        logInfo(s"Writing block $blockId to disk")
+        data() match {
+          case Left(elements) =>
+            diskStore.put(blockId) { channel =>
+              val out = Channels.newOutputStream(channel)
+              serializerManager.dataSerializeStream(
+                blockId,
+                out,
+                elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
+            }
+          case Right(bytes) =>
+            diskStore.putBytes(blockId, bytes)
+        }
+        blockIsUpdated = true
+      } else {
+        logWarning(s"Block already exists in disk $blockId, cannot drop")
       }
-      blockIsUpdated = true
     } else if (level.useDisagg && !disaggStore.contains(blockId)) {
       logInfo(s"tg: Writing block $blockId to disagg")
       data() match {
@@ -1866,6 +1874,29 @@ private[spark] class BlockManager(
   }
 
   val autocaching = conf.get(BlazeParameters.AUTOCACHING)
+
+  def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Boolean = {
+    logDebug(s"Removing block $blockId")
+    blockInfoManager.lockForWriting(blockId) match {
+      case None =>
+        // The block has already been removed; do nothing.
+        reportBlockStatus(blockId, BlockStatus.empty)
+        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        logWarning(s"Asked to remove block $blockId, which does not exist")
+        false
+      case Some(info) =>
+        val removedFromDisk = diskStore.remove(blockId, true)
+        if (!removedFromDisk) {
+          logWarning(s"Block $blockId could not be removed as it was not found on disk")
+        } else {
+          blockInfoManager.removeBlock(blockId)
+          reportBlockStatus(blockId, BlockStatus.empty)
+          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        }
+
+        removedFromDisk
+    }
+  }
 
   /**
    * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
