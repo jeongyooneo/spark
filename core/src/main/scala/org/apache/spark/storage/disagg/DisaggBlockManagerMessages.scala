@@ -58,6 +58,9 @@ private[spark] object DisaggBlockManagerMessages {
                              putDisagg: Boolean, localFull: Boolean)
     extends ToBlockManagerMaster
 
+  case class CachingDone(blockId: BlockId, estimateSize: Long, executorId: String)
+    extends ToBlockManagerMaster
+
   case class FileWriteEnd(blockId: BlockId, executorId: String, size: Long)
     extends ToBlockManagerMaster
 

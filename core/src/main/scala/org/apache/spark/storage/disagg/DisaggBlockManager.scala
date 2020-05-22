@@ -136,6 +136,11 @@ class DisaggBlockManager(
       CachingFail(blockId, estimateSize, executorId, putDisagg, localFull))
   }
 
+  def cachingDone(blockId: BlockId, estimateSize: Long, executorId: String): Unit = {
+    driverEndpoint.ask(
+      CachingDone(blockId, estimateSize, executorId))
+  }
+
   def cachingDecision(blockId: BlockId, estimateSize: Long,
                       executorId: String, putDisagg: Boolean, localFull: Boolean): Boolean = {
 

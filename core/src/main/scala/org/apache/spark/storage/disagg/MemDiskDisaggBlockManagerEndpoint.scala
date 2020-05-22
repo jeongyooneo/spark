@@ -359,6 +359,14 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     recentlyEvictedFromDisk(executorId).remove(blockId)
   }
 
+  private def cachingMemoryDone(blockId: BlockId, estimateSize: Long,
+                          executorId: String): Unit = {
+    val storingCost = costAnalyzer.compDisaggCost(blockId)
+    addToLocal(blockId, executorId, estimateSize)
+    BlazeLogger.logLocalCaching(blockId, executorId,
+     estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+  }
+
   private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
@@ -370,7 +378,9 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
 
     val t = System.currentTimeMillis()
     metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
-    metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
+    if (estimateSize > 0) {
+      metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
+    }
     metricTracker.localStoredBlocksHistoryMap
       .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
     metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
@@ -392,12 +402,12 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
       } else {
         if (USE_DISK) {
           if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-            BlazeLogger.recacheDisaggToLocal(blockId, executorId)
+            // BlazeLogger.recacheDisaggToLocal(blockId, executorId)
           }
 
-          addToLocal(blockId, executorId, estimateSize)
-          BlazeLogger.logLocalCaching(blockId, executorId,
-            estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+          // addToLocal(blockId, executorId, estimateSize)
+          // BlazeLogger.logLocalCaching(blockId, executorId,
+          //  estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
           return true
         }
 
@@ -1134,6 +1144,9 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
       lock.synchronized {
         cachingFail(blockId, estimateSize, executorId, putDisagg, localFull)
       }
+
+    case CachingDone(blockId, estimateSize, executorId) =>
+      cachingMemoryDone(blockId, estimateSize, executorId)
 
     case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
       BlazeLogger.readLocal(blockId, executorId, fromRemote)

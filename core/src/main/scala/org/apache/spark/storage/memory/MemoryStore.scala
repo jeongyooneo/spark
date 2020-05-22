@@ -28,7 +28,7 @@ import org.apache.spark.internal.config.{UNROLL_MEMORY_CHECK_PERIOD, UNROLL_MEMO
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.serializer.{SerializationStream, SerializerManager}
 import org.apache.spark.storage._
-import org.apache.spark.storage.disagg.DisaggStore
+import org.apache.spark.storage.disagg.{BlazeParameters, DisaggStore}
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.collection.SizeTrackingVector
@@ -160,6 +160,8 @@ private[spark] class MemoryStore(
     if (blockId.isRDD && decisionByMaster) {
       val isFull = !memoryManager.canStoreBytesWithoutEviction(size, memoryMode)
 
+      throw new RuntimeException("Put bytes??")
+
       // here, we send cache it to the master
       // logInfo(s"Full? 111 ${isFull} $blockId, $size, executor $executorId")
       if (!disaggManager.cachingDecision(blockId, size, executorId, false, isFull)) {
@@ -246,6 +248,7 @@ private[spark] class MemoryStore(
    *         the actual stored data size is larger than reserved, but we can't request extra
    *         memory).
    */
+  val USE_DISK = conf.get(BlazeParameters.USE_DISK)
   private def putIterator[T](
       blockId: BlockId,
       values: Iterator[T],
@@ -274,39 +277,44 @@ private[spark] class MemoryStore(
 
     // check whether to cache it into memory or disagg
     if (blockId.isRDD && decisionByMaster) {
-      val estimateSize = getEstimateSize(blockId)
 
-      if (estimateSize > 0) {
-        keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
-        // it means that we cannot cache the value without eviction because the storage is full.
-        // we decide wheter to cache it in memory with eviction or in disagg
-        if (!disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling)) {
-          // We ran out of space while unrolling the values for this block
-          logUnrollFailureMessage(blockId, estimateSize)
-          return Left(unrollMemoryUsedByThisBlock)
-        }
+      if (USE_DISK) {
+        disaggManager.cachingDecision(blockId, 0,
+          executorId, false, !keepUnrolling)
       } else {
+        val estimateSize = getEstimateSize(blockId)
+        if (estimateSize > 0) {
+          keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
+          // it means that we cannot cache the value without eviction because the storage is full.
+          // we decide wheter to cache it in memory with eviction or in disagg
+          if (!disaggManager.cachingDecision(blockId, estimateSize,
+            executorId, false, !keepUnrolling)) {
+            // We ran out of space while unrolling the values for this block
+            logUnrollFailureMessage(blockId, estimateSize)
+            return Left(unrollMemoryUsedByThisBlock)
+          }
+        } else {
 
-        val l = new ListBuffer[T]
-        val estimateSize = sizeEstimation(values, l, classTag, valuesHolder)
+          val l = new ListBuffer[T]
+          val estimateSize = sizeEstimation(values, l, classTag, valuesHolder)
 
-        vHolder = new DeserializedValuesHolder[T](classTag)
-        newValues = l.toIterator
+          vHolder = new DeserializedValuesHolder[T](classTag)
+          newValues = l.toIterator
 
-        sizeEstimationMap.put(blockId, estimateSize)
-        keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
+          sizeEstimationMap.put(blockId, estimateSize)
+          keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
 
-        unrollMemoryUsedByThisBlock += estimateSize
-        logInfo(s"Block size estimation $blockId, $estimateSize, executor $executorId")
+          unrollMemoryUsedByThisBlock += estimateSize
+          logInfo(s"Block size estimation $blockId, $estimateSize, executor $executorId")
 
-        // it means that we cannot cache the value without eviction because the storage is full.
-        // we decide wheter to cache it in memory with eviction or in disagg
-        if (!disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling)) {
-          // We ran out of space while unrolling the values for this block
-          logUnrollFailureMessage(blockId, estimateSize)
-          return Left(unrollMemoryUsedByThisBlock)
+          // it means that we cannot cache the value without eviction because the storage is full.
+          // we decide wheter to cache it in memory with eviction or in disagg
+          if (!disaggManager.cachingDecision(blockId, estimateSize,
+            executorId, false, !keepUnrolling)) {
+            // We ran out of space while unrolling the values for this block
+            logUnrollFailureMessage(blockId, estimateSize)
+            return Left(unrollMemoryUsedByThisBlock)
+          }
         }
       }
     }
@@ -362,7 +370,7 @@ private[spark] class MemoryStore(
         // Synchronize so that transfer is atomic
         memoryManager.synchronized {
           releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
-          val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
+          val success = memoryManager.acquireStorageMemory(blockId, size, memoryMode)
           assert(success, "transferring unroll memory to storage memory failed")
         }
 
@@ -372,6 +380,10 @@ private[spark] class MemoryStore(
 
         logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
           Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
+
+        if (blockId.isRDD && decisionByMaster && USE_DISK) {
+          disaggManager.cachingDone(blockId, size, executorId)
+        }
         Right(entry.size)
       } else {
 
