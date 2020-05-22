@@ -285,7 +285,9 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
 
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
-    val blockManagerInfo = blockManagerMaster.blockManagerInfo(blockManagerId)
+    val blocksInManager = blockManagerMaster
+      .blockManagerInfo(blockManagerId).blocks.filter(p => p._2.diskSize > 0)
+
     val currTime = System.currentTimeMillis()
     var sizeSum = 0L
 
@@ -313,7 +315,7 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
                 val createdTime = metricTracker
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (timeToRemove(createdTime, System.currentTimeMillis())) {
-                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
+                  if (blocksInManager.contains(discardingBlock.blockId) &&
                     sum <= storingCost.reduction) {
                     sum += discardingBlock.reduction
                     sizeSum += metricTracker.localDiskStoredBlocksSizeMap(discardingBlock.blockId)
@@ -463,7 +465,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
 
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
-    val blockManagerInfo = blockManagerMaster.blockManagerInfo(blockManagerId)
+    val blocksInManager = blockManagerMaster.blockManagerInfo(blockManagerId)
+      .blocks.filter(p => p._2.memSize > 0)
     val currTime = System.currentTimeMillis()
     var sizeSum = 0L
 
@@ -481,8 +484,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
               .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
             if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
               recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
-              if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+              if (blocksInManager.contains(discardingBlock.blockId)) {
+                sizeSum += blocksInManager(discardingBlock.blockId).memSize
                 evictionList.append(discardingBlock.blockId)
               }
 
@@ -526,10 +529,10 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
-                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
+                  if (blocksInManager.contains(discardingBlock.blockId) &&
                     sum <= storingCost.reduction) {
                     sum += discardingBlock.reduction
-                    sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                    sizeSum += blocksInManager(discardingBlock.blockId).memSize
                     evictionList.append(discardingBlock.blockId)
                   }
                 }
