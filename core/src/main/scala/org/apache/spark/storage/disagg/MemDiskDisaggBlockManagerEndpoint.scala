@@ -452,9 +452,14 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     }
   }
 
+  private val recentlyEvictedFromMemory =
+    new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
   private def localEviction(blockId: Option[BlockId],
                             executorId: String, evictionSize: Long,
                             prevEvicted: Set[BlockId]): List[BlockId] = {
+    recentlyEvictedFromMemory
+      .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+    val recentEvictionInExecutor = recentlyEvictedFromMemory(executorId)
 
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
@@ -482,11 +487,18 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
               }
 
               if (sizeSum > evictionSize) {
+                evictionList.foreach {
+                  p => recentEvictionInExecutor.add(p)
+                }
                 return evictionList.toList
               }
             }
           }
         }
+      }
+
+      evictionList.foreach {
+        p => recentEvictionInExecutor.add(p)
       }
       return evictionList.toList
     }
@@ -526,12 +538,18 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
 
               if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
+                evictionList.foreach {
+                  p => recentEvictionInExecutor.add(p)
+                }
                 return evictionList.toList
               }
           }
 
           if (sizeSum >= evictionSize) {
             logInfo(s"CostSum: $sum, block: $blockId")
+            evictionList.foreach {
+              p => recentEvictionInExecutor.add(p)
+            }
             return evictionList.toList
           } else {
             logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
@@ -549,6 +567,7 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
   }
 
   private def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
+    recentlyEvictedFromMemory(executorId).remove(blockId)
     val cost = costAnalyzer.compDisaggCost(blockId)
     BlazeLogger.evictLocal(
       blockId, executorId, cost.reduction, cost.disaggCost, metricTracker.getBlockSize(blockId))
