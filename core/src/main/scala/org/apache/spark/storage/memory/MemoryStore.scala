@@ -569,7 +569,7 @@ private[spark] class MemoryStore(
         if (decisionByMaster) {
           var cnt = 0
           val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 3) {
+          while (freedMemory < space && cnt < 1) {
 
             cnt += 1
 
