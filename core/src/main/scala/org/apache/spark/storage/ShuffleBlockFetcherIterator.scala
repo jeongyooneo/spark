@@ -170,7 +170,7 @@ final class ShuffleBlockFetcherIterator(
     // is handled at another layer in the code.  When encryption is enabled, shuffle data is written
     // to disk encrypted in the first place, and sent over the network still encrypted.
     new SimpleDownloadFile(
-      blockManager.diskBlockManager.createTempLocalBlock()._2, transportConf)
+      blockManager.diskBlockManager.createTempShuffleBlock()._2, transportConf)
   }
 
   override def registerTempFileToClean(file: DownloadFile): Boolean = synchronized {

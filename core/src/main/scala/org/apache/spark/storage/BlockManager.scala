@@ -346,7 +346,7 @@ private[spark] class BlockManager(
   private def registerWithExternalShuffleServer() {
     logInfo("Registering executor with local external shuffle service.")
     val shuffleConfig = new ExecutorShuffleInfo(
-      diskBlockManager.localDirs.map(_.toString),
+      diskBlockManager.shuffleLocalDirs.map(_.toString),
       diskBlockManager.subDirsPerLocalDir,
       shuffleManager.getClass.getName)
 
