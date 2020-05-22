@@ -398,7 +398,6 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
           addToLocal(blockId, executorId, estimateSize)
           BlazeLogger.logLocalCaching(blockId, executorId,
             estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
-          true
           return true
         }
 
