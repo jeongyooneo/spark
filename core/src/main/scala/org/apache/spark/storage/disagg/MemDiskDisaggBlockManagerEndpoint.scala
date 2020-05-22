@@ -1139,6 +1139,7 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
       diskEvictionFail(blockId, executorId)
 
     case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull) =>
+      metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
