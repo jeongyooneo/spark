@@ -113,7 +113,7 @@ private[spark] class DisaggStore(
             file.getPath,
             finishTime - startTime))
 
-          true
+          Future.successful(true)
         } else {
           throw new RuntimeException(
             s"File $blockId is already created ... so skip creating the file")
