@@ -537,7 +537,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
         addToDisagg(blockId, estimateBlockSize, cost)
 
         // We create info here and lock here
-        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+        val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
         disaggBlockInfo.put(blockId, blockInfo)
         // We should unlock it after file is created
         blockWriteLock(blockId, executorId)
@@ -613,7 +613,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       addToDisagg(blockId, estimateBlockSize, cost)
 
       // We create info here and lock here
-      val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+      val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
       disaggBlockInfo.put(blockId, blockInfo)
       // We should unlock it after file is created
       blockWriteLock(blockId, executorId)
@@ -633,21 +633,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
           releaseWriteLockForDisagg(b._1)
         }
       })
-    }
-  }
-
-  private def fileCreated(blockId: BlockId): Boolean = {
-    disaggBlockInfo.get(blockId) match {
-      case None =>
-        logInfo(s"Disagg endpoint: file created: $blockId")
-        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
-        if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
-          true
-        } else {
-          false
-        }
-      case Some(v) =>
-        false
     }
   }
 
