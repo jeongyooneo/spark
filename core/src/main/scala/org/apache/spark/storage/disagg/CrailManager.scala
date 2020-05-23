@@ -19,45 +19,63 @@ package org.apache.spark.storage.disagg
 
 import org.apache.crail._
 import org.apache.crail.conf.CrailConfiguration
-import org.apache.crail.utils.CrailUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] abstract class CrailManager(isDriver: Boolean,
-                                           executorId: String) extends Logging {
+private[spark] abstract class CrailManager(isDriver: Boolean) extends Logging {
 
-  val prefix = "/spark-rdd-"
+  val rootDir = "/spark"
+  val broadcastDir = rootDir + "/broadcast"
+  val shuffleDir = rootDir + "/shuffle"
+  val rddDir = rootDir + "/rdd"
+  val tmpDir = rootDir + "/tmp"
+  val metaDir = rootDir + "/meta"
+  val hostsDir = metaDir + "/hosts"
 
   // For disaggregated memory store
   val crailConf = new CrailConfiguration()
   var fs : CrailStore = _
   fs = CrailStore.newInstance(crailConf)
 
-  var directory: String = _
-  if (!isDriver) {
-    directory = prefix + executorId
-    logInfo("creating main dir " + directory)
-    val baseDirExists: Boolean = fs.lookup(directory).get() != null
+  if (isDriver) {
+    logInfo("creating main dir " + rootDir)
+    val baseDirExists: Boolean = fs.lookup(rootDir).get() != null
     if (baseDirExists) {
-      fs.delete(directory, true).get().syncDir()
+      fs.delete(rootDir, true).get().syncDir()
     }
 
-    fs.create(directory, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
-      CrailUtils.getLocationClass, true).get().syncDir()
-    logInfo("creating main dir done " + directory)
+    fs.create(rootDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + rootDir + " done")
+    fs.create(broadcastDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + broadcastDir + " done")
+    fs.create(shuffleDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + shuffleDir + " done")
+    fs.create(rddDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + rddDir + " done")
+    fs.create(tmpDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + tmpDir + " done")
+    fs.create(metaDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating " + metaDir + " done")
+    fs.create(hostsDir, CrailNodeType.DIRECTORY, CrailStorageClass.DEFAULT,
+      CrailLocationClass.DEFAULT, true).get().syncDir()
+    logInfo("creating main dir done " + rootDir)
   }
 
   def getPath(blockId: BlockId): String = {
-    if (isDriver) {
-      throw new RuntimeException("Please provide executorId")
+    var name = tmpDir + "/" + blockId.name
+    if (blockId.isBroadcast) {
+      name = broadcastDir + "/" + blockId.name
+    } else if (blockId.isShuffle) {
+      name = shuffleDir + "/" + blockId.name
+    } else if (blockId.isRDD) {
+      name = rddDir + "/" + blockId.name
     }
-    return directory + "/" + blockId.name
-  }
-
-  def getPathForDriver(blockId: BlockId, executorId: String): String = {
-    if (!isDriver) {
-      throw new RuntimeException("Please set executor id")
-    }
-    return prefix + executorId + "/" + blockId.name
+    return name
   }
 }

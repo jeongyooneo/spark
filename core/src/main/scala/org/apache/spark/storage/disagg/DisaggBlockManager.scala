@@ -30,8 +30,7 @@ import scala.collection.convert.decorateAsScala._
 
 class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
-      conf: SparkConf,
-      executorId: String) extends CrailManager(false, executorId) with Logging {
+      conf: SparkConf) extends CrailManager(false) with Logging {
 
   def discardBlocksIfNecessary(estimateSize: Long) : Unit = {
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
@@ -158,13 +157,13 @@ class DisaggBlockManager(
     logInfo("jy: disagg: getting result for create file " + blockId.name)
 
     val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
-      CrailLocationClass.PARENT, true).get().asFile()
+      CrailLocationClass.DEFAULT, true).get().asFile()
     logInfo("jy: disagg: fresh file, writing " + blockId.name)
     fileInfo
   }
 
   def getFile(blockId: BlockId): CrailFile = {
-    val path = driverEndpoint.askSync[String](GetFilePath(blockId))
+    val path = getPath(blockId)
     fs.lookup(path).get().asFile()
   }
 

@@ -63,8 +63,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
   private val stageJobMap = new mutable.HashMap[Int, Int]()
 
-  private val blockPathMap = new ConcurrentHashMap[BlockId, String]().asScala
-
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
     def run(): Unit = {
@@ -564,7 +562,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         addToDisagg(blockId, estimateBlockSize, cost)
 
         // We create info here and lock here
-        val blockInfo = new CrailBlockInfo(blockId, getPathForDriver(blockId, executorId))
+        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
         disaggBlockInfo.put(blockId, blockInfo)
         // We should unlock it after file is created
         if (blockWriteLock(blockId, executorId)) {
@@ -644,7 +642,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       addToDisagg(blockId, estimateBlockSize, cost)
 
       // We create info here and lock here
-      val blockInfo = new CrailBlockInfo(blockId, getPathForDriver(blockId, executorId))
+      val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
       disaggBlockInfo.put(blockId, blockInfo)
       // We should unlock it after file is created
 
@@ -668,6 +666,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           releaseWriteLockForDisagg(b._1)
         }
       })
+    }
+  }
+
+  private def fileCreated(blockId: BlockId): Boolean = {
+    disaggBlockInfo.get(blockId) match {
+      case None =>
+        logInfo(s"Disagg endpoint: file created: $blockId")
+        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+        if (disaggBlockInfo.putIfAbsent(blockId, blockInfo).isEmpty) {
+          true
+        } else {
+          false
+        }
+      case Some(v) =>
+        false
     }
   }
 
@@ -749,7 +762,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         Option.empty
       case Some(info) =>
         if (info.writeDone) {
-          fs.delete(info.path, false).get()
+          val path = getPath(blockId)
+          fs.delete(path, false).get()
           metricTracker.removeDisaggBlock(blockId)
           disaggBlockInfo.remove(blockId)
           recentlyRemoved.remove(blockId)
@@ -944,9 +958,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     case SendNoCachedRDDCompTime(rddId, time) =>
       BlazeLogger.rddCompTime(rddId, time)
-
-    case GetFilePath(blockId) =>
-      context.reply(disaggBlockInfo.get(blockId).get.path)
 
     case GetSize(blockId, executorId) =>
       if (blockReadLock(blockId, executorId)) {

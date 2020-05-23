@@ -54,9 +54,6 @@ private[spark] object DisaggBlockManagerMessages {
   case class GetSize(blockId: BlockId, executorId: String)
     extends ToBlockManagerMaster
 
-  case class GetFilePath(blockId: BlockId)
-    extends ToBlockManagerMaster
-
   // for local decision
 
   case class LocalEviction(blockId: Option[BlockId], executorId: String,

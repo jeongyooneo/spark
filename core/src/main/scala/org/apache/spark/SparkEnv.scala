@@ -386,7 +386,7 @@ object SparkEnv extends Logging {
         }
 
       disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
-        DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf, executorId)
+        DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
 
     } else {
       blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
@@ -409,7 +409,7 @@ object SparkEnv extends Logging {
           thresholdMB, new NoCostAnalyzer(metricTracker),
           metricTracker, new RandomCachingPolicy(0.2), null)
         }
-      ), conf, executorId)
+      ), conf)
     }
 
     // NB: blockManager is not valid until initialize() is called later.
