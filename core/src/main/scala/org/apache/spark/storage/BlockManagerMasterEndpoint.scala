@@ -52,6 +52,7 @@ class BlockManagerMasterEndpoint(
   val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
   val executorBlockManagerMap = new ConcurrentHashMap[String, BlockManagerId]().asScala
 
+
   // disagg block size info
   private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]
 
@@ -540,7 +541,18 @@ class BlockManagerMasterEndpoint(
 
   private def getLocationsMultipleBlockIds(
       blockIds: Array[BlockId]): IndexedSeq[Seq[BlockManagerId]] = {
-    blockIds.map(blockId => getLocations(blockId))
+    blockIds.map(blockId => {
+      val localLocations = getLocations(blockId)
+      if (localLocations.isEmpty) {
+        val disaggLocs = disaggBlockManager.getLocations(blockId)
+        if (disaggLocs.nonEmpty) {
+          logInfo(s"Prefereed location in disagg $blockIds, lock $disaggLocs")
+        }
+        disaggLocs
+      } else {
+        localLocations
+      }
+    })
   }
 
   /** Get the list of the peers of the given block manager */

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpoint
-import org.apache.spark.storage.BlockId
+import org.apache.spark.storage.{BlockId, BlockManagerId}
 
 /**
  */
@@ -39,7 +39,12 @@ private[spark] abstract class DisaggBlockManagerEndpoint()
   def stageSubmitted(stageId: Int, jobId: Int): Unit
   def removeFromLocal(blockId: BlockId, executorId: String): Unit
 
+  def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
+    Seq.empty
+  }
+
   class CrailBlockInfo(blockId: BlockId,
+                       val executorId: String,
                        path: String) {
     val bid = blockId
     private var size: Long = 0L

@@ -25,7 +25,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
-import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
+import org.apache.spark.storage.{BlockId, BlockManagerId, BlockManagerMasterEndpoint}
 import org.apache.spark.util.ThreadUtils
 
 import scala.collection.convert.decorateAsScala._
@@ -49,10 +49,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val rddJobDag: Option[RDDJobDag])
   extends DisaggBlockManagerEndpoint {
 
+  blockManagerMaster.setDisaggBlockManager(this)
+
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
-
-  blockManagerMaster.setDisaggBlockManager(this)
 
   val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   val executor: ExecutorService = Executors.newCachedThreadPool()
@@ -174,6 +174,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private var prevCleanupTime = System.currentTimeMillis()
   private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
   private val currJob = new AtomicInteger(-1)
+
+
+  override def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
+    if (disaggBlockInfo.contains(blockId)) {
+      val executorId = disaggBlockInfo(blockId).executorId
+      List(blockManagerMaster.executorBlockManagerMap(executorId)).toSeq
+    } else {
+      Seq.empty
+    }
+  }
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
@@ -562,7 +572,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         addToDisagg(blockId, estimateBlockSize, cost)
 
         // We create info here and lock here
-        val blockInfo = new CrailBlockInfo(blockId, getPath(blockId))
+        val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
         disaggBlockInfo.put(blockId, blockInfo)
         // We should unlock it after file is created
         if (blockWriteLock(blockId, executorId)) {
