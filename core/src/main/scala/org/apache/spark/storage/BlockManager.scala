@@ -649,8 +649,7 @@ private[spark] class BlockManager(
     val startTime = System.currentTimeMillis()
     // Getting disagg data
 
-    val disaggData = disaggStore.getBytes(blockId)
-    disaggStore.readUnlock(blockId)
+    val disaggData = disaggStore.getStream(blockId)
 
     val disaggIter = serializerManager.dataDeserializeStream(
       blockId,
@@ -678,6 +677,7 @@ private[spark] class BlockManager(
 
           val it = memoryStore.getValues(blockId).get
           val ci = CompletionIterator[Any, Iterator[Any]](it, {
+            disaggStore.readUnlock(blockId)
             releaseLock(blockId)
           })
           Some(new BlockResult(ci, DataReadMethod.Network, size))
@@ -687,6 +687,7 @@ private[spark] class BlockManager(
           logInfo(s"Fail to store block $blockId in memory...")
           val ci = CompletionIterator[Any, Iterator[Any]](iter, {
             logInfo(s"Release disagg readlock $blockId because reading is completed 11")
+            disaggStore.readUnlock(blockId)
             disaggData.dispose()
           })
           Some(new BlockResult(ci, DataReadMethod.Network, size))
@@ -695,6 +696,7 @@ private[spark] class BlockManager(
       logInfo(s"Just read $blockId from disagg...")
       val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
         logInfo(s"Release disagg readlock $blockId because reading is completed 22")
+        disaggStore.readUnlock(blockId)
         disaggData.dispose()
       })
       Some(new BlockResult(ci, DataReadMethod.Network, size))
@@ -1104,8 +1106,7 @@ private[spark] class BlockManager(
 
         val readTime = System.currentTimeMillis()
 
-        val disaggData = disaggStore.getBytes(blockId)
-        disaggStore.readUnlock(blockId)
+        val disaggData = disaggStore.getStream(blockId)
         val disaggIter = serializerManager.dataDeserializeStream(
           blockId,
           disaggData.toInputStream())(classTag)
@@ -1116,6 +1117,7 @@ private[spark] class BlockManager(
 
         val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
           logInfo(s"Release disagg readlock $blockId because reading is completed 11")
+          disaggStore.readUnlock(blockId)
           disaggData.dispose()
         })
 
