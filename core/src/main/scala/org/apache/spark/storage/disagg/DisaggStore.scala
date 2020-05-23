@@ -28,6 +28,7 @@ import org.apache.spark.storage._
 import org.apache.spark.util.Utils
 import org.apache.spark.util.io.ChunkedByteBuffer
 
+import scala.concurrent.Future
 import scala.reflect.ClassTag
 
 /**
@@ -38,7 +39,8 @@ private[spark] class DisaggStore(
     conf: SparkConf,
     blockManagerMaster: BlockManagerMaster,
     val disaggManager: DisaggBlockManager,
-    executorId: String)
+    executorId: String,
+    blockManager: BlockManager)
   extends Logging {
 
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
@@ -54,7 +56,7 @@ private[spark] class DisaggStore(
    * @throws IllegalStateException if the block already exists in the disk store.
    */
   def put(blockId: BlockId, estimateSize: Long,
-          executorId: String)(writeFunc: WritableByteChannel => Unit): Boolean = {
+          executorId: String)(writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
     // if (contains(blockId)) {
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
@@ -63,78 +65,84 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId, true, true)) {
-      return false
-    }
+    Future {
+      try {
+        val startTime = System.currentTimeMillis
+        val file = disaggManager.createFile(blockId, executorId)
 
-    try {
-      val startTime = System.currentTimeMillis
-      val file = disaggManager.createFile(blockId, executorId)
-
-      if (file != null) {
-        val out = new CountingWritableChannel(Channels.newChannel(
-          file.getBufferedOutputStream(estimateSize)))
-        var threwException: Boolean = true
-        try {
-
-          writeFunc(out)
-          // blockSizes.put(blockId, out.getCount)
-          logInfo(s"Attempting to put block $blockId  " +
-            s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
-            s"blockSizes: ${out.getCount}")
-          threwException = false
-        } catch {
-          case e: Exception =>
-            e.printStackTrace()
-            throw e
-        } finally {
+        if (file != null) {
+          val out = new CountingWritableChannel(Channels.newChannel(
+            file.getBufferedOutputStream(estimateSize)))
+          var threwException: Boolean = true
           try {
-            out.close()
-            disaggManager.writeEnd(blockId, executorId, out.getCount)
 
-            val endTime = System.currentTimeMillis()
-            // send metric
-            disaggManager.sendSerMetric(blockId, out.getCount, endTime - startTime)
-
+            writeFunc(out)
+            // blockSizes.put(blockId, out.getCount)
+            logInfo(s"Attempting to put block $blockId  " +
+              s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
+              s"blockSizes: ${out.getCount}")
+            threwException = false
           } catch {
-            case ioe: IOException =>
-              if (!threwException) {
-                threwException = true
-                throw ioe
-              }
+            case e: Exception =>
+              e.printStackTrace()
+              throw e
           } finally {
-            if (threwException) {
-              remove(blockId)
+            try {
+              out.close()
+              disaggManager.writeEnd(blockId, executorId, out.getCount)
+
+              val endTime = System.currentTimeMillis()
+              // send metric
+              disaggManager.sendSerMetric(blockId, out.getCount, endTime - startTime)
+
+            } catch {
+              case ioe: IOException =>
+                if (!threwException) {
+                  threwException = true
+                  throw ioe
+                }
+            } finally {
+              if (threwException) {
+                remove(blockId)
+              }
             }
           }
+
+          val finishTime = System.currentTimeMillis
+          logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
+            blockId,
+            file.getPath,
+            finishTime - startTime))
+
+          true
+        } else {
+          throw new RuntimeException(
+            s"File $blockId is already created ... so skip creating the file")
         }
-
-        val finishTime = System.currentTimeMillis
-        logDebug("tg: Block %s stored as %s file on disagg in %d ms".format(
-          blockId,
-          file.getPath,
-          finishTime - startTime))
-
-        true
-      } else {
-        throw new RuntimeException(
-          s"File $blockId is already created ... so skip creating the file")
+      } catch {
+        case e: Exception =>
+          e.printStackTrace()
+          logWarning("Exception thrown when putting block " + blockId + ", " + e)
+          throw e
       }
-    } catch {
-      case e: Exception =>
-        e.printStackTrace()
-        logWarning("Exception thrown when putting block " + blockId + ", " + e)
-        throw e
-    }
+    }(blockManager.futureExecutionContext)
   }
 
   def putBytes[T: ClassTag](
       blockId: BlockId,
       executorId: String,
       bytes: ChunkedByteBuffer): Unit = {
-    put(blockId, bytes.size, executorId) { channel =>
-      bytes.writeFully(channel)
-    }
+
+    blockManager.futureExecutionContext.execute(new Runnable {
+      override def run(): Unit = {
+        if (disaggManager.cachingDecision(blockId, bytes.size, executorId, true, true)) {
+          put(blockId, bytes.size, executorId) { channel =>
+            bytes.writeFully(channel)
+          }
+        }
+      }
+    })
+
   }
 
   def getStream(blockId: BlockId): CrailBlockData = {

@@ -201,11 +201,11 @@ private[spark] class BlockManager(
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
 
-  private val futureExecutionContext = ExecutionContext.fromExecutorService(
+  val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
 
   // Disaggregation storage
-  private[spark] val disaggStore = new DisaggStore(conf, master, disaggManager, executorId)
+  private[spark] val disaggStore = new DisaggStore(conf, master, disaggManager, executorId, this)
 
   // Actual storage of where blocks are kept
   // This also implements eviction policy
@@ -1070,6 +1070,11 @@ private[spark] class BlockManager(
     }
   }
 
+  private def disaggDecision(blockId: BlockId,
+                             estimateSize: Long): Boolean = {
+    disaggManager.cachingDecision(blockId, estimateSize, executorId, true, true)
+  }
+
   private def putIteratorToDisagg[T](
                  blockId: BlockId,
                  values: Iterator[T],
@@ -1085,18 +1090,30 @@ private[spark] class BlockManager(
 
     val blockStartTime = System.currentTimeMillis()
 
-    val disaggSuccess =
-      disaggStore.put(blockId, estimateSize, executorId) { channel =>
-        val out = Channels.newOutputStream(channel)
-        serializerManager.dataSerializeStream(blockId, out, values)(classTag)
-      }
+    val putDisagg = disaggDecision(blockId, estimateSize)
 
-    if (!disaggSuccess) {
+    if (!putDisagg) {
       Right(values)
     } else {
-      if (returnValue) {
+      logInfo(s"Putting iterator to disagg  and try to get readlock ... $blockId")
 
-        logInfo(s"Putting iterator to disagg  and try to get readlock ... $blockId")
+      if (returnValue) {
+        val l2 = values.toList
+        val l1 = new mutable.ListBuffer[T]
+        l2.foreach { v => l1.append(v) }
+
+         disaggStore.put(blockId, estimateSize, executorId) { channel =>
+          val out = Channels.newOutputStream(channel)
+          serializerManager.dataSerializeStream(blockId, out, l2.toIterator)(classTag)
+        }
+
+        val ci = CompletionIterator[Any, Iterator[Any]](l1.iterator, {
+        })
+
+        Left(new BlockResult(ci, DataReadMethod.Network, estimateSize))
+
+        /*
+        val check = future.result(50 seconds)
 
         if (!disaggStore.readLock(blockId)) {
           throw new RuntimeException(s"Block $blockId is immediatly removed after creating...")
@@ -1120,7 +1137,12 @@ private[spark] class BlockManager(
         })
 
         Left(new BlockResult(ci, DataReadMethod.Network, disaggData.size))
+        */
       } else {
+        disaggStore.put(blockId, estimateSize, executorId) { channel =>
+          val out = Channels.newOutputStream(channel)
+          serializerManager.dataSerializeStream(blockId, out, values)(classTag)
+        }
         Right(values)
       }
     }
@@ -1777,14 +1799,16 @@ private[spark] class BlockManager(
       logInfo(s"tg: Writing block $blockId to disagg")
       data() match {
         case Left(elements) =>
-          disaggStore.put(blockId,
-            memoryStore.sizeEstimationMap.get(blockId),
-            executorId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            serializerManager.dataSerializeStream(
-              blockId,
-              out,
-              elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
+          if (disaggDecision(blockId, memoryStore.sizeEstimationMap.get(blockId))) {
+            disaggStore.put(blockId,
+              memoryStore.sizeEstimationMap.get(blockId),
+              executorId) { channel =>
+              val out = Channels.newOutputStream(channel)
+              serializerManager.dataSerializeStream(
+                blockId,
+                out,
+                elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
+            }
           }
         case Right(bytes) =>
           disaggStore.putBytes(blockId, executorId, bytes)
