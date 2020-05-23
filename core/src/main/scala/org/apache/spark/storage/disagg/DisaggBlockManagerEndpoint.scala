@@ -26,7 +26,7 @@ import org.apache.spark.storage.BlockId
 /**
  */
 private[spark] abstract class DisaggBlockManagerEndpoint()
-  extends CrailManager(true) with Logging with RpcEndpoint {
+  extends CrailManager(true, null) with Logging with RpcEndpoint {
 
   // Public methods
   def removeExecutor(executorId: String): Unit
@@ -40,7 +40,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint()
   def removeFromLocal(blockId: BlockId, executorId: String): Unit
 
   class CrailBlockInfo(blockId: BlockId,
-                       path: String) {
+                       val path: String) {
     val bid = blockId
     private var size: Long = 0L
     private var actualBlockSize: Long = 0L
