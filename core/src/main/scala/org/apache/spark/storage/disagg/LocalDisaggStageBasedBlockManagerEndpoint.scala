@@ -608,11 +608,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   releaseWriteLockForDisagg(bid)
                 case Some(blockInfo) =>
                   if (blockInfo.writeDone) {
-                    if (discardBlock.reduction <= 0) {
-                      totalDiscardSize += blockInfo.getActualBlockSize
-                      removeBlocks.append((bid, blockInfo))
-                      rmBlocks.append(discardBlock)
-                    } else if (timeToRemove(blockInfo.createdTime, currTime)
+                    if (timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
                       && discardBlock.reduction <= cost.reduction
                       && costSum <= cost.reduction) {
