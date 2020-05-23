@@ -193,7 +193,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       autocaching.synchronized {
 
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
-          removeDupRDDsFromDisagg
+          // removeDupRDDsFromDisagg
 
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
