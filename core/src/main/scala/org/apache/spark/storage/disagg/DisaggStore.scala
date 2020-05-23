@@ -65,7 +65,6 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    Future {
       try {
         val startTime = System.currentTimeMillis
         val file = disaggManager.createFile(blockId, executorId)
@@ -125,7 +124,6 @@ private[spark] class DisaggStore(
           logWarning("Exception thrown when putting block " + blockId + ", " + e)
           throw e
       }
-    }(blockManager.futureExecutionContext)
   }
 
   def putBytes[T: ClassTag](
@@ -133,15 +131,11 @@ private[spark] class DisaggStore(
       executorId: String,
       bytes: ChunkedByteBuffer): Unit = {
 
-    blockManager.futureExecutionContext.execute(new Runnable {
-      override def run(): Unit = {
-        if (disaggManager.cachingDecision(blockId, bytes.size, executorId, true, true)) {
-          put(blockId, bytes.size, executorId) { channel =>
-            bytes.writeFully(channel)
-          }
-        }
+    if (disaggManager.cachingDecision(blockId, bytes.size, executorId, true, true)) {
+      put(blockId, bytes.size, executorId) { channel =>
+        bytes.writeFully(channel)
       }
-    })
+    }
 
   }
 
