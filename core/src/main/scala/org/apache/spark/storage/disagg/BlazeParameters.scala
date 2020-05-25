@@ -36,7 +36,7 @@ private[spark] object BlazeParameters extends Logging {
 
   private[spark] val AUTOUNPERSIST = ConfigBuilder("spark.disagg.autounpersist")
     .booleanConf
-    .createWithDefault(false)
+    .createWithDefault(true)
 
   private[spark] val CACHING_POLICY = ConfigBuilder("spark.disagg.cachingpolicy")
     .stringConf
