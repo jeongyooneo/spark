@@ -54,7 +54,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
-  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
+  val autounpersist = conf.get(BlazeParameters.AUTOUNPERSIST)
   val executor: ExecutorService = Executors.newCachedThreadPool()
   val disableLocalCaching = conf.get(BlazeParameters.DISABLE_LOCAL_CACHING)
 
@@ -189,8 +189,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (autocaching) {
-      autocaching.synchronized {
+    if (autounpersist) {
+      autounpersist.synchronized {
 
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
           // removeDupRDDsFromDisagg

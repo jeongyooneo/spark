@@ -1888,7 +1888,7 @@ private[spark] class BlockManager(
     }
   }
 
-  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
+  val autounpersist = conf.get(BlazeParameters.AUTOUNPERSIST)
 
   /**
    * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
@@ -1900,7 +1900,7 @@ private[spark] class BlockManager(
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
 
-    if (!autocaching) {
+    if (!autounpersist) {
       val removedFromDisagg = disaggStore.remove(blockId)
     }
 

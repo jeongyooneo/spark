@@ -206,6 +206,7 @@ abstract class RDD[T: ClassTag](
   def cache(): this.type = persist()
 
   val autocaching = conf.get(BlazeParameters.AUTOCACHING)
+  val autounpersist = conf.get(BlazeParameters.AUTOUNPERSIST)
   /**
    * Mark the RDD as non-persistent, and remove all blocks for it from memory and disk.
    * @param blocking Whether to block until all blocks are deleted.
@@ -214,7 +215,7 @@ abstract class RDD[T: ClassTag](
     */
   def unpersist(blocking: Boolean = true): this.type = {
 
-    if (!autocaching) {
+    if (!autounpersist) {
       sc.unpersistRDD(id, blocking)
     }
     storageLevel = StorageLevel.NONE
