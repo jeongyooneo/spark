@@ -145,20 +145,24 @@ private[spark] class MemoryStore(
       size: Long,
       memoryMode: MemoryMode,
       _bytes: () => ChunkedByteBuffer): Boolean = {
-    require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
-    if (memoryManager.acquireStorageMemory(blockId, size, memoryMode)) {
-      // We acquired enough memory for the block, so go ahead and put it
-      val bytes = _bytes()
-      assert(bytes.size == size)
-      val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
-      entries.synchronized {
-        entries.put(blockId, entry)
+    if (!contains(blockId)) {
+      // require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
+      if (memoryManager.acquireStorageMemory(blockId, size, memoryMode)) {
+        // We acquired enough memory for the block, so go ahead and put it
+        val bytes = _bytes()
+        assert(bytes.size == size)
+        val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
+        entries.synchronized {
+          entries.put(blockId, entry)
+        }
+        logInfo("Block %s stored as bytes in memory (estimated size %s, free %s)".format(
+          blockId, Utils.bytesToString(size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
+        true
+      } else {
+        false
       }
-      logInfo("Block %s stored as bytes in memory (estimated size %s, free %s)".format(
-        blockId, Utils.bytesToString(size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
-      true
     } else {
-      false
+      true
     }
   }
 
@@ -333,37 +337,40 @@ private[spark] class MemoryStore(
       values: Iterator[T],
       classTag: ClassTag[T],
       memoryMode: MemoryMode): Either[PartiallySerializedBlock[T], Long] = {
+    if (!contains(blockId)) {
+      // require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
-    require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
+      // Initial per-task memory to request for unrolling blocks (bytes).
+      val initialMemoryThreshold = unrollMemoryThreshold
+      val chunkSize = if (initialMemoryThreshold > ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH) {
+        logWarning(s"Initial memory threshold of ${Utils.bytesToString(initialMemoryThreshold)} " +
+          s"is too large to be set as chunk size. Chunk size has been capped to " +
+          s"${Utils.bytesToString(ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH)}")
+        ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH
+      } else {
+        initialMemoryThreshold.toInt
+      }
 
-    // Initial per-task memory to request for unrolling blocks (bytes).
-    val initialMemoryThreshold = unrollMemoryThreshold
-    val chunkSize = if (initialMemoryThreshold > ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH) {
-      logWarning(s"Initial memory threshold of ${Utils.bytesToString(initialMemoryThreshold)} " +
-        s"is too large to be set as chunk size. Chunk size has been capped to " +
-        s"${Utils.bytesToString(ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH)}")
-      ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH
+      val valuesHolder = new SerializedValuesHolder[T](blockId, chunkSize, classTag,
+        memoryMode, serializerManager)
+
+      putIterator(blockId, values, classTag, memoryMode, valuesHolder) match {
+        case Right(storedSize) => Right(storedSize)
+        case Left(unrollMemoryUsedByThisBlock) =>
+          Left(new PartiallySerializedBlock(
+            this,
+            serializerManager,
+            blockId,
+            valuesHolder.serializationStream,
+            valuesHolder.redirectableStream,
+            unrollMemoryUsedByThisBlock,
+            memoryMode,
+            valuesHolder.bbos,
+            values,
+            classTag))
+      }
     } else {
-      initialMemoryThreshold.toInt
-    }
-
-    val valuesHolder = new SerializedValuesHolder[T](blockId, chunkSize, classTag,
-      memoryMode, serializerManager)
-
-    putIterator(blockId, values, classTag, memoryMode, valuesHolder) match {
-      case Right(storedSize) => Right(storedSize)
-      case Left(unrollMemoryUsedByThisBlock) =>
-        Left(new PartiallySerializedBlock(
-          this,
-          serializerManager,
-          blockId,
-          valuesHolder.serializationStream,
-          valuesHolder.redirectableStream,
-          unrollMemoryUsedByThisBlock,
-          memoryMode,
-          valuesHolder.bbos,
-          values,
-          classTag))
+      Right(getSize(blockId))
     }
   }
 
