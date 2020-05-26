@@ -398,6 +398,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               }
 
               if (sizeSum > evictionSize) {
+                evictionList.foreach {
+                  bid =>
+                    removeFromLocal(bid, executorId)
+                }
                 return evictionList.toList
               }
             }
@@ -442,12 +446,20 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
+                evictionList.foreach {
+                  bid =>
+                    removeFromLocal(bid, executorId)
+                }
                 return evictionList.toList
               }
           }
 
           if (sizeSum >= evictionSize) {
             logInfo(s"CostSum: $sum, block: $blockId")
+            evictionList.foreach {
+              bid =>
+                removeFromLocal(bid, executorId)
+            }
             return evictionList.toList
           } else {
             logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
@@ -461,14 +473,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private def localEvictionFail(blockId: BlockId, executorId: String): Unit = {
     logInfo(s"Local eviction failed: $blockId, $executorId")
     recentlyEvictFailBlocksFromLocal.put(blockId, System.currentTimeMillis())
-    // addToLocal(blockId, executorId, metricTracker.localBlockSizeHistoryMap.get(blockId))
+    addToLocal(blockId, executorId, metricTracker.localBlockSizeHistoryMap.get(blockId))
   }
 
   private def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
     val cost = costAnalyzer.compDisaggCost(blockId)
     BlazeLogger.evictLocal(
       blockId, executorId, cost.reduction, cost.disaggCost, metricTracker.getBlockSize(blockId))
-    removeFromLocal(blockId, executorId)
+    // removeFromLocal(blockId, executorId)
   }
 
 
