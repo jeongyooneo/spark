@@ -649,8 +649,8 @@ private[spark] class BlockManager(
     val startTime = System.currentTimeMillis()
     // Getting disagg data
 
-    val disaggData = disaggStore.getBytes(blockId)
-    disaggStore.readUnlock(blockId)
+    val disaggData = disaggStore.getStream(blockId)
+    // disaggStore.readUnlock(blockId)
 
     val disaggIter = serializerManager.dataDeserializeStream(
       blockId,
@@ -672,6 +672,7 @@ private[spark] class BlockManager(
           // Success
           logInfo(s"Release disagg readlock $blockId because reading performed in memory")
           disaggData.dispose()
+          disaggStore.readUnlock(blockId)
 
           // logInfo(s"Remove block from disagg $blockId as caching it again in memory")
           // disaggStore.remove(blockId)
@@ -687,6 +688,7 @@ private[spark] class BlockManager(
           logInfo(s"Fail to store block $blockId in memory...")
           val ci = CompletionIterator[Any, Iterator[Any]](iter, {
             logInfo(s"Release disagg readlock $blockId because reading is completed 11")
+            disaggStore.readUnlock(blockId)
             disaggData.dispose()
           })
           Some(new BlockResult(ci, DataReadMethod.Network, size))
@@ -695,6 +697,7 @@ private[spark] class BlockManager(
       logInfo(s"Just read $blockId from disagg...")
       val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
         logInfo(s"Release disagg readlock $blockId because reading is completed 22")
+        disaggStore.readUnlock(blockId)
         disaggData.dispose()
       })
       Some(new BlockResult(ci, DataReadMethod.Network, size))
