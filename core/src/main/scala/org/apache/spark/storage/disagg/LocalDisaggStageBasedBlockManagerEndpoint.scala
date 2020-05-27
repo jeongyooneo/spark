@@ -395,7 +395,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
             if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
               recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
-              if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
+              if (blockManagerInfo.blocks.contains(discardingBlock.blockId)
+              && !recentlyEvictBlocks.contains(discardingBlock.blockId)) {
                 sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
                 evictionList.append(discardingBlock.blockId)
               }
@@ -431,7 +432,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
                 && discardingBlock.reduction <= storingCost.reduction
-                && !disaggBlockInfo.contains(discardingBlock.blockId)) {
+                && !recentlyEvictBlocks.contains(discardingBlock.blockId)) {
                 val elapsed = currTime -
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
