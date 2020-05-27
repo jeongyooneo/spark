@@ -178,14 +178,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   override def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
     Seq.empty
-    /*
     if (disaggBlockInfo.contains(blockId)) {
       val executorId = disaggBlockInfo(blockId).executorId
       List(blockManagerMaster.executorBlockManagerMap(executorId)).toSeq
     } else {
       Seq.empty
     }
-    */
   }
 
   def stageCompleted(stageId: Int): Unit = {
