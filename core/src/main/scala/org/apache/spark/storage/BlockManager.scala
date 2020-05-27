@@ -1941,6 +1941,8 @@ private[spark] class BlockManager(
       // Closing should be idempotent, but maybe not for the NioBlockTransferService.
       shuffleClient.close()
     }
+
+    disaggStore.stop()
     remoteBlockTempFileManager.stop()
     diskBlockManager.stop()
     rpcEnv.stop(slaveEndpoint)
