@@ -400,7 +400,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               if (sizeSum > evictionSize) {
                 evictionList.foreach {
                   bid =>
-                    recentlyEvictBlocks.put(blockId, true)
+                    recentlyEvictBlocks.put(bid, true)
                 }
                 return evictionList.toList
               }
@@ -449,7 +449,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 logInfo(s"CostSum: $sum, block: $blockId")
                 evictionList.foreach {
                   bid =>
-                    recentlyEvictBlocks.put(blockId, true)
+                    recentlyEvictBlocks.put(bid, true)
                 }
                 return evictionList.toList
               }
@@ -459,7 +459,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             logInfo(s"CostSum: $sum, block: $blockId")
             evictionList.foreach {
               bid =>
-                recentlyEvictBlocks.put(blockId, true)
+                recentlyEvictBlocks.put(bid, true)
             }
             return evictionList.toList
           } else {
