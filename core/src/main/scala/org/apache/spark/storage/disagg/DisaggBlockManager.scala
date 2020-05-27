@@ -189,10 +189,10 @@ class DisaggBlockManager(
   def blockExists(blockId: BlockId, executorId: String): Boolean = {
     try {
       var result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
-      if (result == 2) {
+      while (result == 2) {
         logInfo(s"blockExist check again $blockId, executorId: $executorId")
-        // Thread.sleep(1000)
-        // result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
+        Thread.sleep(1000)
+        result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
       }
       result == 1
     } catch {
