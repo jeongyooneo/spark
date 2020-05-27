@@ -435,7 +435,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+                if (elapsed > 10000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
                     sum <= storingCost.reduction) {
@@ -447,7 +447,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               }
             }
 
-              if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
+              if (sizeSum >= evictionSize + 30 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
                 evictionList.foreach {
                   bid =>
@@ -603,6 +603,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       evictionPolicy.selectEvictFromDisagg(cost, blockId) {
         iter =>
           val discardSizeSum = iter.map(x => metricTracker.getBlockSize(x.blockId)).sum
+
+          val index = ((iter.size - 1) * 0.3).toInt
+          if (iter(index).reduction > cost.reduction) {
+            BlazeLogger.discardDisagg(blockId, cost.reduction,
+              cost.disaggCost, estimateSize, "Lower than 30% reduction")
+            return false
+          }
 
           if (discardSizeSum < removalSize) {
             // just discard this block
