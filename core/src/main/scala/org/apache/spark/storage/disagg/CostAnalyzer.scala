@@ -161,12 +161,14 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInDisagg =
       Some(disaggL.sortWith(_.reduction < _.reduction))
 
+    /*
     sortedBlockByCompSizeRatioInDisagg =
       Some(disaggL.sortWith((x, y) => {
         val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
         val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
         b1 < b2
       }))
+      */
 
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
