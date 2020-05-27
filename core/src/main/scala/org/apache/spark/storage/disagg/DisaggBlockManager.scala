@@ -20,7 +20,6 @@ package org.apache.spark.storage.disagg
 import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.crail._
-import org.apache.crail.utils.CrailUtils
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
@@ -158,7 +157,7 @@ class DisaggBlockManager(
     logInfo("jy: disagg: getting result for create file " + blockId.name)
 
     val fileInfo = fs.create(path, CrailNodeType.DATAFILE, CrailStorageClass.DEFAULT,
-      CrailUtils.getLocationClass, true).get().asFile()
+      CrailLocationClass.DEFAULT, true).get().asFile()
     logInfo("jy: disagg: fresh file, writing " + blockId.name)
     fileInfo
   }
