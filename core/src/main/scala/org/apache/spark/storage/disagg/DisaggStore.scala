@@ -55,7 +55,7 @@ private[spark] class DisaggStore(
     putExecutor.shutdownNow()
   }
 
-  val putExecutor = Executors.newFixedThreadPool(25)
+  val putExecutor = Executors.newFixedThreadPool(20)
 
   /**
    * Invokes the provided callback function to write the specific block.
