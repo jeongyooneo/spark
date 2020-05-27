@@ -400,7 +400,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               if (sizeSum > evictionSize) {
                 evictionList.foreach {
                   bid =>
-                    removeFromLocal(bid, executorId)
+                    recentlyEvictBlocks.put(blockId, true)
                 }
                 return evictionList.toList
               }
@@ -427,7 +427,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
-                && discardingBlock.reduction <= storingCost.reduction) {
+                && discardingBlock.reduction <= storingCost.reduction
+                && !disaggBlockInfo.contains(discardingBlock.blockId)) {
                 val elapsed = currTime -
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
@@ -448,7 +449,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 logInfo(s"CostSum: $sum, block: $blockId")
                 evictionList.foreach {
                   bid =>
-                    removeFromLocal(bid, executorId)
+                    recentlyEvictBlocks.put(blockId, true)
                 }
                 return evictionList.toList
               }
@@ -458,7 +459,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             logInfo(s"CostSum: $sum, block: $blockId")
             evictionList.foreach {
               bid =>
-                removeFromLocal(bid, executorId)
+                recentlyEvictBlocks.put(blockId, true)
             }
             return evictionList.toList
           } else {
@@ -470,17 +471,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+  private val recentlyEvictBlocks = new ConcurrentHashMap[BlockId, Boolean]().asScala
+
   private def localEvictionFail(blockId: BlockId, executorId: String): Unit = {
     logInfo(s"Local eviction failed: $blockId, $executorId")
     recentlyEvictFailBlocksFromLocal.put(blockId, System.currentTimeMillis())
-    addToLocal(blockId, executorId, metricTracker.localBlockSizeHistoryMap.get(blockId))
+    // addToLocal(blockId, executorId, metricTracker.localBlockSizeHistoryMap.get(blockId))
+    recentlyEvictBlocks.remove(blockId)
   }
 
   private def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
     val cost = costAnalyzer.compDisaggCost(blockId)
     BlazeLogger.evictLocal(
       blockId, executorId, cost.reduction, cost.disaggCost, metricTracker.getBlockSize(blockId))
-    // removeFromLocal(blockId, executorId)
+    recentlyEvictBlocks.remove(blockId)
+    removeFromLocal(blockId, executorId)
   }
 
 
