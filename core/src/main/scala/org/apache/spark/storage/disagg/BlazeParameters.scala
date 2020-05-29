@@ -38,6 +38,10 @@ private[spark] object BlazeParameters extends Logging {
     .booleanConf
     .createWithDefault(true)
 
+  private[spark] val DISAGG_THREADS = ConfigBuilder("spark.disagg.writethreads")
+    .intConf
+    .createWithDefault(15)
+
   private[spark] val CACHING_POLICY = ConfigBuilder("spark.disagg.cachingpolicy")
     .stringConf
     .createWithDefault("Blaze")
