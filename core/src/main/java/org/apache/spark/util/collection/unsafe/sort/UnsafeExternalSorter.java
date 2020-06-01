@@ -229,7 +229,7 @@ public final class UnsafeExternalSorter extends MemoryConsumer {
     // records. Otherwise, if the task is over allocated memory, then without freeing the memory
     // pages, we might not be able to get memory for the pointer array.
 
-    taskContext.taskMetrics().incMemoryBytesSpilled(spillSize);
+    taskContext.taskMetrics().incMemoryBytesSpilled(spillSize, this.getClass().getSimpleName());
     taskContext.taskMetrics().incDiskBytesSpilled(writeMetrics.bytesWritten());
     totalSpillBytes += spillSize;
     return spillSize;
@@ -557,7 +557,7 @@ public final class UnsafeExternalSorter extends MemoryConsumer {
         totalSortTimeNanos += inMemSorter.getSortTimeNanos();
         inMemSorter.free();
         inMemSorter = null;
-        taskContext.taskMetrics().incMemoryBytesSpilled(released);
+        taskContext.taskMetrics().incMemoryBytesSpilled(released, this.getClass().getSimpleName());
         taskContext.taskMetrics().incDiskBytesSpilled(writeMetrics.bytesWritten());
         totalSpillBytes += released;
         return released;

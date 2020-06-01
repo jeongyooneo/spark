@@ -712,7 +712,7 @@ private[spark] class ExternalSorter[K, V, C](
     }
 
     writer.close()
-    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled)
+    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled, this.getClass().getSimpleName())
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
 
@@ -785,7 +785,7 @@ private[spark] class ExternalSorter[K, V, C](
       }
     }
 
-    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled)
+    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled, this.getClass().getSimpleName())
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
   }

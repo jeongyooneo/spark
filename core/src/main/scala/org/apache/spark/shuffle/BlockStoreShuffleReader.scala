@@ -126,7 +126,8 @@ private[spark] class BlockStoreShuffleReader[K, C](
         val sorter =
           new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = dep.serializer)
         sorter.insertAll(aggregatedIter)
-        context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled)
+        context.taskMetrics().incMemoryBytesSpilled(sorter.memoryBytesSpilled,
+          this.getClass().getSimpleName())
         context.taskMetrics().incDiskBytesSpilled(sorter.diskBytesSpilled)
         context.taskMetrics().incPeakExecutionMemory(sorter.peakMemoryUsedBytes)
         // Use completion callback to stop sorter if task was finished/cancelled.

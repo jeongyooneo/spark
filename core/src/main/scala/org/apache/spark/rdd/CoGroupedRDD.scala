@@ -154,7 +154,8 @@ class CoGroupedRDD[K: ClassTag](
     for ((it, depNum) <- rddIterators) {
       map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
     }
-    context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
+    context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled,
+      this.getClass().getSimpleName())
     context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
     new InterruptibleIterator(context,

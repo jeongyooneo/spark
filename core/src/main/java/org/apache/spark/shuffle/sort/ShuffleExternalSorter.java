@@ -279,7 +279,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
     // Reset the in-memory sorter's pointer array only after freeing up the memory pages holding the
     // records. Otherwise, if the task is over allocated memory, then without freeing the memory
     // pages, we might not be able to get memory for the pointer array.
-    taskContext.taskMetrics().incMemoryBytesSpilled(spillSize);
+    taskContext.taskMetrics().incMemoryBytesSpilled(spillSize, this.getClass().getSimpleName());
     return spillSize;
   }
 

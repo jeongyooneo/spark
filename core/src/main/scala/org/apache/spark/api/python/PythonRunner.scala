@@ -490,7 +490,7 @@ private[spark] abstract class BasePythonRunner[IN, OUT](
         init, finish))
       val memoryBytesSpilled = stream.readLong()
       val diskBytesSpilled = stream.readLong()
-      context.taskMetrics.incMemoryBytesSpilled(memoryBytesSpilled)
+      context.taskMetrics.incMemoryBytesSpilled(memoryBytesSpilled, "PythonRunner")
       context.taskMetrics.incDiskBytesSpilled(diskBytesSpilled)
     }
 
