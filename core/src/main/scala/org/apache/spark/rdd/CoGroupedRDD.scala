@@ -24,6 +24,7 @@ import scala.reflect.ClassTag
 
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.util.Utils
 import org.apache.spark.util.collection.{CompactBuffer, ExternalAppendOnlyMap}
@@ -78,7 +79,7 @@ private[spark] class CoGroupPartition(
 class CoGroupedRDD[K: ClassTag](
     @transient var rdds: Seq[RDD[_ <: Product2[K, _]]],
     part: Partitioner)
-  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) {
+  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) with Logging{
 
   // For example, `(k, a) cogroup (k, b)` produces k -> Array(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Array as a CoGroupCombiner.
@@ -154,8 +155,9 @@ class CoGroupedRDD[K: ClassTag](
     for ((it, depNum) <- rddIterators) {
       map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
     }
-    context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled,
-      this.getClass().getSimpleName())
+    context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
+    logInfo(s"jy: spill size ${map.memoryBytesSpilled}, ${this.getClass().getSimpleName}")
+
     context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
     new InterruptibleIterator(context,

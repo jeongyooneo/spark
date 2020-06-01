@@ -18,6 +18,7 @@
 package org.apache.spark
 
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.internal.Logging
 import org.apache.spark.util.collection.ExternalAppendOnlyMap
 
 /**
@@ -32,8 +33,7 @@ import org.apache.spark.util.collection.ExternalAppendOnlyMap
 case class Aggregator[K, V, C] (
     createCombiner: V => C,
     mergeValue: (C, V) => C,
-    mergeCombiners: (C, C) => C) {
-
+    mergeCombiners: (C, C) => C) extends Logging {
   def combineValuesByKey(
       iter: Iterator[_ <: Product2[K, V]],
       context: TaskContext): Iterator[(K, C)] = {
@@ -55,7 +55,8 @@ case class Aggregator[K, V, C] (
   /** Update task metrics after populating the external map. */
   private def updateMetrics(context: TaskContext, map: ExternalAppendOnlyMap[_, _, _]): Unit = {
     Option(context).foreach { c =>
-      c.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled, this.getClass().getSimpleName())
+      c.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
+      logInfo(s"jy: spill size ${map.memoryBytesSpilled}, ${this.getClass().getSimpleName}")
       c.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
       c.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
     }

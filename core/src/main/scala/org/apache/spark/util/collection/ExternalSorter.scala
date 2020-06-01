@@ -474,7 +474,7 @@ private[spark] class ExternalSorter[K, V, C](
    * An internal class for reading a spilled file partition by partition. Expects all the
    * partitions to be requested in order.
    */
-  private[this] class SpillReader(spill: SpilledFile) {
+  private[this] class SpillReader(spill: SpilledFile) extends Logging {
     // Serializer batch offsets; size will be batchSize.length + 1
     val batchOffsets = spill.serializerBatchSizes.scanLeft(0L)(_ + _)
 
@@ -712,7 +712,8 @@ private[spark] class ExternalSorter[K, V, C](
     }
 
     writer.close()
-    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled, this.getClass().getSimpleName())
+    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled)
+    logInfo(s"jy: spill size $memoryBytesSpilled, ${this.getClass().getSimpleName()}")
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
 
@@ -785,7 +786,8 @@ private[spark] class ExternalSorter[K, V, C](
       }
     }
 
-    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled, this.getClass().getSimpleName())
+    context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled)
+    logInfo(s"jy: spill size $memoryBytesSpilled, ${this.getClass().getSimpleName()}")
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
   }
