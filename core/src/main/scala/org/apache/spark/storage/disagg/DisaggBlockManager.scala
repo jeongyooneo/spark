@@ -29,7 +29,7 @@ import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 
 import scala.collection.convert.decorateAsScala._
 
-class DisaggBlockManager(
+private[spark] class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends CrailManager(false) with Logging {
 
