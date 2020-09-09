@@ -58,6 +58,10 @@ private[spark] class DisaggBlockManager(
     }
   }
 
+  def putSize(blockId: BlockId, executorId: String, size: Long): Unit = {
+    driverEndpoint.ask(PutSize(blockId, executorId, size))
+  }
+
   def localEviction(blockId: Option[BlockId], executorId: String, size: Long,
                     prevEvicted: Set[BlockId]): List[BlockId] = {
     driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size, prevEvicted))

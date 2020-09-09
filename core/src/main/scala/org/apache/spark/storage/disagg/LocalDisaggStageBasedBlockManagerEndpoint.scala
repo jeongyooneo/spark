@@ -232,13 +232,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             rdd =>
               logInfo(s"Remove zero cost rdd $rdd from memory")
               // remove from local executors
-              blockManagerMaster.removeRdd(rdd)
+              blockManagerMaster.removeRdd(rdd).onComplete(l => {
+                logInfo(s"Completed RDD removal $rdd in local")
+                removeRddsFromLocal(Set(rdd))
+                removeRddsFromDisagg(Set(rdd))
+              })
             // remove local info
           }
-
-          // Here, we remove RDDs from local and disagg
-          removeRddsFromLocal(zeroRDDs)
-          removeRddsFromDisagg(zeroRDDs)
 
           prevCleanupTime = System.currentTimeMillis()
         }
@@ -715,11 +715,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 if (rdds.contains(bid.asRDDId.get.rddId)) {
                   removeSet.add((bid, executorId))
                 }
-                removeSet.foreach(pair => {
-                  BlazeLogger.removeZeroBlocks(pair._1, pair._2)
-                  removeFromLocal(pair._1, pair._2)
-                })
             }
+
+            removeSet.foreach(pair => {
+              BlazeLogger.removeZeroBlocks(pair._1, pair._2)
+              removeFromLocal(pair._1, pair._2)
+            })
           }
       }
     }
@@ -1041,6 +1042,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       } else {
         context.reply(-1L)
       }
+
+    case PutSize(blockId, executorId, estimateSize) =>
+      val t = System.currentTimeMillis()
+      metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
+      metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
+      metricTracker.localStoredBlocksHistoryMap
+        .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+      metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
+      metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
   }
 }
 

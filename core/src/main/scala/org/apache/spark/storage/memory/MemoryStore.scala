@@ -273,6 +273,8 @@ private[spark] class MemoryStore(
     var newValues = values
 
     // check whether to cache it into memory or disagg
+    var cachingDecidedByMaster = false
+
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)
 
@@ -285,32 +287,11 @@ private[spark] class MemoryStore(
           // We ran out of space while unrolling the values for this block
           logUnrollFailureMessage(blockId, estimateSize)
           return Left(unrollMemoryUsedByThisBlock)
-        }
-      } else {
-
-        val l = new ListBuffer[T]
-        val estimateSize = sizeEstimation(values, l, classTag, valuesHolder)
-
-        vHolder = new DeserializedValuesHolder[T](classTag)
-        newValues = l.toIterator
-
-        sizeEstimationMap.put(blockId, estimateSize)
-        keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
-
-        unrollMemoryUsedByThisBlock += estimateSize
-        logInfo(s"Block size estimation $blockId, $estimateSize, executor $executorId")
-
-        // it means that we cannot cache the value without eviction because the storage is full.
-        // we decide wheter to cache it in memory with eviction or in disagg
-        if (!disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling)) {
-          // We ran out of space while unrolling the values for this block
-          logUnrollFailureMessage(blockId, estimateSize)
-          return Left(unrollMemoryUsedByThisBlock)
+        } else {
+          cachingDecidedByMaster = true
         }
       }
     }
-
 
     // Request enough memory to begin unrolling
     keepUnrolling =
@@ -366,6 +347,17 @@ private[spark] class MemoryStore(
           assert(success, "transferring unroll memory to storage memory failed")
         }
 
+        if (blockId.isRDD && decisionByMaster && !cachingDecidedByMaster) {
+          sizeEstimationMap.put(blockId, entry.size)
+          if (!disaggManager.cachingDecision(blockId, entry.size,
+            executorId, false, !keepUnrolling)) {
+            logUnrollFailureMessage(blockId, entry.size)
+            return Left(unrollMemoryUsedByThisBlock)
+          } else {
+            cachingDecidedByMaster = true
+          }
+        }
+
         entries.synchronized {
           entries.put(blockId, entry)
         }
@@ -375,8 +367,14 @@ private[spark] class MemoryStore(
         Right(entry.size)
       } else {
 
-        if (blockId.isRDD && decisionByMaster) {
-          disaggManager.cachingFail(blockId, size, executorId, false, true)
+        if (blockId.isRDD && decisionByMaster && cachingDecidedByMaster) {
+          disaggManager.cachingFail(blockId, entryBuilder.preciseSize,
+            executorId, false, true)
+
+          if (!sizeEstimationMap.containsKey(blockId)) {
+            sizeEstimationMap.put(blockId, entryBuilder.preciseSize)
+            disaggManager.putSize(blockId, executorId, entryBuilder.preciseSize)
+          }
         }
 
 
@@ -387,7 +385,7 @@ private[spark] class MemoryStore(
         Left(unrollMemoryUsedByThisBlock)
       }
     } else {
-      if (blockId.isRDD && decisionByMaster) {
+      if (blockId.isRDD && decisionByMaster && cachingDecidedByMaster) {
         disaggManager.cachingFail(blockId, 0L, executorId, false, true)
       }
 
@@ -562,6 +560,12 @@ private[spark] class MemoryStore(
           entry.memoryMode == memoryMode && (rddToAdd.isEmpty || rddToAdd != getRddId(blockId))
       }
 
+      blockId.foreach { id =>
+        if (!sizeEstimationMap.containsKey(id) && id.isRDD && decisionByMaster) {
+          disaggManager.putSize(id, executorId, space)
+        }
+      }
+
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
@@ -569,7 +573,7 @@ private[spark] class MemoryStore(
         if (decisionByMaster) {
           var cnt = 0
           val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 3) {
+          while (freedMemory < space && cnt < 2) {
 
             cnt += 1
 

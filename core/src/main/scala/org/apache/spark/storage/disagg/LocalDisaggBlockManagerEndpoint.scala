@@ -970,6 +970,15 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
         context.reply(cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace))
       }
 
+    case PutSize(blockId, executorId, estimateSize) =>
+      val t = System.currentTimeMillis()
+      metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
+      metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
+      metricTracker.localStoredBlocksHistoryMap
+        .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+      metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
+      metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
+
     case GetLocalBlockSize(blockId) =>
       if (metricTracker.localBlockSizeHistoryMap.containsKey(blockId)) {
         context.reply(metricTracker.localBlockSizeHistoryMap.get(blockId))
