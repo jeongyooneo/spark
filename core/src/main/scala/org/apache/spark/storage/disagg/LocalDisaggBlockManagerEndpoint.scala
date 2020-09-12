@@ -256,6 +256,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
     if (!putDisagg) {
       addToLocal(blockId, executorId, estimateSize)
+      metricTracker.nectarCostMap.put(blockId, new NectarInfo(0L, 0))
       BlazeLogger.logLocalCaching(blockId, executorId,
         estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
       return true
@@ -944,6 +945,15 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       }
 
     case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
+      metricTracker.nectarCostMap.putIfAbsent(blockId,
+        new NectarInfo(0L, 0))
+
+      val nectarInfo = metricTracker.nectarCostMap.get(blockId)
+      nectarInfo synchronized {
+        nectarInfo.refTime = System.currentTimeMillis()
+        nectarInfo.refCnt += 1
+      }
+
       BlazeLogger.readLocal(blockId, executorId, fromRemote)
 
     case IsRddCache(rddId) =>
@@ -963,6 +973,8 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       }
     case LocalEvictionDone(blockId, executorId) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
+      metricTracker.nectarCostMap.remove(blockId)
+
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
         localEvictionDone(blockId, executorId)
