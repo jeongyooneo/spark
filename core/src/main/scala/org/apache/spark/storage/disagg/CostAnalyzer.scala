@@ -287,6 +287,8 @@ object CostAnalyzer {
         new NoCostAnalyzer(metricTracker)
       } else if (costType.equals("LRC")) {
         new LRCCostAnalyzer(rDDJobDag.get, metricTracker)
+      } else if (costType.equals("Nectar")) {
+        new NectarCostAnalyzer(rDDJobDag.get, metricTracker)
       } else {
         throw new RuntimeException(s"Unsupported cost function: $costType")
       }

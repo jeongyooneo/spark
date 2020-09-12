@@ -37,6 +37,8 @@ private[spark] class MetricTracker extends Logging {
   private val localBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
+  val nectarCostMap = new ConcurrentHashMap[BlockId, NectarInfo]()
+
   // Public values
   // disagg total size
   val disaggTotalSize: AtomicLong = new AtomicLong(0)
