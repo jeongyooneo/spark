@@ -275,6 +275,7 @@ private[spark] class MemoryStore(
     // check whether to cache it into memory or disagg
     var cachingDecidedByMaster = false
 
+    /*
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)
 
@@ -292,6 +293,7 @@ private[spark] class MemoryStore(
         }
       }
     }
+    */
 
     // Request enough memory to begin unrolling
     keepUnrolling =
