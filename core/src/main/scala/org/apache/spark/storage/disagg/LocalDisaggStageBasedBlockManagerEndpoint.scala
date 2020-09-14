@@ -192,8 +192,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     if (autounpersist) {
       autounpersist.synchronized {
 
-        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+        if (System.currentTimeMillis() - prevCleanupTime >= 20000) {
           // removeDupRDDsFromDisagg
+
+          val zeroDisagg = costAnalyzer.findZeroPartitions
 
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
@@ -238,7 +240,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           // Here, we remove RDDs from local and disagg
           removeRddsFromLocal(zeroRDDs)
-          removeRddsFromDisagg(zeroRDDs)
+          removePartitionsFromDisagg(zeroDisagg)
+          // removeRddsFromDisagg(zeroRDDs)
 
           prevCleanupTime = System.currentTimeMillis()
         }
@@ -719,6 +722,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       }
     })
+  }
+
+  private def removePartitionsFromDisagg(partitions: Set[BlockId]): Unit = {
+
+    partitions.foreach {
+      bid => if (disaggBlockInfo.contains(bid)) {
+        if (tryWriteLockHeldForDisagg(bid)) {
+          BlazeLogger.removeZeroBlocksInDisagg(bid)
+          removeFromDisagg(bid)
+          releaseWriteLockForDisagg(bid)
+        } else {
+          logInfo(s"Failure of lock block for removing $bid")
+        }
+      }
+    }
   }
 
   private def removeRddsFromDisagg(rdds: Set[Int]): Unit = {

@@ -198,6 +198,26 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
   }
 
+  def findZeroPartitions: collection.Set[BlockId] = {
+    update
+
+    val disaggZero: mutable.HashSet[BlockId] = new mutable.HashSet[BlockId]()
+
+    sortedBlockByCompCostInDisagg match {
+      case None =>
+      case Some(l) =>
+        l.foreach {
+          cost =>
+            if (cost.reduction <= 0) {
+              disaggZero.add(cost.blockId)
+            }
+        }
+    }
+
+    disaggZero.toSet
+  }
+
+
   def findZeroCostRDDs: collection.Set[Int] = {
     update
 
