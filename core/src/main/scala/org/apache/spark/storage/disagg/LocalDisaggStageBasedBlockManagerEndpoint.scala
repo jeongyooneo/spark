@@ -576,7 +576,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
 
     val removalSize = Math.max(estimateBlockSize, metricTracker
-      .disaggTotalSize.addAndGet(estimateBlockSize)
+      .disaggTotalSize.get()
        - disaggThreshold + 2 * (1024 * 1024))
 
     // If we have enough space in disagg memory, cache it
