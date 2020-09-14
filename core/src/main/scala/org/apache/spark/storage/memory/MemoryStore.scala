@@ -302,6 +302,7 @@ private[spark] class MemoryStore(
     if (!keepUnrolling) {
       logWarning(s"Failed to reserve initial memory threshold of " +
         s"${Utils.bytesToString(initialMemoryThreshold)} for computing block $blockId in memory.")
+      return Left(unrollMemoryUsedByThisBlock)
     } else {
       unrollMemoryUsedByThisBlock += initialMemoryThreshold
     }
