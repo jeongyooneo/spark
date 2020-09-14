@@ -361,7 +361,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
               recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
             val createdTime = metricTracker
               .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-            if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+            if (elapsed > 1000 && timeToRemove(createdTime, System.currentTimeMillis())) {
               recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
               if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
                 sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
@@ -385,6 +385,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     val bid = blockId.get
     val storingCost = costAnalyzer.compDisaggCost(bid)
 
+    logInfo(s"RecentlyFaileDBlocks: ${recentlyEvictFailBlocksFromLocal}")
     evictionPolicy.selectEvictFromLocal(storingCost, executorId, blockId.get) {
       iter =>
         if (iter.isEmpty) {
@@ -402,7 +403,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                   recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+                if (elapsed > 1000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
                     sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
@@ -959,7 +960,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        context.reply(localEviction(blockId, executorId, size + 1 * 1024 * 1024, prevEvicted))
+        context.reply(localEviction(blockId, executorId, size + 4 * 1024 * 1024, prevEvicted))
       }
     case EvictionFail(blockId, executorId) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
