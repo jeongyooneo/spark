@@ -55,6 +55,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
   val autounpersist = conf.get(BlazeParameters.AUTOUNPERSIST)
+  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   val executor: ExecutorService = Executors.newCachedThreadPool()
   val disableLocalCaching = conf.get(BlazeParameters.DISABLE_LOCAL_CACHING)
 
@@ -189,10 +190,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (autounpersist) {
-      autounpersist.synchronized {
+    if (autocaching) {
+      autocaching.synchronized {
 
-        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+        if (System.currentTimeMillis() - prevCleanupTime >= 20000) {
           // removeDupRDDsFromDisagg
 
           // unpersist rdds
@@ -228,6 +229,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 }
             }
 
+          val zeroDisagg = costAnalyzer.findZeroPartitions
+
           zeroRDDs.foreach {
             rdd =>
               logInfo(s"Remove zero cost rdd $rdd from memory")
@@ -235,12 +238,28 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               blockManagerMaster.removeRdd(rdd).onComplete(l => {
                 logInfo(s"Completed RDD removal $rdd in local")
                 removeRddsFromLocal(Set(rdd))
-                removeRddsFromDisagg(Set(rdd))
               })
             // remove local info
           }
 
+          removePartitionsFromDisagg(zeroDisagg)
+
           prevCleanupTime = System.currentTimeMillis()
+        }
+      }
+    }
+  }
+
+  private def removePartitionsFromDisagg(partitions: Set[BlockId]): Unit = {
+
+    partitions.foreach {
+      bid => if (disaggBlockInfo.contains(bid)) {
+        if (tryWriteLockHeldForDisagg(bid)) {
+          BlazeLogger.removeZeroBlocksInDisagg(bid)
+          removeFromDisagg(bid)
+          releaseWriteLockForDisagg(bid)
+        } else {
+          logInfo(s"Failure of lock block for removing $bid")
         }
       }
     }
