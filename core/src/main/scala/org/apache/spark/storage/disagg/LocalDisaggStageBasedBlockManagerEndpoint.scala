@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage.disagg
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import java.util.concurrent.locks.{ReadWriteLock, StampedLock}
 import java.util.concurrent.{ConcurrentHashMap, ExecutorService, Executors, TimeUnit}
 
@@ -531,6 +531,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.addBlockInDisagg(blockId, estimateBlockSize)
   }
 
+  val batchedRequests = new mutable.ListBuffer[(BlockId, Long, String, Boolean)]
+  val evictionHold = new AtomicBoolean(false)
+
   private def disaggDecision(blockId: BlockId,
                              estimateSize: Long,
                              executorId: String,
@@ -550,8 +553,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       new mutable.ListBuffer[CompDisaggCost]
 
     var totalDiscardSize = 0L
-    val removalSize = Math.max(estimateBlockSize, metricTracker.disaggTotalSize.get()
-      + estimateBlockSize - disaggThreshold + 2 * (1024 * 1024))
 
     if (cost.reduction <= 0) {
       BlazeLogger.discardDisagg(
@@ -559,23 +560,76 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       return false
     }
 
-    disaggBlockLockMap.synchronized {
-      if (disaggBlockInfo.contains(blockId)) {
+    if (disaggBlockInfo.contains(blockId)) {
         BlazeLogger.discardDisagg(
           blockId, cost.reduction, cost.disaggCost, estimateSize, "by master1")
         return false
       }
 
+    val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
+    val option = disaggBlockInfo.putIfAbsent(blockId, blockInfo)
 
-      // If we have enough space in disagg memory, cache it
-      if (metricTracker.disaggTotalSize.get() + estimateBlockSize < disaggThreshold) {
-        BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
-        addToDisagg(blockId, estimateBlockSize, cost)
+    if (option.isDefined) {
+      BlazeLogger.discardDisagg(
+          blockId, cost.reduction, cost.disaggCost, estimateSize, "by master1")
+      return false
+    }
 
-        // We create info here and lock here
-        val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
-        disaggBlockInfo.put(blockId, blockInfo)
-        // We should unlock it after file is created
+    val removalSize = Math.max(estimateBlockSize, metricTracker
+      .disaggTotalSize.addAndGet(estimateBlockSize)
+       - disaggThreshold + 2 * (1024 * 1024))
+
+    // If we have enough space in disagg memory, cache it
+    if (metricTracker.disaggTotalSize.get() < disaggThreshold) {
+      BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
+      addToDisagg(blockId, estimateBlockSize, cost)
+      // We create info here and lock here
+      // We should unlock it after file is created
+      if (blockWriteLock(blockId, executorId)) {
+        logInfo(s"Writelock for writing $blockId")
+        return true
+      } else {
+        throw new RuntimeException(s"Cannot lock block $blockId")
+      }
+    } else {
+      if (evictionHold.compareAndSet(false, true)) {
+        evictionPolicy.selectEvictFromDisagg(cost, blockId) {
+          iter =>
+            val discardSizeSum = iter.map(x => metricTracker.getBlockSize(x.blockId)).sum
+            val iterator = iter.toList.iterator
+            val currTime = System.currentTimeMillis()
+            var costSum = 0.0
+
+            while (iterator.hasNext) {
+              val discardBlock = iterator.next()
+              val bid = discardBlock.blockId
+
+              if (tryWriteLockHeldForDisagg(bid)) {
+                disaggBlockInfo.get(bid) match {
+                  case None =>
+                    // do nothing
+                    releaseWriteLockForDisagg(bid)
+                  case Some(blockInfo) =>
+                    if (blockInfo.writeDone) {
+                      if (timeToRemove(blockInfo.createdTime, currTime)
+                        && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
+                        && discardBlock.reduction <= cost.reduction
+                        && costSum <= cost.reduction) {
+                        costSum += discardBlock.reduction
+                        totalDiscardSize += blockInfo.getActualBlockSize
+                        removeBlocks.append((bid, blockInfo))
+                        rmBlocks.append(discardBlock)
+                      } else {
+                        releaseWriteLockForDisagg(bid)
+                      }
+                    } else {
+                      releaseWriteLockForDisagg(bid)
+                    }
+                }
+              }
+            }
+        }
+      } else {
         if (blockWriteLock(blockId, executorId)) {
           logInfo(s"Writelock for writing $blockId")
           return true
@@ -583,82 +637,24 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           throw new RuntimeException(s"Cannot lock block $blockId")
         }
       }
-
-      evictionPolicy.selectEvictFromDisagg(cost, blockId) {
-        iter =>
-          val discardSizeSum = iter.map(x => metricTracker.getBlockSize(x.blockId)).sum
-
-          if (discardSizeSum < removalSize) {
-            // just discard this block
-            // because there is not enough space although we discard all of the blocks
-            BlazeLogger.discardDisagg(blockId, cost.reduction,
-              cost.disaggCost, estimateSize, "by master2")
-            return false
-          }
-
-          val iterator = iter.toList.iterator
-          val currTime = System.currentTimeMillis()
-          var costSum = 0.0
-
-          while (iterator.hasNext) {
-            val discardBlock = iterator.next()
-            val bid = discardBlock.blockId
-
-            if (tryWriteLockHeldForDisagg(bid)) {
-              disaggBlockInfo.get(bid) match {
-                case None =>
-                  // do nothing
-                  releaseWriteLockForDisagg(bid)
-                case Some(blockInfo) =>
-                  if (blockInfo.writeDone) {
-                    if (timeToRemove(blockInfo.createdTime, currTime)
-                      && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardBlock.reduction <= cost.reduction
-                      && costSum <= cost.reduction) {
-                      costSum += discardBlock.reduction
-                      totalDiscardSize += blockInfo.getActualBlockSize
-                      removeBlocks.append((bid, blockInfo))
-                      rmBlocks.append(discardBlock)
-                    } else {
-                      releaseWriteLockForDisagg(bid)
-                    }
-                  } else {
-                    releaseWriteLockForDisagg(bid)
-                  }
-              }
-            }
-          }
-      }
     }
 
-    if (totalDiscardSize < removalSize) {
-      // the cost due to discarding >  cost to store
-      // we won't store it
-      removeBlocks.foreach {
-        pair => releaseWriteLockForDisagg(pair._1)
-      }
-      BlazeLogger.discardDisagg(blockId, cost.reduction, cost.disaggCost,
-        estimateSize, "by master3")
-      false
+    evictBlocks(removeBlocks.toList)
+    rmBlocks.foreach { t =>
+      BlazeLogger.evictDisagg(t.blockId, t.reduction, t.disaggCost,
+        metricTracker.getBlockSize(t.blockId)) }
+    BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
+    addToDisagg(blockId, estimateBlockSize, cost)
+
+    // We create info here and lock here
+
+    // We should unlock it after file is created
+
+    if (blockWriteLock(blockId, executorId)) {
+      logInfo(s"Writelock for writing $blockId")
+      true
     } else {
-      evictBlocks(removeBlocks.toList)
-      rmBlocks.foreach { t =>
-        BlazeLogger.evictDisagg(t.blockId, t.reduction, t.disaggCost,
-          metricTracker.getBlockSize(t.blockId)) }
-      BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
-      addToDisagg(blockId, estimateBlockSize, cost)
-
-      // We create info here and lock here
-      val blockInfo = new CrailBlockInfo(blockId, executorId, getPath(blockId))
-      disaggBlockInfo.put(blockId, blockInfo)
-      // We should unlock it after file is created
-
-      if (blockWriteLock(blockId, executorId)) {
-        logInfo(s"Writelock for writing $blockId")
-        true
-      } else {
-        throw new RuntimeException(s"Cannot get writelock $blockId 22")
-      }
+      throw new RuntimeException(s"Cannot get writelock $blockId 22")
     }
   }
 
