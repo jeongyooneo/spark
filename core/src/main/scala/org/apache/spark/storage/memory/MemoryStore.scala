@@ -330,8 +330,10 @@ private[spark] class MemoryStore(
         }
 
         entries.synchronized {
-          disaggManager.cachingDecision(blockId, entry.size,
-            executorId, false, !keepUnrolling)
+          if (blockId.isRDD) {
+            disaggManager.cachingDecision(blockId, entry.size,
+              executorId, false, !keepUnrolling)
+          }
           entries.put(blockId, entry)
         }
 
