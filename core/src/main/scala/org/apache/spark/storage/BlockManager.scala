@@ -638,6 +638,7 @@ private[spark] class BlockManager(
     throw new SparkException(s"Block $blockId was not found even though it's read-locked")
   }
 
+
   def getDisaggValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
 
     if (!disaggStore.readLock(blockId)) {
@@ -649,9 +650,7 @@ private[spark] class BlockManager(
     val startTime = System.currentTimeMillis()
     // Getting disagg data
 
-    val disaggData = disaggStore.getBytes(blockId)
-    disaggStore.readUnlock(blockId)
-
+    val disaggData = disaggStore.getStream(blockId)
     val disaggIter = serializerManager.dataDeserializeStream(
       blockId,
       disaggData.toInputStream())(implicitly[ClassTag[T]])
@@ -671,6 +670,7 @@ private[spark] class BlockManager(
         case None =>
           // Success
           logInfo(s"Release disagg readlock $blockId because reading performed in memory")
+          disaggStore.readUnlock(blockId)
           disaggData.dispose()
 
           // logInfo(s"Remove block from disagg $blockId as caching it again in memory")
@@ -687,6 +687,7 @@ private[spark] class BlockManager(
           logInfo(s"Fail to store block $blockId in memory...")
           val ci = CompletionIterator[Any, Iterator[Any]](iter, {
             logInfo(s"Release disagg readlock $blockId because reading is completed 11")
+            disaggStore.readUnlock(blockId)
             disaggData.dispose()
           })
           Some(new BlockResult(ci, DataReadMethod.Network, size))
@@ -695,6 +696,7 @@ private[spark] class BlockManager(
       logInfo(s"Just read $blockId from disagg...")
       val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
         logInfo(s"Release disagg readlock $blockId because reading is completed 22")
+        disaggStore.readUnlock(blockId)
         disaggData.dispose()
       })
       Some(new BlockResult(ci, DataReadMethod.Network, size))
