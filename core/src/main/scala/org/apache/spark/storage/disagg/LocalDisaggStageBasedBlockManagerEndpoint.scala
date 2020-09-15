@@ -55,6 +55,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
   val autounpersist = conf.get(BlazeParameters.AUTOUNPERSIST)
+  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   val executor: ExecutorService = Executors.newCachedThreadPool()
   val disableLocalCaching = conf.get(BlazeParameters.DISABLE_LOCAL_CACHING)
 
@@ -189,14 +190,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (autounpersist) {
-      autounpersist.synchronized {
+    if (autocaching) {
+      removeDupRDDsFromDisagg
 
-        if (System.currentTimeMillis() - prevCleanupTime >= 20000) {
-          // removeDupRDDsFromDisagg
-
-          val zeroDisagg = costAnalyzer.findZeroPartitions
-
+      autocaching.synchronized {
+        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
             .filter {
@@ -240,15 +238,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           // Here, we remove RDDs from local and disagg
           removeRddsFromLocal(zeroRDDs)
-          removePartitionsFromDisagg(zeroDisagg)
-          // removeRddsFromDisagg(zeroRDDs)
+          removeRddsFromDisagg(zeroRDDs)
 
           prevCleanupTime = System.currentTimeMillis()
         }
       }
     }
   }
-
 
   def stageSubmitted(stageId: Int, jobId: Int): Unit = synchronized {
     stageJobMap.put(stageId, jobId)
