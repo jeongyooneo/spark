@@ -243,26 +243,15 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       logInfo(s"RDD estimation size zero $blockId")
     }
 
-    if (disaggFirst) {
-      val toDisagg = disaggDecision(blockId, estimateSize, executorId, true)
-      if (toDisagg) {
-        return false
-      }
-    }
-
     if (recentlyRecachedBlocks.remove(blockId).isDefined) {
       BlazeLogger.recacheDisaggToLocal(blockId, executorId)
     }
 
-    if (!putDisagg) {
-      addToLocal(blockId, executorId, estimateSize)
-      metricTracker.nectarCostMap.put(blockId, new NectarInfo(0L, 0))
-      BlazeLogger.logLocalCaching(blockId, executorId,
-        estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
-      return true
-    } else {
-      return false
-    }
+    addToLocal(blockId, executorId, estimateSize)
+    metricTracker.nectarCostMap.put(blockId, new NectarInfo(0L, 0))
+    BlazeLogger.logLocalCaching(blockId, executorId,
+      estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+    return true
 
 
     if (!putDisagg) {

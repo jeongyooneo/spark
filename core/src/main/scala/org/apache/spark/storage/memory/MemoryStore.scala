@@ -272,44 +272,7 @@ private[spark] class MemoryStore(
     var vHolder = valuesHolder
     var newValues = values
 
-    // check whether to cache it into memory or disagg
-    if (blockId.isRDD && decisionByMaster) {
-      val estimateSize = getEstimateSize(blockId)
 
-      if (estimateSize > 0) {
-        keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
-        // it means that we cannot cache the value without eviction because the storage is full.
-        // we decide wheter to cache it in memory with eviction or in disagg
-        if (!disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling)) {
-          // We ran out of space while unrolling the values for this block
-          logUnrollFailureMessage(blockId, estimateSize)
-          return Left(unrollMemoryUsedByThisBlock)
-        }
-      } else {
-
-        val l = new ListBuffer[T]
-        val estimateSize = sizeEstimation(values, l, classTag, valuesHolder)
-
-        vHolder = new DeserializedValuesHolder[T](classTag)
-        newValues = l.toIterator
-
-        sizeEstimationMap.put(blockId, estimateSize)
-        keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
-
-        unrollMemoryUsedByThisBlock += estimateSize
-        logInfo(s"Block size estimation $blockId, $estimateSize, executor $executorId")
-
-        // it means that we cannot cache the value without eviction because the storage is full.
-        // we decide wheter to cache it in memory with eviction or in disagg
-        if (!disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling)) {
-          // We ran out of space while unrolling the values for this block
-          logUnrollFailureMessage(blockId, estimateSize)
-          return Left(unrollMemoryUsedByThisBlock)
-        }
-      }
-    }
 
 
     // Request enough memory to begin unrolling
@@ -324,10 +287,10 @@ private[spark] class MemoryStore(
     }
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
-    while (newValues.hasNext && keepUnrolling) {
-      vHolder.storeValue(newValues.next())
+    while (values.hasNext && keepUnrolling) {
+      valuesHolder.storeValue(values.next())
       if (elementsUnrolled % memoryCheckPeriod == 0) {
-        val currentSize = vHolder.estimatedSize()
+        val currentSize = valuesHolder.estimatedSize()
         // If our vector's size has exceeded the threshold, request more memory
         if (currentSize >= memoryThreshold) {
           val amountToRequest = (currentSize * memoryGrowthFactor - memoryThreshold).toLong
@@ -347,7 +310,7 @@ private[spark] class MemoryStore(
     // the block's actual memory usage has exceeded the unroll memory by a small amount, so we
     // perform one final call to attempt to allocate additional memory if necessary.
     if (keepUnrolling) {
-      val entryBuilder = vHolder.getBuilder()
+      val entryBuilder = valuesHolder.getBuilder()
       val size = entryBuilder.preciseSize
       if (size > unrollMemoryUsedByThisBlock) {
         val amountToRequest = size - unrollMemoryUsedByThisBlock
@@ -367,6 +330,8 @@ private[spark] class MemoryStore(
         }
 
         entries.synchronized {
+          disaggManager.cachingDecision(blockId, entry.size,
+            executorId, false, !keepUnrolling)
           entries.put(blockId, entry)
         }
 
@@ -374,25 +339,13 @@ private[spark] class MemoryStore(
           Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
         Right(entry.size)
       } else {
-
-        if (blockId.isRDD && decisionByMaster) {
-          disaggManager.cachingFail(blockId, size, executorId, false, true)
-        }
-
-
-        // We delete the info
-
         // We ran out of space while unrolling the values for this block
         logUnrollFailureMessage(blockId, entryBuilder.preciseSize)
         Left(unrollMemoryUsedByThisBlock)
       }
     } else {
-      if (blockId.isRDD && decisionByMaster) {
-        disaggManager.cachingFail(blockId, 0L, executorId, false, true)
-      }
-
       // We ran out of space while unrolling the values for this block
-      logUnrollFailureMessage(blockId, vHolder.estimatedSize())
+      logUnrollFailureMessage(blockId, valuesHolder.estimatedSize())
       Left(unrollMemoryUsedByThisBlock)
     }
   }
@@ -569,7 +522,7 @@ private[spark] class MemoryStore(
         if (decisionByMaster) {
           var cnt = 0
           val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 3) {
+          while (freedMemory < space && cnt < 2) {
 
             cnt += 1
 
@@ -596,6 +549,22 @@ private[spark] class MemoryStore(
                 logInfo(s"LocalDecision]  eviction fail $evictBlock " +
                   s"from executor $executorId, entry: $entry")
                 disaggManager.evictionFail(evictBlock, executorId)
+              }
+            }
+          }
+
+          val iterator = entries.entrySet().iterator()
+          while (freedMemory < space && iterator.hasNext) {
+            val pair = iterator.next()
+            val blockId = pair.getKey
+            val entry = pair.getValue
+            if (blockIsEvictable(blockId, entry)) {
+              // We don't want to evict blocks which are currently being read, so we need to obtain
+              // an exclusive write lock on blocks which are candidates for eviction. We perform a
+              // non-blocking "tryLock" here in order to ignore blocks which are locked for reading:
+              if (blockInfoManager.lockForWriting(blockId, blocking = false).isDefined) {
+                selectedBlocks += blockId
+                freedMemory += pair.getValue.size
               }
             }
           }
