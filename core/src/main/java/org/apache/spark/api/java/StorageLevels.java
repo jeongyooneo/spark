@@ -30,7 +30,7 @@ public class StorageLevels {
   public static final StorageLevel MEMORY_ONLY_2 = create(false, true, false, true, 2);
   public static final StorageLevel MEMORY_ONLY_SER = create(false, true, false, false, 1);
   public static final StorageLevel MEMORY_ONLY_SER_2 = create(false, true, false, false, 2);
-  public static final StorageLevel MEMORY_AND_DISK = create(true, true, false, true, 1);
+  public static final StorageLevel MEMORY_AND_DISK = create(false, true, false, true, 1);
   public static final StorageLevel MEMORY_AND_DISK_2 = create(true, true, false, true, 2);
   public static final StorageLevel MEMORY_AND_DISK_SER = create(true, true, false, false, 1);
   public static final StorageLevel MEMORY_AND_DISK_SER_2 = create(true, true, false, false, 2);
