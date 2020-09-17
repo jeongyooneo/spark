@@ -103,7 +103,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     scheduler.shutdownNow()
   }
 
-  override def removeRddsFromDisagg(rddId: Predef.Set[Int]): Unit = {}
+  override def removeRddsFromDisagg(rddId: collection.Set[Int]): Unit = {}
 
   /**
    * Parameters for disaggregation caching.
