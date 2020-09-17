@@ -202,25 +202,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         autocaching.synchronized {
           if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
             // unpersist rdds
-            val zero = costAnalyzer.findZeroPartitions
-            val newzero = new mutable.HashMap[BlockId, Int]()
-
-            val realzero = new mutable.HashSet[BlockId]()
-            zero.foreach(pid => {
-              if (prevZeros.contains(pid)) {
-                if (prevZeros(pid) + 1 > 30) {
-                  realzero.add(pid)
-                } else {
-                  newzero(pid) = prevZeros(pid) + 1
-                }
-              } else {
-                newzero(pid) = 1
-              }
-            })
-
-            prevZeros = newzero
-
-              /*
             val zeroRDDs = costAnalyzer.findZeroCostRDDs
               .filter {
                 p =>
@@ -263,9 +244,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
             // Here, we remove RDDs from local and disagg
             removeRddsFromLocal(zeroRDDs)
-            */
-            // removeRddsFromDisagg(zeroRDDs)
-            removePartitionsFromDisagg(realzero)
+            removeRddsFromDisagg(zeroRDDs)
+            // removePartitionsFromDisagg(realzero)
 
             prevCleanupTime = System.currentTimeMillis()
           }
