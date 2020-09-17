@@ -191,7 +191,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
-      removeDupRDDsFromDisagg
+      // removeDupRDDsFromDisagg
 
       autocaching.synchronized {
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
@@ -213,7 +213,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
 
                   if (!fullyProfiled) {
-                    currJob.get() > stageJobMap(lastStage)
+                    currJob.get() + 1 > stageJobMap(lastStage)
                   } else {
                     // stageId >= lastStage
                     true
