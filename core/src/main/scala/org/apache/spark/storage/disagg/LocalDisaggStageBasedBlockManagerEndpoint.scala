@@ -247,8 +247,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               prevCleanupTime = System.currentTimeMillis()
             }
-          }
           })
+        }
       }
     }
   }
