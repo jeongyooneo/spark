@@ -190,7 +190,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (autocaching) {
+    if (false) {
       // removeDupRDDsFromDisagg
 
       autocaching.synchronized {
