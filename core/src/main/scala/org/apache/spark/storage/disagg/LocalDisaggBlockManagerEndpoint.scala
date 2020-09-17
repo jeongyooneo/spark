@@ -103,7 +103,17 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     scheduler.shutdownNow()
   }
 
-  override def removeRddsFromDisagg(rddId: collection.Set[Int]): Unit = {}
+  override def removeRddsFromDisagg(rdds: collection.Set[Int]): Unit = {
+    disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
+      .keys.foreach(bid => {
+
+      if (tryWriteLockHeldForDisagg(bid)) {
+        BlazeLogger.removeZeroBlocksInDisagg(bid)
+        removeFromDisagg(bid)
+        releaseWriteLockForDisagg(bid)
+      }
+    })
+  }
 
   /**
    * Parameters for disaggregation caching.
@@ -697,18 +707,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
           }
           releaseWriteLockForDisagg(bid)
         }
-      }
-    })
-  }
-
-  private def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
-    disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
-      .keys.foreach(bid => {
-
-      if (tryWriteLockHeldForDisagg(bid)) {
-        BlazeLogger.removeZeroBlocksInDisagg(bid)
-        removeFromDisagg(bid)
-        releaseWriteLockForDisagg(bid)
       }
     })
   }
