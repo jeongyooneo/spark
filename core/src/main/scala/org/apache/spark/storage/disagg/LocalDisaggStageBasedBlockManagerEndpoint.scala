@@ -918,7 +918,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (blockReadLock(blockId, executorId)) {
 
         val result = fileRead(blockId, executorId)
-        rddReadTime.putIfAbsent(blockId.asRDDId.get.rddId, System.currentTimeMillis())
+        rddReadTime.put(blockId.asRDDId.get.rddId, System.currentTimeMillis())
 
         if (result == 0) {
           // logInfo(s"File unlock $blockId at $executorId for empty")
@@ -1015,7 +1015,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
 
     case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
-      rddReadTime.putIfAbsent(blockId.asRDDId.get.rddId, System.currentTimeMillis())
+      rddReadTime.put(blockId.asRDDId.get.rddId, System.currentTimeMillis())
       BlazeLogger.readLocal(blockId, executorId, fromRemote)
 
     case IsRddCache(rddId) =>
