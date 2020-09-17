@@ -201,6 +201,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         override def run(): Unit = {
         autocaching.synchronized {
           if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+
+            val curtime = System.currentTimeMillis()
+
+            val nonReadRdd = rddReadTime
+              .filter(p => (curtime - p._2) >= 10 * 60 * 1000)
+              .map(p => p._1).toSet
+
             // unpersist rdds
             val zeroRDDs = costAnalyzer.findZeroCostRDDs
               .filter {
@@ -245,6 +252,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             // Here, we remove RDDs from local and disagg
             removeRddsFromLocal(zeroRDDs)
             removeRddsFromDisagg(zeroRDDs)
+            removeRddsFromDisagg(nonReadRdd)
             // removePartitionsFromDisagg(realzero)
 
             prevCleanupTime = System.currentTimeMillis()
@@ -871,6 +879,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     result >= 0
   }
 
+  val rddReadTime = new mutable.HashMap[Int, Long]()
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     // FOR DISAGG
     // FOR DISAGG
@@ -887,6 +897,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     case FileRemoved(blockId, executorId, remove) =>
       if (blockId.isRDD) {
+
+        val rddid = blockId.asRDDId.get.rddId
+        if (rddReadTime.contains(rddid)) {
+          rddReadTime(rddid) = System.currentTimeMillis()
+        }
+
         // logInfo(s"File removed call $blockId, $executorId")
         if (tryWriteLockHeldForDisagg(blockId)) {
           val info = removeFromDisagg(blockId)
