@@ -190,7 +190,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (autocaching && fullyProfiled) {
+    if (autocaching) {
       autocaching.synchronized {
 
         if (System.currentTimeMillis() - prevCleanupTime >= 20000) {

@@ -215,7 +215,7 @@ abstract class RDD[T: ClassTag](
     */
   def unpersist(blocking: Boolean = true): this.type = {
 
-    if (!autocaching || !fullyProfiled) {
+    if (!autounpersist) {
       sc.unpersistRDD(id, blocking)
     }
     storageLevel = StorageLevel.NONE
@@ -279,15 +279,13 @@ abstract class RDD[T: ClassTag](
     }
   }
 
-  val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
-
   /**
    * Internal method to this RDD; will read from cache if applicable, or otherwise compute it.
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
-    if (autocaching && fullyProfiled) {
+    if (autocaching) {
       if (SparkEnv.get.blockManager.isRDDCache(this.id)) {
         this.storageLevel = StorageLevel.DISAGG
         getOrCompute(split, context)
