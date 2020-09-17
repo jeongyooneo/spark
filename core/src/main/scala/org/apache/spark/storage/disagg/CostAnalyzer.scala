@@ -176,6 +176,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         (entry._1, l.sortWith(_.reduction < _.reduction))
       }))
 
+    /*
     sortedBlockByCompSizeRatioInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
@@ -185,6 +186,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           b1 < b2
         }))
       }))
+      */
 
     /*
     val sb = new StringBuilder
@@ -201,7 +203,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
   }
 
   def findZeroCostRDDs: collection.Set[Int] = {
-    update
+    // update
 
     val zeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
     val nonzeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
