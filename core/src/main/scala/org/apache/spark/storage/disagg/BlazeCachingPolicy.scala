@@ -23,9 +23,13 @@ private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
   extends CachingPolicy with Logging {
 
   def isRDDNodeCached(rddId: Int): Boolean = {
-    val refcnt = rddJobDag.getRefCntRDD(rddId)
-    // logInfo(s"Reference count of RDD $rddId: $refcnt")
-    refcnt > 1
+    if (rddJobDag.vertices.contains(rddId)) {
+      val refcnt = rddJobDag.getRefCntRDD(rddId)
+      // logInfo(s"Reference count of RDD $rddId: $refcnt")
+      refcnt > 1
+    }
+  } else {
+    false
   }
 }
 
