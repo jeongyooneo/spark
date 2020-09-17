@@ -182,6 +182,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
+      /*
       // removeDupRDDsFromDisagg
 
       per.execute(new Runnable {
@@ -238,6 +239,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           }
         }
       })
+      */
 
 
     }
