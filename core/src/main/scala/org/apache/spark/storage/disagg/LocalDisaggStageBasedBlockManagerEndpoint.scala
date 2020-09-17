@@ -901,7 +901,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (blockId.isRDD) {
 
         val rddid = blockId.asRDDId.get.rddId
-        rddReadTime.putIfAbsent(rddid, System.currentTimeMillis())
 
         // logInfo(s"File removed call $blockId, $executorId")
         if (tryWriteLockHeldForDisagg(blockId)) {
@@ -927,6 +926,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (blockReadLock(blockId, executorId)) {
 
         val result = fileRead(blockId, executorId)
+        rddReadTime.putIfAbsent(blockId.asRDDId.get.rddId, System.currentTimeMillis())
 
         if (result == 0) {
           // logInfo(s"File unlock $blockId at $executorId for empty")
