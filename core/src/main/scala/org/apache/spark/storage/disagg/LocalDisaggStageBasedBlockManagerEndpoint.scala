@@ -180,7 +180,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
-      removeDupRDDsFromDisagg
+      // removeDupRDDsFromDisagg
 
       autocaching.synchronized {
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
