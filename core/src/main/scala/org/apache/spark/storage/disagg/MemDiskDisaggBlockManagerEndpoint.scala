@@ -105,6 +105,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     scheduler.shutdownNow()
   }
 
+  def removeRddsFromDisagg(rddId: Set[Int]): Unit = {}
+
   /**
    * Parameters for disaggregation caching.
    */

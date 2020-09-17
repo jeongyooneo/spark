@@ -30,7 +30,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint()
 
   // Public methods
   def removeExecutor(executorId: String): Unit
-  def removeRddsFromDisagg(rddId: Set[Int]): Unit = {}
+  def removeRddsFromDisagg(rddId: Set[Int]): Unit
 
   def isRddCache(rddId: Int): Boolean
 
