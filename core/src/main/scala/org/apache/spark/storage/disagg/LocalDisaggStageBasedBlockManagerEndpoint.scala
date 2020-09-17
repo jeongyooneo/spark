@@ -186,63 +186,92 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+
+  private val periodicexecutor = Executors.newFixedThreadPool(1)
+
+  var prevZeros = new mutable.HashMap[BlockId, Int]
+
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
 
-    if (false) {
+    if (autocaching) {
       // removeDupRDDsFromDisagg
+      periodicexecutor.execute(new Runnable {
+        override def run(): Unit = {
+        autocaching.synchronized {
+          if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+            // unpersist rdds
+            val zero = costAnalyzer.findZeroPartitions
+            val newzero = new mutable.HashMap[BlockId, Int]()
 
-      autocaching.synchronized {
-        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
-          // unpersist rdds
-          val zeroRDDs = costAnalyzer.findZeroCostRDDs
-            .filter {
-              p =>
-                val rddNode = rddJobDag.get.getRDDNode(p)
-                val lastStage = rddNode.getStages.max
+            val realzero = new mutable.HashSet[BlockId]()
+            zero.foreach(pid => {
+              if (prevZeros.contains(pid)) {
+                if (prevZeros(pid) + 1 > 5) {
+                  realzero.add(pid)
+                } else {
+                  newzero(pid) = prevZeros(pid) + 1
+                }
+              } else {
+                newzero(pid) = 1
+              }
+            })
 
-                logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
-                  s"${rddNode.rddId}: stage $lastStage, " +
-                  s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+            prevZeros = newzero
 
-                if (stageJobMap.contains(lastStage)) {
+              /*
+            val zeroRDDs = costAnalyzer.findZeroCostRDDs
+              .filter {
+                p =>
+                  val rddNode = rddJobDag.get.getRDDNode(p)
+                  val lastStage = rddNode.getStages.max
+
                   logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
                     s"${rddNode.rddId}: stage $lastStage, " +
-                    s"jobId: ${stageJobMap(lastStage)}, " +
                     s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
 
-                  if (!fullyProfiled) {
-                    currJob.get() + 1 > stageJobMap(lastStage)
+                  if (stageJobMap.contains(lastStage)) {
+                    logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                      s"${rddNode.rddId}: stage $lastStage, " +
+                      s"jobId: ${stageJobMap(lastStage)}, " +
+                      s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+
+                    if (!fullyProfiled) {
+                      currJob.get() + 1 > stageJobMap(lastStage)
+                    } else {
+                      // stageId >= lastStage
+                      true
+                    }
                   } else {
-                    // stageId >= lastStage
-                    true
+                    if (!fullyProfiled) {
+                      false
+                    } else {
+                      // stageId >= lastStage
+                      true
+                    }
                   }
-                } else {
-                  if (!fullyProfiled) {
-                    false
-                  } else {
-                    // stageId >= lastStage
-                    true
-                  }
-                }
+              }
+
+            zeroRDDs.foreach {
+              rdd =>
+                logInfo(s"Remove zero cost rdd $rdd from memory")
+                // remove from local executors
+                blockManagerMaster.removeRdd(rdd)
+              // remove local info
             }
 
-          zeroRDDs.foreach {
-            rdd =>
-              logInfo(s"Remove zero cost rdd $rdd from memory")
-              // remove from local executors
-              blockManagerMaster.removeRdd(rdd)
-            // remove local info
+            // Here, we remove RDDs from local and disagg
+            removeRddsFromLocal(zeroRDDs)
+            */
+            // removeRddsFromDisagg(zeroRDDs)
+            removePartitionsFromDisagg(realzero)
+
+            prevCleanupTime = System.currentTimeMillis()
           }
-
-          // Here, we remove RDDs from local and disagg
-          removeRddsFromLocal(zeroRDDs)
-          removeRddsFromDisagg(zeroRDDs)
-
-          prevCleanupTime = System.currentTimeMillis()
         }
-      }
+        }
+      })
     }
   }
 

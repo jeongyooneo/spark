@@ -25,6 +25,7 @@ import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disagg.RDDJobDag.StageDistance
 
 import scala.collection.mutable
+import scala.util.control.Breaks
 
 private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) extends Logging {
 
@@ -161,12 +162,14 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInDisagg =
       Some(disaggL.sortWith(_.reduction < _.reduction))
 
+    /*
     sortedBlockByCompSizeRatioInDisagg =
       Some(disaggL.sortWith((x, y) => {
         val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
         val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
         b1 < b2
       }))
+      */
 
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
@@ -174,6 +177,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         (entry._1, l.sortWith(_.reduction < _.reduction))
       }))
 
+    /*
     sortedBlockByCompSizeRatioInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
@@ -183,6 +187,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           b1 < b2
         }))
       }))
+      */
 
     /*
     val sb = new StringBuilder
@@ -198,11 +203,15 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
   }
 
+
+
   def findZeroPartitions: collection.Set[BlockId] = {
     update
 
     val disaggZero: mutable.HashSet[BlockId] = new mutable.HashSet[BlockId]()
 
+    val loop = new Breaks
+    loop.breakable {
     sortedBlockByCompCostInDisagg match {
       case None =>
       case Some(l) =>
@@ -210,8 +219,11 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           cost =>
             if (cost.reduction <= 0) {
               disaggZero.add(cost.blockId)
+            } else {
+              loop.break
             }
         }
+    }
     }
 
     disaggZero.toSet
