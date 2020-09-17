@@ -1015,6 +1015,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
 
     case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
+      rddReadTime.putIfAbsent(blockId.asRDDId.get.rddId, System.currentTimeMillis())
       BlazeLogger.readLocal(blockId, executorId, fromRemote)
 
     case IsRddCache(rddId) =>
