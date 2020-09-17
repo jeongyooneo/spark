@@ -386,6 +386,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     uncachedChildNum
   }
 
+  def hasNode(rddId: Int): Boolean = {
+    vertices.contains(rddId)
+  }
+
   def getRDDNode(rddId: Int): RDDNode = {
     vertices(rddId)
   }
