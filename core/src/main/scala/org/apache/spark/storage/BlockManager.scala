@@ -1109,7 +1109,9 @@ private[spark] class BlockManager(
 
         val readTime = System.currentTimeMillis()
 
-        val disaggData = disaggStore.getStream(blockId)
+        val disaggData = disaggStore.getBytes(blockId)
+        disaggStore.readUnlock(blockId)
+
         val disaggIter = serializerManager.dataDeserializeStream(
           blockId,
           disaggData.toInputStream())(classTag)
@@ -1120,7 +1122,6 @@ private[spark] class BlockManager(
 
         val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
           logInfo(s"Release disagg readlock $blockId because reading is completed 11")
-          disaggStore.readUnlock(blockId)
           disaggData.dispose()
         })
 

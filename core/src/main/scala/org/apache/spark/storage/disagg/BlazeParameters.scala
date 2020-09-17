@@ -46,6 +46,11 @@ private[spark] object BlazeParameters extends Logging {
     .stringConf
     .createWithDefault("Blaze")
 
+  private[spark] val DISAGG_THREADS =
+    ConfigBuilder("spark.disagg.writethreads")
+    .intConf
+    .createWithDefault(15)
+
   private[spark] val RAND_CACHING_POLICY_PARAM =
     ConfigBuilder("spark.disagg.cachingpolicy.random.percentage")
     .doubleConf

@@ -182,6 +182,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
+
+      val curr = System.currentTimeMillis()
+      val zero = rddReadTime.filter(p => curr - p._2 >= 20 * 60 * 1000)
+        .map(p => p._1).toSet
+
+      removeRddsFromDisagg(zero)
+
+
       /*
       // removeDupRDDsFromDisagg
 
@@ -868,6 +876,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     result >= 0
   }
 
+  val rddReadTime = new ConcurrentHashMap[Int, Long]().asScala
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     // FOR DISAGG
     // FOR DISAGG
@@ -908,6 +918,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (blockReadLock(blockId, executorId)) {
 
         val result = fileRead(blockId, executorId)
+        rddReadTime.putIfAbsent(blockId.asRDDId.get.rddId, System.currentTimeMillis())
 
         if (result == 0) {
           // logInfo(s"File unlock $blockId at $executorId for empty")
