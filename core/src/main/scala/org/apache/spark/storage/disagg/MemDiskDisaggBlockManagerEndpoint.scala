@@ -105,7 +105,6 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     scheduler.shutdownNow()
   }
 
-  def removeRddsFromDisagg(rddId: Set[Int]): Unit = {}
 
   /**
    * Parameters for disaggregation caching.
@@ -871,8 +870,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
     })
   }
 
-  private def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
-    disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
+  override def removeRddsFromDisagg(rddId: Predef.Set[Int]): Unit = {
+    disaggBlockInfo.filter(pair => rddId.contains(pair._1.asRDDId.get.rddId))
       .keys.foreach(bid => {
 
       if (tryWriteLockHeldForDisagg(bid)) {

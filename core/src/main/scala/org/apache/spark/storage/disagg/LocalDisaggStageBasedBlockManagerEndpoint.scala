@@ -739,8 +739,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     })
   }
 
-  def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
-    disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
+  override def removeRddsFromDisagg(rddId: Predef.Set[Int]): Unit = {
+    disaggBlockInfo.filter(pair => rddId.contains(pair._1.asRDDId.get.rddId))
       .keys.foreach(bid => {
 
       if (tryWriteLockHeldForDisagg(bid)) {
