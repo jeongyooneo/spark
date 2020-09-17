@@ -1831,10 +1831,10 @@ class SparkContext(config: SparkConf) extends Logging {
    * Unpersist an RDD from memory and/or disk storage
    */
   private[spark] def unpersistRDD(rddId: Int, blocking: Boolean = true) {
-    if (!autocaching) {
+    // if (!autocaching) {
       env.blockManager.master.removeRdd(rddId, blocking)
       listenerBus.post(SparkListenerUnpersistRDD(rddId))
-    }
+    // }
     persistentRdds.remove(rddId)
     logInfo(s"Unpersist RDD $rddId")
   }

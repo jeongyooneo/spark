@@ -214,9 +214,9 @@ abstract class RDD[T: ClassTag](
     */
   def unpersist(blocking: Boolean = true): this.type = {
 
-    if (!autocaching) {
+    // if (!autocaching) {
       sc.unpersistRDD(id, blocking)
-    }
+    // }
     storageLevel = StorageLevel.NONE
     this
   }

@@ -737,7 +737,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     })
   }
 
-  private def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
+  def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
     disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
       .keys.foreach(bid => {
 
