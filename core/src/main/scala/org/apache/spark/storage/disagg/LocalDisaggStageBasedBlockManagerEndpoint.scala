@@ -175,6 +175,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
   private val currJob = new AtomicInteger(-1)
 
+  val per = Executors.newSingleThreadExecutor()
+
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
@@ -182,56 +184,62 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     if (autocaching) {
       // removeDupRDDsFromDisagg
 
-      autocaching.synchronized {
-        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
-          // unpersist rdds
-          val zeroRDDs = costAnalyzer.findZeroCostRDDs
-            .filter {
-              p =>
-                val rddNode = rddJobDag.get.getRDDNode(p)
-                val lastStage = rddNode.getStages.max
+      per.execute(new Runnable {
+        override def run(): Unit = {
+          autocaching.synchronized {
+            if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+              // unpersist rdds
+              val zeroRDDs = costAnalyzer.findZeroCostRDDs
+                .filter {
+                  p =>
+                    val rddNode = rddJobDag.get.getRDDNode(p)
+                    val lastStage = rddNode.getStages.max
 
-                logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
-                  s"${rddNode.rddId}: stage $lastStage, " +
-                  s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+                    logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                      s"${rddNode.rddId}: stage $lastStage, " +
+                      s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
 
-                if (stageJobMap.contains(lastStage)) {
-                  logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
-                    s"${rddNode.rddId}: stage $lastStage, " +
-                    s"jobId: ${stageJobMap(lastStage)}, " +
-                    s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+                    if (stageJobMap.contains(lastStage)) {
+                      logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
+                        s"${rddNode.rddId}: stage $lastStage, " +
+                        s"jobId: ${stageJobMap(lastStage)}, " +
+                        s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
 
-                  if (!fullyProfiled) {
-                    currJob.get() > stageJobMap(lastStage)
-                  } else {
-                    // stageId >= lastStage
-                    true
-                  }
-                } else {
-                  if (!fullyProfiled) {
-                    false
-                  } else {
-                    // stageId >= lastStage
-                    true
-                  }
+                      if (!fullyProfiled) {
+                        currJob.get() > stageJobMap(lastStage)
+                      } else {
+                        // stageId >= lastStage
+                        true
+                      }
+                    } else {
+                      if (!fullyProfiled) {
+                        false
+                      } else {
+                        // stageId >= lastStage
+                        true
+                      }
+                    }
                 }
+
+              zeroRDDs.foreach {
+                rdd =>
+                  logInfo(s"Remove zero cost rdd $rdd from memory")
+                  // remove from local executors
+                  blockManagerMaster.removeRdd(rdd)
+                // remove local info
+              }
+
+              // Here, we remove RDDs from local and disagg
+              removeRddsFromLocal(zeroRDDs)
+              removeRddsFromDisagg(zeroRDDs)
+
+              prevCleanupTime = System.currentTimeMillis()
             }
-
-          zeroRDDs.foreach {
-            rdd =>
-              logInfo(s"Remove zero cost rdd $rdd from memory")
-              // remove from local executors
-              blockManagerMaster.removeRdd(rdd)
-            // remove local info
           }
-
-          // Here, we remove RDDs from local and disagg
-          removeRddsFromLocal(zeroRDDs)
-          removeRddsFromDisagg(zeroRDDs)
-
-          prevCleanupTime = System.currentTimeMillis()
         }
-      }
+      })
+
+
     }
   }
 
