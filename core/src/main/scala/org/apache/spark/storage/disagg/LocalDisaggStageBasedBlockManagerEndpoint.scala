@@ -208,7 +208,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val realzero = new mutable.HashSet[BlockId]()
             zero.foreach(pid => {
               if (prevZeros.contains(pid)) {
-                if (prevZeros(pid) + 1 > 5) {
+                if (prevZeros(pid) + 1 > 30) {
                   realzero.add(pid)
                 } else {
                   newzero(pid) = prevZeros(pid) + 1
