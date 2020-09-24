@@ -235,7 +235,7 @@ private[recommendation] trait ALSParams extends ALSModelParams with HasMaxIter w
   /** @group expertGetParam */
   def getFinalStorageLevel: String = $(finalStorageLevel)
 
-  setDefault(rank -> 10, maxIter -> 10, regParam -> 0.1, numUserBlocks -> 10, numItemBlocks -> 10,
+  setDefault(rank -> 10, maxIter -> 10, regParam -> 0.1, numUserBlocks -> 100, numItemBlocks -> 100,
     implicitPrefs -> false, alpha -> 1.0, userCol -> "user", itemCol -> "item",
     ratingCol -> "rating", nonnegative -> false, checkpointInterval -> 10,
     intermediateStorageLevel -> "MEMORY_ONLY", finalStorageLevel -> "MEMORY_ONLY",
