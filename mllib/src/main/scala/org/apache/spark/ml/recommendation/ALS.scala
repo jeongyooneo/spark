@@ -903,8 +903,8 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
   def train[ID: ClassTag]( // scalastyle:ignore
       ratings: RDD[Rating[ID]],
       rank: Int = 10,
-      numUserBlocks: Int = 10,
-      numItemBlocks: Int = 10,
+      numUserBlocks: Int = 100,
+      numItemBlocks: Int = 100,
       maxIter: Int = 10,
       regParam: Double = 0.1,
       implicitPrefs: Boolean = false,
