@@ -18,11 +18,16 @@
 package org.apache.spark.storage
 
 import java.io._
-import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
+import java.lang.ref.{WeakReference, ReferenceQueue => JReferenceQueue}
 import java.nio.ByteBuffer
-import java.nio.channels.Channels
+import java.nio.channels.{Channels, WritableByteChannel}
 import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, Executors}
+
+import alluxio.AlluxioURI
+import alluxio.client.file.FileSystem
+import alluxio.client.file.FileInStream
+import alluxio.exception.FileAlreadyExistsException
 
 import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable
@@ -32,12 +37,10 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
 import com.codahale.metrics.{MetricRegistry, MetricSet}
-
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.network._
@@ -149,6 +152,7 @@ private[spark] class BlockManager(
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
+  private val executor = Executors.newFixedThreadPool(5)
 
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
@@ -805,6 +809,22 @@ private[spark] class BlockManager(
     None
   }
 
+  def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+
+    logInfo(s"Getting alluxio block $blockId")
+
+    val fs = FileSystem.Factory.get()
+    val path = new AlluxioURI("/" + blockId)
+    val inputStream = fs.openFile(path)
+    val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+      inputStream)(implicitly[ClassTag[T]])
+    val len = alluxioIter.length
+    inputStream.close()
+
+    val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+    Some(new BlockResult(ci, DataReadMethod.Network, len))
+  }
+
   /**
    * Get a block from the block manager (either local or remote).
    *
@@ -818,6 +838,17 @@ private[spark] class BlockManager(
       logInfo(s"Found block $blockId locally")
       return local
     }
+
+    val alluxioFetchStart = System.nanoTime
+    val alluxio = getAlluxioValues[T](blockId)
+
+    if (alluxio.isDefined) {
+      logInfo(s"Found block $blockId in alluxio")
+      val alluxioFetchTime = System.nanoTime - alluxioFetchStart
+      logInfo(s"jy: alluxio fetch from $executorId $blockId succeeded, " + alluxioFetchTime)
+      return alluxio
+    }
+
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
@@ -898,37 +929,40 @@ private[spark] class BlockManager(
     }
 
     val blockCompStartTime = System.currentTimeMillis()
-    // Initially we hold no locks on this block.
-    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
-      case None =>
-        // doPut() didn't hand work back to us, so the block already existed or was successfully
-        // stored. Therefore, we now hold a read lock on the block.
-        val blockResult = getLocalValues(blockId).getOrElse {
-          // Since we held a read lock between the doPut() and get() calls, the block should not
-          // have been evicted, so get() not returning the block indicates some internal error.
+    doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true)
+      /*
+      // Initially we hold no locks on this block.
+      doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
+        case None =>
+          // doPut() didn't hand work back to us, so the block already existed or was successfully
+          // stored. Therefore, we now hold a read lock on the block.
+          val blockResult = getLocalValues(blockId).getOrElse {
+            // Since we held a read lock between the doPut() and get() calls, the block should not
+            // have been evicted, so get() not returning the block indicates some internal error.
+            releaseLock(blockId)
+            throw new SparkException(s"get() failed for block $blockId even though we held a lock")
+          }
+          // We already hold a read lock on the block from the doPut() call and getLocalValues()
+          // acquires the lock again, so we need to call releaseLock() here so that the net number
+          // of lock acquisitions is 1 (since the caller will only call release() once).
           releaseLock(blockId)
-          throw new SparkException(s"get() failed for block $blockId even though we held a lock")
-        }
-        // We already hold a read lock on the block from the doPut() call and getLocalValues()
-        // acquires the lock again, so we need to call releaseLock() here so that the net number
-        // of lock acquisitions is 1 (since the caller will only call release() once).
-        releaseLock(blockId)
 
-        val blockCompEndTime = System.currentTimeMillis()
-        val elapsed = blockCompEndTime - blockCompStartTime
-        val accessHistory = blockAccessHistory(blockId)
-        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
-          s"stage${TaskContext.get().stageId()}\t$elapsed")
+          val blockCompEndTime = System.currentTimeMillis()
+          val elapsed = blockCompEndTime - blockCompStartTime
+          val accessHistory = blockAccessHistory(blockId)
+          master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
+            s"stage${TaskContext.get().stageId()}\t$elapsed")
 
-        Left(blockResult)
-      case Some(iter) =>
-        // The put failed, likely because the data was too large to fit in memory and could not be
-        // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
-        // that they can decide what to do with the values (e.g. process them without caching).
-        val blockCompEndTime = System.currentTimeMillis()
+          Left(blockResult)
+        case Some(iter) =>
+          // The put failed, likely because the data was too large to fit in memory and could not be
+          // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
+          // that they can decide what to do with the values (e.g. process them without caching).
+          val blockCompEndTime = System.currentTimeMillis()
 
-       Right(iter)
-    }
+         Right(iter)
+      }
+       */
   }
 
   /**
@@ -1164,6 +1198,76 @@ private[spark] class BlockManager(
   }
 
   /**
+   * Invokes the provided callback function to write the specific block.
+   *
+   * @throws IllegalStateException if the block already exists in the disk store.
+   */
+  def putToAlluxio(blockId: BlockId, estimateSize: Long)
+                  (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
+    try {
+      val result = executor.submit(new Runnable {
+        override def run(): Unit = {
+          val startTime = System.currentTimeMillis
+
+          val fs = FileSystem.Factory.get()
+          val path = new AlluxioURI("/" + blockId)
+          // Create a file and get its output stream
+          val out = new CountingWritableChannel(Channels.newChannel(
+            fs.createFile(path)))
+          try {
+            writeFunc(out)
+            // blockSizes.put(blockId, out.getCount)
+            logInfo(s"Attempting to put block $blockId  " +
+              s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
+              s"blockSizes: ${out.getCount}")
+          } catch {
+            case e: IOException => e.printStackTrace()
+              throw e
+            case _: FileAlreadyExistsException =>
+              logInfo("file already exists -> won't create one")
+          } finally {
+            try {
+              out.close()
+              val putTime = System.currentTimeMillis() - startTime
+              logInfo(s"Putting $blockId to Alluxio took " + putTime)
+            } catch {
+                case ioe: IOException => throw ioe
+            }
+            Future.successful(true)
+          }
+        }
+      })
+      result.get()
+      Future.successful(true)
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning("Exception thrown when putting block " + blockId + ", " + e)
+        throw e
+    }
+  }
+
+  private def putIteratorToAlluxio[T](blockId: BlockId,
+                                      values: Iterator[T],
+                                      classTag: ClassTag[T]): Either[BlockResult, Iterator[T]] = {
+    logInfo(s"Persisting block $blockId to alluxio.")
+
+    val l2 = values.toList
+    val l1 = new mutable.ListBuffer[T]
+    l2.foreach { v => l1.append(v) }
+    val estimateSize = l1.length
+
+    putToAlluxio(blockId, estimateSize) { channel =>
+      val out = Channels.newOutputStream(channel)
+      serializerManager.dataSerializeStream(blockId, out, l2.toIterator)(classTag)
+    }
+
+    val ci = CompletionIterator[Any, Iterator[Any]](l1.iterator, {})
+
+    Left(new BlockResult(ci, DataReadMethod.Network, estimateSize))
+  }
+
+  /**
    * Put the given block according to the given level in one of the block stores, replicating
    * the values if necessary.
    *
@@ -1182,6 +1286,7 @@ private[spark] class BlockManager(
       classTag: ClassTag[T],
       tellMaster: Boolean = true,
       keepReadLock: Boolean = false): Option[PartiallyUnrolledIterator[T]] = {
+    /*
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
       val startTimeMs = System.currentTimeMillis
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
@@ -1233,6 +1338,9 @@ private[spark] class BlockManager(
         }
         size = diskStore.getSize(blockId)
       }
+     */
+
+    putIteratorToAlluxio(blockId, iterator(), classTag)
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
       val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
@@ -1244,29 +1352,9 @@ private[spark] class BlockManager(
         }
         addUpdatedBlockStatusToTaskMetrics(blockId, putBlockStatus)
         logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
-        if (level.replication > 1) {
-          val remoteStartTime = System.currentTimeMillis
-          val bytesToReplicate = doGetLocalBytes(blockId, info)
-          // [SPARK-16550] Erase the typed classTag when using default serialization, since
-          // NettyBlockRpcServer crashes when deserializing repl-defined classes.
-          // TODO(ekl) remove this once the classloader issue on the remote end is fixed.
-          val remoteClassTag = if (!serializerManager.canUseKryo(classTag)) {
-            scala.reflect.classTag[Any]
-          } else {
-            classTag
-          }
-          try {
-            replicate(blockId, bytesToReplicate, level, remoteClassTag)
-          } finally {
-            bytesToReplicate.dispose()
-          }
-          logDebug("Put block %s remotely took %s"
-            .format(blockId, Utils.getUsedTimeMs(remoteStartTime)))
-        }
       }
       assert(blockWasSuccessfullyStored == iteratorFromFailedMemoryStorePut.isEmpty)
       iteratorFromFailedMemoryStorePut
-    }
   }
 
   /**
