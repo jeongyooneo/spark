@@ -2566,6 +2566,7 @@
         <artifactId>maven-checkstyle-plugin</artifactId>
         <version>3.0.0</version>
         <configuration>
+          <skip>true</skip>
           <failOnViolation>false</failOnViolation>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
           <sourceDirectories>
