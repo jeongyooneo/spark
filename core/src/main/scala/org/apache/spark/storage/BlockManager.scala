@@ -19,7 +19,7 @@ package org.apache.spark.storage
 
 import alluxio.AlluxioURI
 import alluxio.client.file.FileSystem
-import alluxio.exception.FileAlreadyExistsException
+import alluxio.exception.{FileAlreadyExistsException, FileDoesNotExistException}
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -149,6 +149,8 @@ private[spark] class BlockManager(
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
   private val blockAccessHistory = new ConcurrentHashMap[BlockId, Long]().asScala
+
+  private val alluxioBlockSizes = new mutable.HashMap[BlockId, Long]
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -542,19 +544,38 @@ private[spark] class BlockManager(
         case null =>
           BlockStatus.empty
         case level =>
-          val inMem = level.useMemory && memoryStore.contains(blockId)
-          val onDisk = level.useDisk && diskStore.contains(blockId)
-          val deserialized = if (inMem) level.deserialized else false
-          val replication = if (inMem  || onDisk) level.replication else 1
-          val storageLevel = StorageLevel(
-            useDisk = onDisk,
-            useMemory = inMem,
-            useOffHeap = level.useOffHeap,
-            deserialized = deserialized,
-            replication = replication)
-          val memSize = if (inMem) memoryStore.getSize(blockId) else 0L
-          val diskSize = if (onDisk) diskStore.getSize(blockId) else 0L
-          BlockStatus(storageLevel, memSize, diskSize)
+          val fs = FileSystem.Factory.get()
+          val path = new AlluxioURI("/" + blockId)
+          val onAlluxio = fs.exists(path)
+          if (onAlluxio) {
+            val inMem = level.useMemory
+            val onDisk = level.useDisk
+            val deserialized = if (inMem) level.deserialized else false
+            val replication = if (inMem || onDisk) level.replication else 1
+            val storageLevel = StorageLevel(
+              useDisk = onDisk,
+              useMemory = inMem,
+              useOffHeap = level.useOffHeap,
+              deserialized = deserialized,
+              replication = replication)
+            val memSize = 0L
+            val diskSize = 0L
+            BlockStatus(storageLevel, memSize, diskSize)
+          } else {
+            val inMem = level.useMemory && memoryStore.contains(blockId)
+            val onDisk = level.useDisk && diskStore.contains(blockId)
+            val deserialized = if (inMem) level.deserialized else false
+            val replication = if (inMem || onDisk) level.replication else 1
+            val storageLevel = StorageLevel(
+              useDisk = onDisk,
+              useMemory = inMem,
+              useOffHeap = level.useOffHeap,
+              deserialized = deserialized,
+              replication = replication)
+            val memSize = if (inMem) memoryStore.getSize(blockId) else 0L
+            val diskSize = if (onDisk) diskStore.getSize(blockId) else 0L
+            BlockStatus(storageLevel, memSize, diskSize)
+          }
       }
     }
   }
@@ -810,19 +831,30 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-
-    logInfo(s"Getting alluxio block $blockId")
-
     val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
-    val inputStream = fs.openFile(path)
-    val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-      inputStream)(implicitly[ClassTag[T]])
-    val len = alluxioIter.length
-    inputStream.close()
+      try {
+        if (fs.exists(path) && alluxioBlockSizes.getOrElse(blockId, 0L) > 0L) {
+          logInfo(s"Got block $blockId from alluxio, this is " +
+            s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
 
-    val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-    Some(new BlockResult(ci, DataReadMethod.Network, len))
+          val inputStream = fs.openFile(path)
+          val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+            inputStream)(implicitly[ClassTag[T]])
+          inputStream.close()
+          val len = alluxioBlockSizes.getOrElse(blockId, 0L)
+
+          val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+          Some(new BlockResult(ci, DataReadMethod.Network, len))
+        } else {
+          logInfo(s"$blockId not yet present in alluxio, this is " +
+            s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+          None
+        }
+      } catch {
+        case e: IOException => e.printStackTrace()
+          throw e
+      }
   }
 
   /**
@@ -833,12 +865,6 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    val local = getLocalValues(blockId)
-    if (local.isDefined) {
-      logInfo(s"Found block $blockId locally")
-      return local
-    }
-
     val alluxioFetchStart = System.nanoTime
     val alluxio = getAlluxioValues[T](blockId)
 
@@ -846,6 +872,12 @@ private[spark] class BlockManager(
       val alluxioFetchTime = System.nanoTime - alluxioFetchStart
       logInfo(s"alluxio fetch from $executorId $blockId succeeded, " + alluxioFetchTime)
       return alluxio
+    }
+
+    val local = getLocalValues(blockId)
+    if (local.isDefined) {
+      logInfo(s"Found block $blockId locally")
+      return local
     }
 
     val remote = getRemoteValues[T](blockId)
@@ -1192,69 +1224,49 @@ private[spark] class BlockManager(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def putToAlluxio(blockId: BlockId, estimateSize: Long)
+  def putToAlluxio(blockId: BlockId)
                   (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
-    try {
-      val result = executor.submit(new Runnable {
-        override def run(): Unit = {
+    val result = executor.submit(new Runnable {
+      override def run(): Unit = {
+        try {
           val startTime = System.currentTimeMillis
-
+          var size = 0L
           val fs = FileSystem.Factory.get()
           val path = new AlluxioURI("/" + blockId)
-          // Create a file and get its output stream
-          val out = new CountingWritableChannel(Channels.newChannel(
-            fs.createFile(path)))
-          try {
-            writeFunc(out)
-            // blockSizes.put(blockId, out.getCount)
-            logInfo(s"Attempting to put block $blockId  " +
-              s"to disagg, size: ${out.getCount}, executor ${executorId}, " +
-              s"blockSizes: ${out.getCount}")
-          } catch {
-            case e: IOException => e.printStackTrace()
-              throw e
-            case _: FileAlreadyExistsException =>
-              logInfo("file already exists -> won't create one")
-          } finally {
-            try {
-              out.close()
-              val putTime = System.currentTimeMillis() - startTime
-              logInfo(s"Putting $blockId to Alluxio took " + putTime)
-            } catch {
-              case ioe: IOException => throw ioe
-            }
-            Future.successful(true)
+          if (fs.exists(path)) {
+            fs.delete(path)
           }
+          val out = fs.createFile(path)
+          val channel = new CountingWritableChannel(Channels.newChannel(out))
+          writeFunc(channel)
+          size = channel.getCount
+          channel.close()
+          val putTime = System.currentTimeMillis() - startTime
+          logInfo(s"Putting $blockId ($size bytes) to Alluxio took " + putTime)
+          alluxioBlockSizes.put(blockId, size)
+        } catch {
+          case _: FileAlreadyExistsException =>
+            logInfo("file already exists -> won't create one")
+          case e: IOException =>
+            e.printStackTrace()
+            logWarning("Exception thrown when putting block " + blockId + ", " + e)
+            throw e
         }
-      })
-      result.get()
-      Future.successful(true)
-    } catch {
-      case e: Exception =>
-        e.printStackTrace()
-        logWarning("Exception thrown when putting block " + blockId + ", " + e)
-        throw e
-    }
+      }
+    })
+    result.get()
+    Future.successful(true)
   }
 
   private def putIteratorToAlluxio[T](blockId: BlockId,
                                       values: Iterator[T],
-                                      classTag: ClassTag[T]): BlockResult = {
-    logInfo(s"Persisting block $blockId to alluxio.")
-
-    val l2 = values.toList
-    val l1 = new mutable.ListBuffer[T]
-    l2.foreach { v => l1.append(v) }
-    val estimateSize = l1.length
-
-    putToAlluxio(blockId, estimateSize) { channel =>
+                                      classTag: ClassTag[T]): Long = {
+    putToAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
-      serializerManager.dataSerializeStream(blockId, out, l2.toIterator)(classTag)
+      serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
 
-    val ci = CompletionIterator[Any, Iterator[Any]](l1.iterator, {})
-
-    new BlockResult(ci, DataReadMethod.Network, estimateSize)
+    alluxioBlockSizes.getOrElse(blockId, 0L)
   }
 
   /**
@@ -1277,15 +1289,65 @@ private[spark] class BlockManager(
                                keepReadLock: Boolean = false):
                               Option[PartiallyUnrolledIterator[T]] = {
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
-      // store the iterator to alluxio
-      val result = putIteratorToAlluxio(blockId, iterator(), classTag)
-      // Size of the block in bytes
-      val size = result.bytes
-      val iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
+      var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
+      var size = 0L
+      if (blockId.isRDD) {
+        // store the iterator to alluxio
+        size = putIteratorToAlluxio(blockId, iterator(), classTag)
+        // Size of the block in bytes
+        logInfo(s"Persisted block $blockId to alluxio from " +
+          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+      } else {
+        if (level.useMemory) {
+          // Put it in memory first, even if it also has useDisk set to true;
+          // We will drop it to disk later if the memory store can't hold it.
+          if (level.deserialized) {
+            memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
+              case Right(s) =>
+                size = s
+              case Left(iter) =>
+                // Not enough space to unroll this block; drop to disk if applicable
+                if (level.useDisk) {
+                  logWarning(s"Persisting block $blockId to disk instead.")
+                  diskStore.put(blockId) { channel =>
+                    val out = Channels.newOutputStream(channel)
+                    serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
+                  }
+                  size = diskStore.getSize(blockId)
+                } else {
+                  iteratorFromFailedMemoryStorePut = Some(iter)
+                }
+            }
+          } else { // !level.deserialized
+            memoryStore.putIteratorAsBytes(blockId, iterator(), classTag, level.memoryMode) match {
+              case Right(s) =>
+                size = s
+              case Left(partiallySerializedValues) =>
+                // Not enough space to unroll this block; drop to disk if applicable
+                if (level.useDisk) {
+                  logWarning(s"Persisting block $blockId to disk instead.")
+                  diskStore.put(blockId) { channel =>
+                    val out = Channels.newOutputStream(channel)
+                    partiallySerializedValues.finishWritingToStream(out)
+                  }
+                  size = diskStore.getSize(blockId)
+                } else {
+                  iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
+                }
+            }
+          }
+        } else if (level.useDisk) {
+          diskStore.put(blockId) { channel =>
+            val out = Channels.newOutputStream(channel)
+            serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
+          }
+          size = diskStore.getSize(blockId)
+        }
+      }
 
       // metadata ops
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
-      var blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
+      val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
       if (blockWasSuccessfullyStored) {
         // Now that the block is in alluxio, tell the master about it.
         info.size = size
@@ -1839,3 +1901,4 @@ private[spark] object BlockManager {
     }
   }
 }
+
