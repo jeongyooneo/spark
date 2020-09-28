@@ -113,10 +113,11 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
 
-  private def blockReadLock(blockId: BlockId, executorId: String): Unit = {
+  private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
     // logInfo(s"Hold readlock $blockId, $executorId")
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     disaggBlockLockMap(blockId).readLock().lock()
+    true
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
@@ -133,15 +134,16 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       blockWriteUnlock(blockId)
 
     case FileRead(blockId, executorId) =>
-      blockReadLock(blockId, executorId)
-      val result = fileRead(blockId, executorId)
-
-      if (result == 0) {
-        // logInfo(s"File unlock $blockId at $executorId for empty")
-        blockReadUnlock(blockId, executorId)
+      if (blockReadLock(blockId, executorId)) {
+        val result = fileRead(blockId, executorId)
+        if (result == 0) {
+          // logInfo(s"File unlock $blockId at $executorId for empty")
+          blockReadUnlock(blockId, executorId)
+        }
+        context.reply(result)
+      } else {
+        context.reply(2)
       }
-
-      context.reply(result)
 
     case FileReadUnlock(blockId, executorId) =>
       // logInfo(s"File read unlock $blockId from $executorId")

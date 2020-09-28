@@ -841,12 +841,12 @@ private[spark] class BlockManager(
         disaggManager.readUnlock(blockId, executorId)
 
         logInfo(s"Got block $blockId from alluxio, this is " +
-          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
         Some(new BlockResult(ci, DataReadMethod.Network, len))
       } else {
         logInfo(s"$blockId not yet present in alluxio, this is " +
-          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         None
       }
     } catch {
@@ -871,7 +871,7 @@ private[spark] class BlockManager(
       logInfo(s"alluxio fetch from $executorId $blockId succeeded, " + alluxioFetchTime)
       return alluxio
     }
-
+    /*
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
@@ -883,6 +883,7 @@ private[spark] class BlockManager(
       logInfo(s"Found block $blockId remotely")
       return remote
     }
+    */
     None
   }
 
@@ -1229,12 +1230,16 @@ private[spark] class BlockManager(
         val startTime = System.currentTimeMillis()
         disaggManager.writeLock(blockId, executorId)
         val out = disaggManager.createFileOutputStream(blockId)
+        if (out == null) {
+          logInfo("outstream null")
+        }
         val channel = new CountingWritableChannel(Channels.newChannel(out))
           writeFunc(channel)
           val size = channel.getCount
           channel.close()
           val putTime = System.currentTimeMillis() - startTime
-          logInfo(s"Putting $blockId ($size bytes) to alluxio took " + putTime)
+          // logInfo(s"Putting $blockId ($size bytes) executor $executorId," +
+          //   s"task ${TaskContext.get().taskAttemptId()} to alluxio took " + putTime)
           alluxioBlockSizes.put(blockId, size)
         disaggManager.writeEnd(blockId, executorId, size)
       }

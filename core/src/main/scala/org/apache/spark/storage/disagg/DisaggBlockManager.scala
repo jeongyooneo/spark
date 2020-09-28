@@ -148,9 +148,9 @@ private[spark] class DisaggBlockManager(
   }
 
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
+    val fs = FileSystem.Factory.get()
+    val path = new AlluxioURI("/" + blockId)
     try {
-      val fs = FileSystem.Factory.get()
-      val path = new AlluxioURI("/" + blockId)
       fs.createFile(path)
     } catch {
       case e: IOException => e.printStackTrace()
