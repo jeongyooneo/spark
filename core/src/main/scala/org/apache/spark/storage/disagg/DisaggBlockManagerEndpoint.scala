@@ -46,8 +46,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint()
    */
 
   class CrailBlockInfo(blockId: BlockId,
-                       val executorId: String,
-                       path: String) {
+                       val executorId: String) {
     val bid = blockId
     private var size: Long = 0L
     private var actualBlockSize: Long = 0L

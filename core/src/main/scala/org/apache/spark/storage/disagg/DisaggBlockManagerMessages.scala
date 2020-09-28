@@ -37,7 +37,7 @@ private[spark] object DisaggBlockManagerMessages {
 
   case class IsRddCache(rddId: Int) extends ToBlockManagerMaster
 
-  case class FileWrite(blockId: BlockId)
+  case class FileWrite(blockId: BlockId, executorId: String)
     extends ToBlockManagerMaster
 
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,

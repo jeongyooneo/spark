@@ -143,8 +143,8 @@ private[spark] class DisaggBlockManager(
   }
 
 
-  def writeLock(blockId: BlockId): Int = {
-    driverEndpoint.askSync[Int](FileWrite(blockId))
+  def writeLock(blockId: BlockId, executorId: String): Int = {
+    driverEndpoint.askSync[Int](FileWrite(blockId, executorId))
   }
 
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
@@ -159,10 +159,14 @@ private[spark] class DisaggBlockManager(
   }
 
   def getFileInputStream(blockId: BlockId, executorId: String): FileInStream = {
+    val fs = FileSystem.Factory.get()
+    val path = new AlluxioURI("/" + blockId)
     try {
-      val fs = FileSystem.Factory.get()
-      val path = new AlluxioURI("/" + blockId)
-      fs.openFile(path)
+      if (fs.exists(path) && getSize(blockId, executorId) > 0L) {
+        fs.openFile(path)
+      } else {
+        null
+      }
     } catch {
       case e: IOException => e.printStackTrace()
         throw e

@@ -833,16 +833,22 @@ private[spark] class BlockManager(
     try {
       disaggManager.readLock(blockId, executorId)
       val in = disaggManager.getFileInputStream(blockId, executorId)
-      val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-        in)(implicitly[ClassTag[T]])
-      in.close()
-      val len = alluxioBlockSizes.getOrElse(blockId, 0L)
-      disaggManager.readUnlock(blockId, executorId)
+      if (in != null) {
+        val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+          in)(implicitly[ClassTag[T]])
+        in.close()
+        val len = alluxioBlockSizes.getOrElse(blockId, 0L)
+        disaggManager.readUnlock(blockId, executorId)
 
-      logInfo(s"Got block $blockId from alluxio, this is " +
-        s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
-      val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-      Some(new BlockResult(ci, DataReadMethod.Network, len))
+        logInfo(s"Got block $blockId from alluxio, this is " +
+          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+        val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+        Some(new BlockResult(ci, DataReadMethod.Network, len))
+      } else {
+        logInfo(s"$blockId not yet present in alluxio, this is " +
+          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+        None
+      }
     } catch {
       case e: IOException => e.printStackTrace()
         throw e
@@ -1221,7 +1227,7 @@ private[spark] class BlockManager(
     val result = executor.submit(new Runnable {
       override def run(): Unit = {
         val startTime = System.currentTimeMillis()
-        disaggManager.writeLock(blockId)
+        disaggManager.writeLock(blockId, executorId)
         val out = disaggManager.createFileOutputStream(blockId)
         val channel = new CountingWritableChannel(Channels.newChannel(out))
           writeFunc(channel)

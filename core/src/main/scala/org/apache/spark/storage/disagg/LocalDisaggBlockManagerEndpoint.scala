@@ -68,14 +68,10 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     }
   }
 
-  private def fileWrite(blockId: BlockId): Int = {
-    val info = disaggBlockInfo.get(blockId)
-    if (info.isEmpty) {
-      0
-    } else {
-      logInfo(s"file write disagg block $blockId")
-      1
-    }
+  private def fileWrite(blockId: BlockId, executorId: String): Int = {
+    val blockInfo = new CrailBlockInfo(blockId, executorId)
+    disaggBlockInfo.put(blockId, blockInfo)
+    1
   }
 
   // THIS METHOD SHOULD BE CALLED AFTER WRITE LOCK !!
@@ -174,9 +170,9 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
         blockReadUnlock(blockId, executorId)
       }
 
-    case FileWrite(blockId) =>
+    case FileWrite(blockId, executorId) =>
       blockWriteLock(blockId)
-      val result = fileWrite(blockId)
+      val result = fileWrite(blockId, executorId)
       context.reply(result)
   }
 }
