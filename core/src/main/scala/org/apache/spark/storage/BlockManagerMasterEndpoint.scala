@@ -32,6 +32,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
+import org.apache.spark.storage.disagg.DisaggBlockManagerEndpoint
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
@@ -47,7 +48,7 @@ class BlockManagerMasterEndpoint(
   extends ThreadSafeRpcEndpoint with Logging {
 
   // Mapping from block manager id to the block manager's information.
-  private val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
+  val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
@@ -70,6 +71,10 @@ class BlockManagerMasterEndpoint(
 
   val proactivelyReplicate = conf.get("spark.storage.replication.proactive", "false").toBoolean
 
+  var disaggBlockManager: DisaggBlockManagerEndpoint = null
+  def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
+    disaggBlockManager = bm
+  }
   logInfo("BlockManagerMasterEndpoint up")
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()

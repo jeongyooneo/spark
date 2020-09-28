@@ -19,7 +19,6 @@ package org.apache.spark.storage
 
 import alluxio.AlluxioURI
 import alluxio.client.file.FileSystem
-import alluxio.exception.{FileAlreadyExistsException, FileDoesNotExistException}
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -52,12 +51,11 @@ import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler.ExecutorCacheTaskLocation
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
+import org.apache.spark.storage.disagg.DisaggBlockManager
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
 import org.apache.spark.util.io.ChunkedByteBuffer
-
-
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
@@ -124,6 +122,7 @@ private[spark] class BlockManager(
                                    executorId: String,
                                    rpcEnv: RpcEnv,
                                    val master: BlockManagerMaster,
+                                   val disaggManager: DisaggBlockManager,
                                    val serializerManager: SerializerManager,
                                    val conf: SparkConf,
                                    memoryManager: MemoryManager,
@@ -831,30 +830,23 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    val fs = FileSystem.Factory.get()
-    val path = new AlluxioURI("/" + blockId)
-      try {
-        if (fs.exists(path) && alluxioBlockSizes.getOrElse(blockId, 0L) > 0L) {
-          logInfo(s"Got block $blockId from alluxio, this is " +
-            s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+    try {
+      disaggManager.readLock(blockId, executorId)
+      val in = disaggManager.getFileInputStream(blockId, executorId)
+      val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+        in)(implicitly[ClassTag[T]])
+      in.close()
+      val len = alluxioBlockSizes.getOrElse(blockId, 0L)
+      disaggManager.readUnlock(blockId, executorId)
 
-          val inputStream = fs.openFile(path)
-          val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-            inputStream)(implicitly[ClassTag[T]])
-          inputStream.close()
-          val len = alluxioBlockSizes.getOrElse(blockId, 0L)
-
-          val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-          Some(new BlockResult(ci, DataReadMethod.Network, len))
-        } else {
-          logInfo(s"$blockId not yet present in alluxio, this is " +
-            s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
-          None
-        }
-      } catch {
-        case e: IOException => e.printStackTrace()
-          throw e
-      }
+      logInfo(s"Got block $blockId from alluxio, this is " +
+        s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+      val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+      Some(new BlockResult(ci, DataReadMethod.Network, len))
+    } catch {
+      case e: IOException => e.printStackTrace()
+        throw e
+    }
   }
 
   /**
@@ -1224,34 +1216,21 @@ private[spark] class BlockManager(
    *
    * @throws IllegalStateException if the block already exists in the disk store.
    */
-  def putToAlluxio(blockId: BlockId)
-                  (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
+  def putAlluxio(blockId: BlockId)
+                (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
     val result = executor.submit(new Runnable {
       override def run(): Unit = {
-        try {
-          val startTime = System.currentTimeMillis
-          var size = 0L
-          val fs = FileSystem.Factory.get()
-          val path = new AlluxioURI("/" + blockId)
-          if (fs.exists(path)) {
-            fs.delete(path)
-          }
-          val out = fs.createFile(path)
-          val channel = new CountingWritableChannel(Channels.newChannel(out))
+        val startTime = System.currentTimeMillis()
+        disaggManager.writeLock(blockId)
+        val out = disaggManager.createFileOutputStream(blockId)
+        val channel = new CountingWritableChannel(Channels.newChannel(out))
           writeFunc(channel)
-          size = channel.getCount
+          val size = channel.getCount
           channel.close()
           val putTime = System.currentTimeMillis() - startTime
-          logInfo(s"Putting $blockId ($size bytes) to Alluxio took " + putTime)
+          logInfo(s"Putting $blockId ($size bytes) to alluxio took " + putTime)
           alluxioBlockSizes.put(blockId, size)
-        } catch {
-          case _: FileAlreadyExistsException =>
-            logInfo("file already exists -> won't create one")
-          case e: IOException =>
-            e.printStackTrace()
-            logWarning("Exception thrown when putting block " + blockId + ", " + e)
-            throw e
-        }
+        disaggManager.writeEnd(blockId, executorId, size)
       }
     })
     result.get()
@@ -1261,11 +1240,10 @@ private[spark] class BlockManager(
   private def putIteratorToAlluxio[T](blockId: BlockId,
                                       values: Iterator[T],
                                       classTag: ClassTag[T]): Long = {
-    putToAlluxio(blockId) { channel =>
+    putAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
-
     alluxioBlockSizes.getOrElse(blockId, 0L)
   }
 
