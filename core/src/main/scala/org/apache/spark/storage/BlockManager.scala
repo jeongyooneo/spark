@@ -19,6 +19,7 @@ package org.apache.spark.storage
 
 import alluxio.AlluxioURI
 import alluxio.client.file.FileSystem
+import alluxio.exception.AlluxioException
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -545,7 +546,19 @@ private[spark] class BlockManager(
         case level =>
           val fs = FileSystem.Factory.get()
           val path = new AlluxioURI("/" + blockId)
-          val onAlluxio = fs.exists(path)
+          var onAlluxio = false
+          if (blockId.isRDD) {
+            try {
+              onAlluxio = fs.exists(path)
+            } catch {
+              case _: AlluxioException =>
+                logInfo(s"getCurrentBlockStatus: $blockId not in alluxio: " +
+                  s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+                None
+              case e: IOException => e.printStackTrace()
+                throw e
+            }
+          }
           if (onAlluxio) {
             val inMem = level.useMemory
             val onDisk = level.useDisk
@@ -831,25 +844,29 @@ private[spark] class BlockManager(
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     try {
-      disaggManager.readLock(blockId, executorId)
-      disaggManager.getFileInputStream(blockId, executorId) match {
-        case Some(in) =>
-          val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-            in)(implicitly[ClassTag[T]])
-          in.close()
-          val len = alluxioBlockSizes.getOrElse(blockId, 0L)
-          disaggManager.readUnlock(blockId, executorId)
+      val lockHeld = disaggManager.readLock(blockId, executorId)
+      if (lockHeld) {
+        disaggManager.getFileInputStream(blockId, executorId) match {
+          case Some(in) =>
+            val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+              in)(implicitly[ClassTag[T]])
+            in.close()
+            val len = alluxioBlockSizes.getOrElse(blockId, 0L)
+            disaggManager.readUnlock(blockId, executorId)
 
-          logInfo(s"Got block $blockId from alluxio, this is " +
-            s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+            logInfo(s"Got block $blockId from alluxio, this is " +
+              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
 
-          val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-          Some(new BlockResult(ci, DataReadMethod.Network, len))
-        case None =>
-          logInfo(s"$blockId evicted in alluxio, this is " +
-            s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-          disaggManager.readUnlock(blockId, executorId)
-          None
+            val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+            Some(new BlockResult(ci, DataReadMethod.Network, len))
+          case None =>
+            logInfo(s"$blockId evicted in alluxio, this is " +
+              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+            disaggManager.readUnlock(blockId, executorId)
+            None
+        }
+      } else {
+        None
       }
     } catch {
       case e: IOException => e.printStackTrace()
@@ -1229,21 +1246,16 @@ private[spark] class BlockManager(
                 (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
     val result = executor.submit(new Runnable {
       override def run(): Unit = {
-        val startTime = System.currentTimeMillis()
-        disaggManager.writeLock(blockId, executorId)
-        val out = disaggManager.createFileOutputStream(blockId)
-        if (out == null) {
-          logInfo("outstream null")
-        }
-        val channel = new CountingWritableChannel(Channels.newChannel(out))
+        if (disaggManager.checkExistence(blockId)) {
+          disaggManager.writeLock(blockId, executorId)
+          val out = disaggManager.createFileOutputStream(blockId)
+          val channel = new CountingWritableChannel(Channels.newChannel(out))
           writeFunc(channel)
           val size = channel.getCount
           channel.close()
-          val putTime = System.currentTimeMillis() - startTime
-          // logInfo(s"Putting $blockId ($size bytes) executor $executorId," +
-          //   s"task ${TaskContext.get().taskAttemptId()} to alluxio took " + putTime)
           alluxioBlockSizes.put(blockId, size)
-        disaggManager.writeEnd(blockId, executorId, size)
+          disaggManager.writeEnd(blockId, executorId, size)
+        }
       }
     })
     result.get()

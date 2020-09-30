@@ -148,6 +148,17 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.askSync[Int](FileWrite(blockId, executorId))
   }
 
+  def checkExistence(blockId: BlockId): Boolean = {
+    val fs = FileSystem.Factory.get()
+    val path = new AlluxioURI("/" + blockId)
+    try {
+      fs.exists(path)
+    } catch {
+      case e: IOException => e.printStackTrace()
+        throw e
+    }
+  }
+
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
     val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
