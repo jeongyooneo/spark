@@ -19,11 +19,12 @@ package org.apache.spark.storage.disagg
 
 import alluxio.AlluxioURI
 import alluxio.client.file.{FileInStream, FileOutStream, FileSystem}
+import alluxio.exception.status.UnavailableException
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.convert.decorateAsScala._
 
-import org.apache.spark.SparkConf
+import org.apache.spark.{SparkConf, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
@@ -158,16 +159,20 @@ private[spark] class DisaggBlockManager(
     }
   }
 
-  def getFileInputStream(blockId: BlockId, executorId: String): FileInStream = {
+  def getFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
     val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
     try {
       if (fs.exists(path) && getSize(blockId, executorId) > 0L) {
-        fs.openFile(path)
+        Some(fs.openFile(path))
       } else {
-        null
+        None
       }
     } catch {
+      case _: UnavailableException =>
+        logInfo(s"$blockId evicted in alluxio, this is " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+        None
       case e: IOException => e.printStackTrace()
         throw e
     }

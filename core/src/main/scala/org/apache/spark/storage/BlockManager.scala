@@ -832,22 +832,24 @@ private[spark] class BlockManager(
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     try {
       disaggManager.readLock(blockId, executorId)
-      val in = disaggManager.getFileInputStream(blockId, executorId)
-      if (in != null) {
-        val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-          in)(implicitly[ClassTag[T]])
-        in.close()
-        val len = alluxioBlockSizes.getOrElse(blockId, 0L)
-        disaggManager.readUnlock(blockId, executorId)
+      disaggManager.getFileInputStream(blockId, executorId) match {
+        case Some(in) =>
+          val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+            in)(implicitly[ClassTag[T]])
+          in.close()
+          val len = alluxioBlockSizes.getOrElse(blockId, 0L)
+          disaggManager.readUnlock(blockId, executorId)
 
-        logInfo(s"Got block $blockId from alluxio, this is " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-        val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-        Some(new BlockResult(ci, DataReadMethod.Network, len))
-      } else {
-        logInfo(s"$blockId not yet present in alluxio, this is " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-        None
+          logInfo(s"Got block $blockId from alluxio, this is " +
+            s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+
+          val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+          Some(new BlockResult(ci, DataReadMethod.Network, len))
+        case None =>
+          logInfo(s"$blockId evicted in alluxio, this is " +
+            s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+          disaggManager.readUnlock(blockId, executorId)
+          None
       }
     } catch {
       case e: IOException => e.printStackTrace()
