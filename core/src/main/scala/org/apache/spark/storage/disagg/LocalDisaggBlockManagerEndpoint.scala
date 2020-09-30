@@ -43,35 +43,33 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
+  logInfo(s"LocalDisaggBlockManagerEndpoint is up")
+
   blockManagerMaster.setDisaggBlockManager(this)
+  if (blockManagerMaster.isLocal) {
+    logInfo(s"BlockManagerMaster is local")
+  }
 
   val executor: ExecutorService = Executors.newCachedThreadPool()
-  val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
-  val localExecutorLockMap = new ConcurrentHashMap[String, Object]().asScala
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
-
-  /**
-   * Parameters for disaggregation caching.
-   */
 
   // blocks stored in disagg
   val disaggBlockInfo: concurrent.Map[BlockId, CrailBlockInfo] =
     new ConcurrentHashMap[BlockId, CrailBlockInfo]().asScala
 
-  private def fileRead(blockId: BlockId, executorId: String): Int = {
+  private def fileInfoExists(blockId: BlockId, executorId: String): Int = {
     val info = disaggBlockInfo.get(blockId)
     if (info.isEmpty) {
       0
     } else {
-      logInfo(s"file read disagg block $blockId at $executorId")
       1
     }
   }
 
-  private def fileWrite(blockId: BlockId, executorId: String): Int = {
+  private def fileWrite(blockId: BlockId, executorId: String): Boolean = {
     val blockInfo = new CrailBlockInfo(blockId, executorId)
     disaggBlockInfo.put(blockId, blockInfo)
-    1
+    true
   }
 
   // THIS METHOD SHOULD BE CALLED AFTER WRITE LOCK !!
@@ -79,68 +77,53 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
     val info = disaggBlockInfo.get(blockId)
     if (info.isEmpty) {
-      logWarning(s"No disagg block for writing $blockId")
-      throw new RuntimeException(s"no disagg block for writing $blockId")
+      throw new RuntimeException(s"Written file for a non-existent block $blockId")
     } else {
       val v = info.get
       v.setSize(size)
       v.createdTime = System.currentTimeMillis()
       v.writeDone = true
-      logInfo(s"Storing file writing $blockId, size $size")
+      logInfo(s"file write to alluxio ended $blockId, size $size")
       true
     }
   }
 
-  def contains(blockId: BlockId): Int = {
-    val info = disaggBlockInfo.get(blockId)
-
-    if (info.isEmpty) {
-       // logInfo(s"disagg not containing $blockId")
-      0
+  private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
+    disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
+    if (disaggBlockLockMap(blockId).readLock().tryLock()) {
+      logInfo(s"Held readlock $blockId, $executorId")
+      true
     } else {
-      1
+      false
     }
   }
 
-  private def blockWriteLock(blockId: BlockId): Unit = {
-    logInfo(s"Hold writelock $blockId")
+  private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
+    disaggBlockLockMap(blockId).readLock().unlock()
+    logInfo(s"Released readlock $blockId, $executorId")
+    true
+  }
+
+  private def blockWriteLock(blockId: BlockId): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    disaggBlockLockMap(blockId).writeLock().lock()
+    if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
+      logInfo(s"Held writelock $blockId")
+      true
+    } else {
+      false
+    }
   }
 
   private def blockWriteUnlock(blockId: BlockId): Unit = {
-    // logInfo(s"Release tryWritelock $blockId")
     disaggBlockLockMap(blockId).writeLock().unlock()
-  }
-
-  private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
-    // logInfo(s"Hold readlock $blockId, $executorId")
-    disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    disaggBlockLockMap(blockId).readLock().lock()
-    true
-  }
-
-  private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
-    // logInfo(s"Release readlock $blockId, $executorId")
-    disaggBlockLockMap(blockId).readLock().unlock()
-    true
+    logInfo(s"Released writelock $blockId")
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-    // FOR DISAGG
-    // FOR DISAGG
-    case FileWriteEnd(blockId, executorId, size) =>
-      fileWriteEnd(blockId, size)
-      blockWriteUnlock(blockId)
-
-    case FileRead(blockId, executorId) =>
+    case FileReadLock(blockId, executorId) =>
       if (blockReadLock(blockId, executorId)) {
-        val result = fileRead(blockId, executorId)
-        if (result == 0) {
-          // logInfo(s"File unlock $blockId at $executorId for empty")
-          blockReadUnlock(blockId, executorId)
-        }
-        context.reply(result)
+        // held read lock
+        context.reply(fileInfoExists(blockId, executorId))
       } else {
         context.reply(2)
       }
@@ -149,32 +132,25 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       // logInfo(s"File read unlock $blockId from $executorId")
       blockReadUnlock(blockId, executorId)
 
-    case Contains(blockId, executorId) =>
-      blockReadLock(blockId, executorId)
-      try {
-        val result = contains(blockId)
-      } finally {
-        blockReadUnlock(blockId, executorId)
-      }
-      context.reply(contains(blockId))
-
-    case GetSize(blockId, executorId) =>
-      blockReadLock(blockId, executorId)
-      try {
-        val size = if (disaggBlockInfo.get(blockId).isEmpty) {
-          logWarning(s"disagg block is empty.. no size $blockId")
-          0L
-        } else {
-          disaggBlockInfo.get(blockId).get.getSize
-        }
-        context.reply(size)
-      } finally {
-        blockReadUnlock(blockId, executorId)
+    case FileWriteLock(blockId, executorId) =>
+      if (blockWriteLock(blockId)) {
+        val result = fileWrite(blockId, executorId)
+        context.reply(result)
+      } else {
+        context.reply(false)
       }
 
-    case FileWrite(blockId, executorId) =>
-      blockWriteLock(blockId)
-      val result = fileWrite(blockId, executorId)
-      context.reply(result)
+    case FileWriteUnlock(blockId, size) =>
+      fileWriteEnd(blockId, size)
+      blockWriteUnlock(blockId)
+
+    case GetSize(blockId) =>
+      val size = if (disaggBlockInfo.get(blockId).isEmpty) {
+        logWarning(s"disagg block is empty.. no size $blockId")
+        -1L
+      } else {
+        disaggBlockInfo.get(blockId).get.getSize
+      }
+      context.reply(size)
   }
 }

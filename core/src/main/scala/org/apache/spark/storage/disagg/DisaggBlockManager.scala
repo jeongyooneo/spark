@@ -34,40 +34,6 @@ private[spark] class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging {
 
-  def discardBlocksIfNecessary(estimateSize: Long): Unit = {
-    driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
-  }
-
-  private val isRddCacheMap = new ConcurrentHashMap[Int, Boolean]().asScala
-  private var prevUpdate = System.currentTimeMillis()
-  private val expiredPeriod = 2000
-
-  def isRDDCache(rddId: Int): Boolean = {
-
-    val curr = System.currentTimeMillis()
-    if (curr - prevUpdate >= expiredPeriod) {
-      isRddCacheMap.clear()
-      prevUpdate = curr
-    }
-
-    if (isRddCacheMap.contains(rddId)) {
-      isRddCacheMap(rddId)
-    } else {
-      val result = driverEndpoint.askSync[Boolean](IsRddCache(rddId))
-      isRddCacheMap(rddId) = result
-      result
-    }
-  }
-
-  def localEviction(blockId: Option[BlockId], executorId: String, size: Long,
-                    prevEvicted: Set[BlockId]): List[BlockId] = {
-    driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size, prevEvicted))
-  }
-
-  def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
-    driverEndpoint.ask(LocalEvictionDone(blockId, executorId))
-  }
-
   def sendRDDCompTime(rddId: Int, time: Long): Unit = {
     driverEndpoint.ask(SendNoCachedRDDCompTime(rddId, time))
   }
@@ -80,10 +46,6 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.ask(WriteDisaggBlock(blockId, cost))
   }
 
-  def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean): Unit = {
-    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote))
-  }
-
   def sendDeserMetric(blockId: BlockId, time: Long): Unit = {
     driverEndpoint.ask(ReadDisaggBlock(blockId, time))
   }
@@ -94,48 +56,19 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](CacheDisaggInMemory(blockId, size, executorId, enoughSpace))
   }
 
-  private val localBlockCache = new ConcurrentHashMap[BlockId, Long].asScala
-
-  def getLocalBlockSize(blockId: BlockId): Long = {
-    val v = localBlockCache.get(blockId)
-
-    if (v.isDefined) {
-      v.get
-    } else {
-      val size = driverEndpoint.askSync[Long](GetLocalBlockSize(blockId))
-      if (size > 0) {
-        localBlockCache.putIfAbsent(blockId, size)
-      }
-      size
-    }
-  }
-
-  def evictionFail(blockId: BlockId, executorId: String): Unit = {
-    driverEndpoint.ask(EvictionFail(blockId, executorId))
-  }
-
-  def cachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                  putDisagg: Boolean, localFull: Boolean): Unit = {
-    driverEndpoint.ask(
-      CachingFail(blockId, estimateSize, executorId, putDisagg, localFull))
-  }
-
   def readLock(blockId: BlockId, executorId: String): Boolean = {
-    val result = driverEndpoint.askSync[Int](FileRead(blockId, executorId))
-
-    logInfo(s"Read logging ... $blockId, result: $result")
-
-    if (result == 1) {
+    val readSucceeded = driverEndpoint.askSync[Int](FileReadLock(blockId, executorId))
+    if (readSucceeded == 0) {
+      logInfo(s"Read lock $blockId: file not present in alluxio")
+      false
+    } else if (readSucceeded == 1) {
+      logInfo(s"Read lock succeeded for $blockId")
       true
-    } else if (result == 2) {
+    } else {
       // retry... the block is being written
       Thread.sleep(500)
-      logInfo(s"Try read again... $blockId, executor $executorId")
+      logInfo(s"Read lock: try to acquire lock... $blockId executor $executorId")
       readLock(blockId, executorId)
-    } else if (result == 0) {
-      false
-    } else {
-      throw new RuntimeException(s"Invalid read value $result for reading $blockId")
     }
   }
 
@@ -143,34 +76,33 @@ private[spark] class DisaggBlockManager(
     driverEndpoint.ask[Unit](FileReadUnlock(blockId, executorId))
   }
 
-
-  def writeLock(blockId: BlockId, executorId: String): Int = {
-    driverEndpoint.askSync[Int](FileWrite(blockId, executorId))
+  def getSize(blockId: BlockId, executorId: String): Long = {
+    var size = -1L
+    if (readLock(blockId, executorId)) {
+      size = driverEndpoint.askSync[Long](GetSize(blockId))
+    }
+    size
   }
 
-  def checkExistence(blockId: BlockId): Boolean = {
-    val fs = FileSystem.Factory.get()
-    val path = new AlluxioURI("/" + blockId)
-    try {
-      fs.exists(path)
-    } catch {
-      case e: IOException => e.printStackTrace()
-        throw e
+  def writeLock(blockId: BlockId, executorId: String): Boolean = {
+    val writeSucceeded = driverEndpoint.askSync[Boolean](FileWriteLock(blockId, executorId))
+    if (writeSucceeded) {
+      logInfo(s"Write lock succeeded for $blockId executor $executorId")
+      true
+    } else {
+      // retry...
+      Thread.sleep(500)
+      logInfo(s"Write lock: try to acquire lock... $blockId executor $executorId")
+      writeLock(blockId, executorId)
     }
   }
 
-  def createFileOutputStream(blockId: BlockId): FileOutStream = {
-    val fs = FileSystem.Factory.get()
-    val path = new AlluxioURI("/" + blockId)
-    try {
-      fs.createFile(path)
-    } catch {
-      case e: IOException => e.printStackTrace()
-        throw e
-    }
+  def writeUnlock(blockId: BlockId, executorId: String, size: Long): Unit = {
+    driverEndpoint.ask(FileWriteUnlock(blockId, size))
+    logInfo(s"Write finished in alluxio, unlocked: $blockId executor $executorId")
   }
 
-  def getFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
+  def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
     val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
     try {
@@ -185,45 +117,21 @@ private[spark] class DisaggBlockManager(
           s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         None
       case e: IOException => e.printStackTrace()
+        logInfo(s"Exception in createFileInputStream $blockId " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         throw e
     }
   }
 
-  def remove(blockId: BlockId, executorId: String): Boolean = {
-    driverEndpoint.askSync[Boolean](FileRemoved(blockId, executorId, remove = true))
-  }
-
-  def blockExists(blockId: BlockId, executorId: String): Boolean = {
+  def createFileOutputStream(blockId: BlockId): FileOutStream = {
+    val fs = FileSystem.Factory.get()
+    val path = new AlluxioURI("/" + blockId)
     try {
-      val result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
-      if (result == 2) {
-        logInfo(s"blockExist check again $blockId, executorId: $executorId")
-        // Thread.sleep(1000)
-        // result = driverEndpoint.askSync[Int](Contains(blockId, executorId))
-      }
-      result == 1
+      fs.createFile(path)
     } catch {
-      case e: Exception =>
-        e.printStackTrace()
-        throw new RuntimeException(e)
+      case e: IOException => e.printStackTrace()
+        throw e
     }
-  }
-
-  def getSize(blockId: BlockId, executorId: String): Long = {
-    val size = driverEndpoint.askSync[Long](GetSize(blockId, executorId))
-
-    if (size == -1) {
-      logInfo(s"Get size again !! $blockId, $executorId")
-      Thread.sleep(500)
-    }
-
-    logInfo(s"Disagg get block size $blockId, size $size")
-    size
-  }
-
-  def writeEnd(blockId: BlockId, executorId: String, size: Long): Unit = {
-    logInfo(s"Writing end $blockId from disagg")
-    driverEndpoint.ask(FileWriteEnd(blockId, executorId, size))
   }
 }
 

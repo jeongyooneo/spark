@@ -17,9 +17,6 @@
 
 package org.apache.spark.storage
 
-import alluxio.AlluxioURI
-import alluxio.client.file.FileSystem
-import alluxio.exception.AlluxioException
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -149,8 +146,6 @@ private[spark] class BlockManager(
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
   private val blockAccessHistory = new ConcurrentHashMap[BlockId, Long]().asScala
-
-  private val alluxioBlockSizes = new mutable.HashMap[BlockId, Long]
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -544,35 +539,24 @@ private[spark] class BlockManager(
         case null =>
           BlockStatus.empty
         case level =>
-          val fs = FileSystem.Factory.get()
-          val path = new AlluxioURI("/" + blockId)
-          var onAlluxio = false
           if (blockId.isRDD) {
-            try {
-              onAlluxio = fs.exists(path)
-            } catch {
-              case _: AlluxioException =>
-                logInfo(s"getCurrentBlockStatus: $blockId not in alluxio: " +
-                  s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-                None
-              case e: IOException => e.printStackTrace()
-                throw e
+            if (disaggManager.getSize(blockId, executorId) > 0L) {
+              val inMem = level.useMemory
+              val onDisk = level.useDisk
+              val deserialized = if (inMem) level.deserialized else false
+              val replication = if (inMem || onDisk) level.replication else 1
+              val storageLevel = StorageLevel(
+                useDisk = onDisk,
+                useMemory = inMem,
+                useOffHeap = level.useOffHeap,
+                deserialized = deserialized,
+                replication = replication)
+              val memSize = 0L
+              val diskSize = 0L
+              BlockStatus(storageLevel, memSize, diskSize)
+            } else {
+              BlockStatus.empty
             }
-          }
-          if (onAlluxio) {
-            val inMem = level.useMemory
-            val onDisk = level.useDisk
-            val deserialized = if (inMem) level.deserialized else false
-            val replication = if (inMem || onDisk) level.replication else 1
-            val storageLevel = StorageLevel(
-              useDisk = onDisk,
-              useMemory = inMem,
-              useOffHeap = level.useOffHeap,
-              deserialized = deserialized,
-              replication = replication)
-            val memSize = 0L
-            val diskSize = 0L
-            BlockStatus(storageLevel, memSize, diskSize)
           } else {
             val inMem = level.useMemory && memoryStore.contains(blockId)
             val onDisk = level.useDisk && diskStore.contains(blockId)
@@ -843,34 +827,25 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    try {
-      val lockHeld = disaggManager.readLock(blockId, executorId)
-      if (lockHeld) {
-        disaggManager.getFileInputStream(blockId, executorId) match {
-          case Some(in) =>
-            val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-              in)(implicitly[ClassTag[T]])
-            in.close()
-            val len = alluxioBlockSizes.getOrElse(blockId, 0L)
-            disaggManager.readUnlock(blockId, executorId)
+    disaggManager.readLock(blockId, executorId)
+    disaggManager.createFileInputStream(blockId, executorId) match {
+      case Some(in) =>
+        val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+          in)(implicitly[ClassTag[T]])
+        in.close()
+        disaggManager.readUnlock(blockId, executorId)
+        val len = disaggManager.getSize(blockId, executorId)
 
-            logInfo(s"Got block $blockId from alluxio, this is " +
-              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+        logInfo(s"Got block $blockId from alluxio: " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
 
-            val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-            Some(new BlockResult(ci, DataReadMethod.Network, len))
-          case None =>
-            logInfo(s"$blockId evicted in alluxio, this is " +
-              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-            disaggManager.readUnlock(blockId, executorId)
-            None
-        }
-      } else {
+        val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+        Some(new BlockResult(ci, DataReadMethod.Network, len))
+      case None =>
+        disaggManager.readUnlock(blockId, executorId)
+        logInfo(s"$blockId not in alluxio: " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         None
-      }
-    } catch {
-      case e: IOException => e.printStackTrace()
-        throw e
     }
   }
 
@@ -890,19 +865,6 @@ private[spark] class BlockManager(
       logInfo(s"alluxio fetch from $executorId $blockId succeeded, " + alluxioFetchTime)
       return alluxio
     }
-    /*
-    val local = getLocalValues(blockId)
-    if (local.isDefined) {
-      logInfo(s"Found block $blockId locally")
-      return local
-    }
-
-    val remote = getRemoteValues[T](blockId)
-    if (remote.isDefined) {
-      logInfo(s"Found block $blockId remotely")
-      return remote
-    }
-    */
     None
   }
 
@@ -1243,33 +1205,40 @@ private[spark] class BlockManager(
    * @throws IllegalStateException if the block already exists in the disk store.
    */
   def putAlluxio(blockId: BlockId)
-                (writeFunc: WritableByteChannel => Unit): Future[Boolean] = {
-    val result = executor.submit(new Runnable {
-      override def run(): Unit = {
-        if (disaggManager.checkExistence(blockId)) {
+                (writeFunc: WritableByteChannel => Unit): Long = {
+    var size = 0L
+    try {
+      val result = executor.submit(new Runnable {
+        override def run(): Unit = {
           disaggManager.writeLock(blockId, executorId)
           val out = disaggManager.createFileOutputStream(blockId)
           val channel = new CountingWritableChannel(Channels.newChannel(out))
           writeFunc(channel)
-          val size = channel.getCount
+          size = channel.getCount
           channel.close()
-          alluxioBlockSizes.put(blockId, size)
-          disaggManager.writeEnd(blockId, executorId, size)
+          disaggManager.writeUnlock(blockId, executorId, size)
         }
-      }
-    })
-    result.get()
-    Future.successful(true)
+      })
+      result.get()
+      size
+      // Future.successful(true)
+    } catch {
+      case e: Exception =>
+        logInfo(s"Exception in putAlluxio $blockId " +
+          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+        e.printStackTrace()
+        throw e
+    }
   }
 
   private def putIteratorToAlluxio[T](blockId: BlockId,
                                       values: Iterator[T],
                                       classTag: ClassTag[T]): Long = {
-    putAlluxio(blockId) { channel =>
+    val size = putAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
-    alluxioBlockSizes.getOrElse(blockId, 0L)
+    size
   }
 
   /**
@@ -1297,9 +1266,9 @@ private[spark] class BlockManager(
       if (blockId.isRDD) {
         // store the iterator to alluxio
         size = putIteratorToAlluxio(blockId, iterator(), classTag)
-        // Size of the block in bytes
-        logInfo(s"Persisted block $blockId to alluxio from " +
-          s"executor $executorId and task ${TaskContext.get().taskAttemptId()}")
+        logInfo(s"Successfully put $blockId " +
+          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+        // size = disaggManager.getSize(blockId, executorId)
       } else {
         if (level.useMemory) {
           // Put it in memory first, even if it also has useDisk set to true;

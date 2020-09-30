@@ -66,7 +66,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * Send a message to the corresponding [[RpcEndpoint.receiveAndReply]] and get its result within a
    * default timeout, throw an exception if this fails.
    *
-   * Note: this is a blocking action which may cost a lot of time,  so don't call it in a message
+   * Note: this is a blocking action which may cost a lot of time, so don't call it in a message
    * loop of [[RpcEndpoint]].
 
    * @param message the message to send
