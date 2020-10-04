@@ -17,6 +17,7 @@
 
 package org.apache.spark.storage
 
+import alluxio.exception.status.UnavailableException
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -827,25 +828,44 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    disaggManager.readLock(blockId, executorId)
-    disaggManager.createFileInputStream(blockId, executorId) match {
-      case Some(in) =>
-        val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-          in)(implicitly[ClassTag[T]])
-        in.close()
-        disaggManager.readUnlock(blockId, executorId)
-        val len = disaggManager.getSize(blockId, executorId)
+    try {
+      if (disaggManager.readLock(blockId, executorId)) {
+        disaggManager.createFileInputStream(blockId, executorId) match {
+          case Some(in) =>
+            val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+              in)(implicitly[ClassTag[T]])
+            in.close()
+            val len = disaggManager.getSize(blockId, executorId)
 
-        logInfo(s"Got block $blockId from alluxio: " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+            logInfo(s"Got block $blockId from alluxio: " +
+              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
 
-        val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-        Some(new BlockResult(ci, DataReadMethod.Network, len))
-      case None =>
-        disaggManager.readUnlock(blockId, executorId)
+            val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+            Some(new BlockResult(ci, DataReadMethod.Network, len))
+          case None =>
+            logInfo(s"$blockId not in alluxio: " +
+              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+            None
+        }
+      } else {
         logInfo(s"$blockId not in alluxio: " +
           s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
         None
+      }
+    } catch {
+        case e1: UnavailableException =>
+          logInfo(s"Cannot get $blockId as alluxio is temporarily unavailable " +
+            s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+          e1.printStackTrace()
+          // retry...
+          Thread.sleep(500)
+          getAlluxioValues(blockId)
+        case e: IOException => e.printStackTrace()
+          logInfo(s"Exception in createFileInputStream $blockId " +
+            s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+          throw e
+    } finally {
+      disaggManager.readUnlock(blockId, executorId)
     }
   }
 
@@ -1210,25 +1230,33 @@ private[spark] class BlockManager(
     try {
       val result = executor.submit(new Runnable {
         override def run(): Unit = {
-          disaggManager.writeLock(blockId, executorId)
-          val out = disaggManager.createFileOutputStream(blockId)
-          val channel = new CountingWritableChannel(Channels.newChannel(out))
-          writeFunc(channel)
-          size = channel.getCount
-          channel.close()
-          disaggManager.writeUnlock(blockId, executorId, size)
+          try {
+            disaggManager.writeLock(blockId, executorId)
+            val out = disaggManager.createFileOutputStream(blockId)
+            val channel = new CountingWritableChannel(Channels.newChannel(out))
+            writeFunc(channel)
+            size = channel.getCount
+            channel.close()
+          } finally {
+            disaggManager.writeUnlock(blockId, executorId, size)
+          }
         }
       })
       result.get()
       size
       // Future.successful(true)
     } catch {
-      case e: Exception =>
-        logInfo(s"Exception in putAlluxio $blockId " +
+      case e1: UnavailableException =>
+        logInfo(s"Cannot put $blockId as alluxio is temporarily unavailable " +
           s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-        e.printStackTrace()
+        e1.printStackTrace()
+        -1L
+      case e: IOException => e.printStackTrace()
+        logInfo(s"Exception in createFileInputStream $blockId " +
+          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
         throw e
     }
+
   }
 
   private def putIteratorToAlluxio[T](blockId: BlockId,
@@ -1873,4 +1901,5 @@ private[spark] object BlockManager {
     }
   }
 }
+
 

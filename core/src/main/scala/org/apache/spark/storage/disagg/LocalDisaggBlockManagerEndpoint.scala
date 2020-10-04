@@ -31,17 +31,12 @@ import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
 import org.apache.spark.util.ThreadUtils
 
-/**
- */
 private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv,
                                           val isLocal: Boolean,
                                           conf: SparkConf,
                                           listenerBus: LiveListenerBus,
                                           blockManagerMaster: BlockManagerMasterEndpoint)
   extends DisaggBlockManagerEndpoint {
-
-  private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
-  private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
   logInfo(s"LocalDisaggBlockManagerEndpoint is up")
 
@@ -50,7 +45,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     logInfo(s"BlockManagerMaster is local")
   }
 
-  val executor: ExecutorService = Executors.newCachedThreadPool()
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
 
   // blocks stored in disagg
@@ -91,16 +85,17 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).readLock().tryLock()) {
-      logInfo(s"Held readlock $blockId, $executorId")
+      logInfo(s"Held readlock $blockId, executor $executorId")
       true
     } else {
+      logInfo(s"Failed to hold readlock $blockId, executor $executorId")
       false
     }
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
     disaggBlockLockMap(blockId).readLock().unlock()
-    logInfo(s"Released readlock $blockId, $executorId")
+    logInfo(s"Released readlock $blockId, executor $executorId")
     true
   }
 
@@ -154,3 +149,4 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       context.reply(size)
   }
 }
+

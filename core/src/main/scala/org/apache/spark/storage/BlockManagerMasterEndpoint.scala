@@ -117,7 +117,7 @@ class BlockManagerMasterEndpoint(
       builder.append(s"Total size memUsed ${memSize/unit} " +
         s"memFree ${freeMemSize/unit} disk ${diskSize/unit}\n")
 
-      logInfo(builder.toString() + "\n")
+      // logInfo(builder.toString() + "\n")
     }
   }
   scheduler.scheduleAtFixedRate(task, 2, 2, TimeUnit.SECONDS)

@@ -19,12 +19,8 @@ package org.apache.spark.storage.disagg
 
 import alluxio.AlluxioURI
 import alluxio.client.file.{FileInStream, FileOutStream, FileSystem}
-import alluxio.exception.status.UnavailableException
-import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
-import scala.collection.convert.decorateAsScala._
 
-import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
@@ -34,27 +30,7 @@ private[spark] class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends Logging {
 
-  def sendRDDCompTime(rddId: Int, time: Long): Unit = {
-    driverEndpoint.ask(SendNoCachedRDDCompTime(rddId, time))
-  }
-
-  def sendRecompTime(blockId: BlockId, time: Long): Unit = {
-    driverEndpoint.ask(SendRecompTime(blockId, time))
-  }
-
-  def sendSerMetric(blockId: BlockId, size: Long, cost: Long): Unit = {
-    driverEndpoint.ask(WriteDisaggBlock(blockId, cost))
-  }
-
-  def sendDeserMetric(blockId: BlockId, time: Long): Unit = {
-    driverEndpoint.ask(ReadDisaggBlock(blockId, time))
-  }
-
-  def cacheDisaggDataInMemory(blockId: BlockId, size: Long,
-                              executorId: String,
-                              enoughSpace: Boolean): Boolean = {
-    driverEndpoint.askSync[Boolean](CacheDisaggInMemory(blockId, size, executorId, enoughSpace))
-  }
+  val fs : FileSystem = FileSystem.Factory.get()
 
   def readLock(blockId: BlockId, executorId: String): Boolean = {
     val readSucceeded = driverEndpoint.askSync[Int](FileReadLock(blockId, executorId))
@@ -62,79 +38,73 @@ private[spark] class DisaggBlockManager(
       logInfo(s"Read lock $blockId: file not present in alluxio")
       false
     } else if (readSucceeded == 1) {
-      logInfo(s"Read lock succeeded for $blockId")
+      logInfo(s"Read lock succeeded for $blockId " +
+        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
       true
     } else {
       // retry... the block is being written
       Thread.sleep(500)
-      logInfo(s"Read lock: try to acquire lock... $blockId executor $executorId")
+      logInfo(s"Read lock try to acquire lock... $blockId " +
+        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
       readLock(blockId, executorId)
     }
   }
 
   def readUnlock(blockId: BlockId, executorId: String): Unit = {
     driverEndpoint.ask[Unit](FileReadUnlock(blockId, executorId))
+    logInfo(s"Read unlock succeeded for $blockId " +
+    s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
   }
 
   def getSize(blockId: BlockId, executorId: String): Long = {
     var size = -1L
-    if (readLock(blockId, executorId)) {
-      size = driverEndpoint.askSync[Long](GetSize(blockId))
-    }
+    readLock(blockId, executorId)
+    size = driverEndpoint.askSync[Long](GetSize(blockId))
+    readUnlock(blockId, executorId)
+
     size
   }
 
   def writeLock(blockId: BlockId, executorId: String): Boolean = {
     val writeSucceeded = driverEndpoint.askSync[Boolean](FileWriteLock(blockId, executorId))
     if (writeSucceeded) {
-      logInfo(s"Write lock succeeded for $blockId executor $executorId")
+      logInfo(s"Write lock succeeded for $blockId " +
+        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
       true
     } else {
       // retry...
       Thread.sleep(500)
-      logInfo(s"Write lock: try to acquire lock... $blockId executor $executorId")
+      logInfo(s"Write lock try to acquire lock... $blockId " +
+        s"executor $executorId ") //  task ${TaskContext.get().taskAttemptId()}")
       writeLock(blockId, executorId)
     }
   }
 
   def writeUnlock(blockId: BlockId, executorId: String, size: Long): Unit = {
     driverEndpoint.ask(FileWriteUnlock(blockId, size))
-    logInfo(s"Write finished in alluxio, unlocked: $blockId executor $executorId")
+    logInfo(s"Write finished in alluxio, unlocked: $blockId " +
+      s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
   }
 
   def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
-    val fs = FileSystem.Factory.get()
+    // val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
-    try {
-      if (fs.exists(path) && getSize(blockId, executorId) > 0L) {
-        Some(fs.openFile(path))
-      } else {
-        None
-      }
-    } catch {
-      case _: UnavailableException =>
-        logInfo(s"$blockId evicted in alluxio, this is " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-        None
-      case e: IOException => e.printStackTrace()
-        logInfo(s"Exception in createFileInputStream $blockId " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-        throw e
+    if (getSize(blockId, executorId) > 0L) {
+      Some(fs.openFile(path))
+    } else {
+      None
     }
   }
 
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
-    val fs = FileSystem.Factory.get()
+    // val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
-    try {
-      fs.createFile(path)
-    } catch {
-      case e: IOException => e.printStackTrace()
-        throw e
-    }
+    logInfo(s"Creating alluxio file for $blockId...")
+    fs.createFile(path)
   }
 }
 
 private[spark] object DisaggBlockManager {
   val DRIVER_ENDPOINT_NAME = "DisaggBlockManager"
 }
+
