@@ -23,6 +23,7 @@ import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
+import java.nio.file.FileAlreadyExistsException
 import java.util.Collections
 import java.util.concurrent.{ConcurrentHashMap, Executors}
 import scala.collection.JavaConverters.mapAsScalaConcurrentMapConverter
@@ -828,8 +829,10 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    var lockHeld = false
     try {
-      if (disaggManager.readLock(blockId, executorId)) {
+      lockHeld = disaggManager.readLock(blockId, executorId)
+      if (lockHeld) {
         disaggManager.createFileInputStream(blockId, executorId) match {
           case Some(in) =>
             val alluxioIter = serializerManager.dataDeserializeStream(blockId,
@@ -853,19 +856,14 @@ private[spark] class BlockManager(
         None
       }
     } catch {
-        case e1: UnavailableException =>
-          logInfo(s"Cannot get $blockId as alluxio is temporarily unavailable " +
-            s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-          e1.printStackTrace()
-          // retry...
-          Thread.sleep(500)
-          getAlluxioValues(blockId)
-        case e: IOException => e.printStackTrace()
+        case e: Exception => e.printStackTrace()
           logInfo(s"Exception in createFileInputStream $blockId " +
             s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
           throw e
     } finally {
-      disaggManager.readUnlock(blockId, executorId)
+      if (lockHeld) {
+        disaggManager.readUnlock(blockId, executorId)
+      }
     }
   }
 
@@ -1237,6 +1235,19 @@ private[spark] class BlockManager(
             writeFunc(channel)
             size = channel.getCount
             channel.close()
+          } catch {
+            case _: FileAlreadyExistsException =>
+              logInfo(s"$blockId already exists in alluxio " +
+                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+              size = disaggManager.getSize(blockId, executorId)
+            case e: UnavailableException =>
+              logInfo(s"Cannot put $blockId as alluxio is temporarily unavailable " +
+                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+              e.printStackTrace()
+            case e: IOException => e.printStackTrace()
+              logInfo(s"Exception in createFileInputStream $blockId " +
+                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+              throw e
           } finally {
             disaggManager.writeUnlock(blockId, executorId, size)
           }
@@ -1246,17 +1257,11 @@ private[spark] class BlockManager(
       size
       // Future.successful(true)
     } catch {
-      case e1: UnavailableException =>
-        logInfo(s"Cannot put $blockId as alluxio is temporarily unavailable " +
-          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-        e1.printStackTrace()
-        -1L
-      case e: IOException => e.printStackTrace()
-        logInfo(s"Exception in createFileInputStream $blockId " +
+      case e: Exception =>
+        logInfo(s"Exception in putAlluxio for $blockId " +
           s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
         throw e
     }
-
   }
 
   private def putIteratorToAlluxio[T](blockId: BlockId,

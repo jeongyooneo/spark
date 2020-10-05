@@ -87,7 +87,6 @@ private[spark] class DisaggBlockManager(
   }
 
   def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
-    // val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
     if (getSize(blockId, executorId) > 0L) {
       Some(fs.openFile(path))
@@ -97,9 +96,7 @@ private[spark] class DisaggBlockManager(
   }
 
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
-    // val fs = FileSystem.Factory.get()
     val path = new AlluxioURI("/" + blockId)
-    logInfo(s"Creating alluxio file for $blockId...")
     fs.createFile(path)
   }
 }

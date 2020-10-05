@@ -38,12 +38,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                                           blockManagerMaster: BlockManagerMasterEndpoint)
   extends DisaggBlockManagerEndpoint {
 
-  logInfo(s"LocalDisaggBlockManagerEndpoint is up")
-
   blockManagerMaster.setDisaggBlockManager(this)
-  if (blockManagerMaster.isLocal) {
-    logInfo(s"BlockManagerMaster is local")
-  }
 
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
 
@@ -77,7 +72,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
       v.setSize(size)
       v.createdTime = System.currentTimeMillis()
       v.writeDone = true
-      logInfo(s"file write to alluxio ended $blockId, size $size")
+      // logInfo(s"file write to alluxio ended $blockId, size $size")
       true
     }
   }
@@ -85,24 +80,24 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).readLock().tryLock()) {
-      logInfo(s"Held readlock $blockId, executor $executorId")
+      // logInfo(s"Held readlock $blockId, executor $executorId")
       true
     } else {
-      logInfo(s"Failed to hold readlock $blockId, executor $executorId")
+      // logInfo(s"Failed to hold readlock $blockId, executor $executorId")
       false
     }
   }
 
   private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
     disaggBlockLockMap(blockId).readLock().unlock()
-    logInfo(s"Released readlock $blockId, executor $executorId")
+    // logInfo(s"Released readlock $blockId, executor $executorId")
     true
   }
 
   private def blockWriteLock(blockId: BlockId): Boolean = {
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     if (disaggBlockLockMap(blockId).writeLock().tryLock()) {
-      logInfo(s"Held writelock $blockId")
+      // logInfo(s"Held writelock $blockId")
       true
     } else {
       false
@@ -111,7 +106,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
   private def blockWriteUnlock(blockId: BlockId): Unit = {
     disaggBlockLockMap(blockId).writeLock().unlock()
-    logInfo(s"Released writelock $blockId")
+    // logInfo(s"Released writelock $blockId")
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
