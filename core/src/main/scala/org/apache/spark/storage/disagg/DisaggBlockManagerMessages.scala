@@ -33,7 +33,10 @@ private[spark] object DisaggBlockManagerMessages {
   case class FileWriteLock(blockId: BlockId, executorId: String)
     extends ToBlockManagerMaster
 
-  case class FileWriteUnlock(blockId: BlockId, size: Long)
+  case class FileWriteUnlock(blockId: BlockId, executorId: String, size: Long)
+    extends ToBlockManagerMaster
+
+  case class RemoveFileInfo(blockId: BlockId)
     extends ToBlockManagerMaster
 
   case class GetSize(blockId: BlockId)

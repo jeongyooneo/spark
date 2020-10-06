@@ -19,6 +19,8 @@ package org.apache.spark.storage.disagg
 
 import alluxio.AlluxioURI
 import alluxio.client.file.{FileInStream, FileOutStream, FileSystem}
+import alluxio.exception.FileAlreadyExistsException
+import alluxio.exception.status.UnavailableException
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -35,7 +37,7 @@ private[spark] class DisaggBlockManager(
   def readLock(blockId: BlockId, executorId: String): Boolean = {
     val readSucceeded = driverEndpoint.askSync[Int](FileReadLock(blockId, executorId))
     if (readSucceeded == 0) {
-      logInfo(s"Read lock $blockId: file not present in alluxio")
+      logInfo(s"Read lock failed for $blockId: metadata and file not present in alluxio")
       false
     } else if (readSucceeded == 1) {
       logInfo(s"Read lock succeeded for $blockId " +
@@ -56,21 +58,32 @@ private[spark] class DisaggBlockManager(
     s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
   }
 
+  /**
+   * This method should be called when read lock is held.
+   * @param blockId of the block to remove metadata
+   * @param executorId of the executor where the task that performs this is running
+   */
+  def removeFileInfo(blockId: BlockId, executorId: String): Boolean = {
+    // readLock(blockId, executorId)
+    driverEndpoint.askSync[Boolean](RemoveFileInfo(blockId))
+    // readUnlock(blockId, executorId)
+  }
+
   def getSize(blockId: BlockId, executorId: String): Long = {
     var size = -1L
-    readLock(blockId, executorId)
-    size = driverEndpoint.askSync[Long](GetSize(blockId))
-    readUnlock(blockId, executorId)
+    if (readLock(blockId, executorId)) {
+      size = driverEndpoint.askSync[Long](GetSize(blockId))
+      readUnlock(blockId, executorId)
+    }
 
     size
   }
 
-  def writeLock(blockId: BlockId, executorId: String): Boolean = {
+  def writeLock(blockId: BlockId, executorId: String): Unit = {
     val writeSucceeded = driverEndpoint.askSync[Boolean](FileWriteLock(blockId, executorId))
     if (writeSucceeded) {
       logInfo(s"Write lock succeeded for $blockId " +
         s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
-      true
     } else {
       // retry...
       Thread.sleep(500)
@@ -81,23 +94,58 @@ private[spark] class DisaggBlockManager(
   }
 
   def writeUnlock(blockId: BlockId, executorId: String, size: Long): Unit = {
-    driverEndpoint.ask(FileWriteUnlock(blockId, size))
+    driverEndpoint.ask(FileWriteUnlock(blockId, executorId, size))
     logInfo(s"Write finished in alluxio, unlocked: $blockId " +
       s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
   }
 
   def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
     val path = new AlluxioURI("/" + blockId)
-    if (getSize(blockId, executorId) > 0L) {
-      Some(fs.openFile(path))
-    } else {
-      None
+    logInfo(s"createFileInputStream for $blockId " +
+      s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+    try {
+      if (fs.exists(path)) {
+        logInfo(s"createFileInputStream for $blockId: exists, returning it " +
+          s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        Some(fs.openFile(path))
+      } else {
+        logInfo(s"createFileInputStream for $blockId: doesn't exist " +
+          s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        None
+      }
+    } catch {
+        case e: UnavailableException =>
+          logInfo(s"inside createFileInputStream: $blockId not available (evicted) ")
+          e.printStackTrace()
+          None
+        case e: Exception => e.printStackTrace()
+          logInfo(s"Inside createFileInputStream: exception for $blockId ")
+          throw e
     }
   }
 
+  /**
+   * Invariant: this method is called only when metadata for a block doesn't exist,
+   * which means that either 1) the block is never written
+   * or 2) the block is written but evicted (so Alluxio threw UnavailableException).
+   * @param blockId block to put to Alluxio
+   * @return the FileOutStream of the block
+   */
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
     val path = new AlluxioURI("/" + blockId)
-    fs.createFile(path)
+    try {
+      if (fs.exists(path)) {
+        // the block is evicted (and UnavailableException is thrown)
+        // thus we removed metadata for the block,
+        // but fs.exists(path) CAN return true, so we delete it
+        fs.delete(path)
+      }
+      fs.createFile(path)
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        throw e
+    }
   }
 }
 

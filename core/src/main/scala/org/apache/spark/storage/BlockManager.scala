@@ -829,42 +829,75 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    var lockHeld = false
+    var result = None: Option[BlockResult]
     try {
-      lockHeld = disaggManager.readLock(blockId, executorId)
-      if (lockHeld) {
+      logInfo(s"start getAlluxioValues $blockId " +
+        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+
+      if (disaggManager.readLock(blockId, executorId)) {
+        // metadata for the block to read exists
         disaggManager.createFileInputStream(blockId, executorId) match {
           case Some(in) =>
+            logInfo(s"start deser $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+
             val alluxioIter = serializerManager.dataDeserializeStream(blockId,
               in)(implicitly[ClassTag[T]])
+            logInfo(s"done deser $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
             in.close()
+            logInfo(s"closed inputStream for $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
             val len = disaggManager.getSize(blockId, executorId)
 
-            logInfo(s"Got block $blockId from alluxio: " +
-              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+            logInfo(s"Got $blockId from alluxio: size $len " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
 
             val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-            Some(new BlockResult(ci, DataReadMethod.Network, len))
+            result = Some(new BlockResult(ci, DataReadMethod.Network, len))
           case None =>
             logInfo(s"$blockId not in alluxio: " +
-              s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-            None
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+            disaggManager.removeFileInfo(blockId, executorId)
+            result = None
         }
       } else {
-        logInfo(s"$blockId not in alluxio: " +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-        None
+        // the block and its metadata do not exist
+        logInfo(s"$blockId not in alluxio and neither its metadata: " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
       }
     } catch {
-        case e: Exception => e.printStackTrace()
+      case e: UnavailableException =>
+        logInfo(s"$blockId not available (evicted) in alluxio - should recompute it " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+        e.printStackTrace()
+        disaggManager.removeFileInfo(blockId, executorId)
+        result = None
+      case e: Exception => e.printStackTrace()
           logInfo(s"Exception in createFileInputStream $blockId " +
-            s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+            s"task ${TaskContext.get().taskAttemptId()}")
           throw e
     } finally {
-      if (lockHeld) {
-        disaggManager.readUnlock(blockId, executorId)
-      }
+      logInfo(s"finally in getAlluxioValues $blockId " +
+        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+      disaggManager.readUnlock(blockId, executorId)
     }
+
+    logInfo(s"getAlluxioValues for $blockId returns $result " +
+      s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+      s"task ${TaskContext.get().taskAttemptId()}")
+
+    result
   }
 
   /**
@@ -883,6 +916,7 @@ private[spark] class BlockManager(
       logInfo(s"alluxio fetch from $executorId $blockId succeeded, " + alluxioFetchTime)
       return alluxio
     }
+    logInfo(s"alluxio fetch from $executorId $blockId failed")
     None
   }
 
@@ -942,7 +976,7 @@ private[spark] class BlockManager(
           // Fetched from other executors
           blockAccessHistory(blockId) = 1L
         }
-        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
+        // logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
         if (blockAccessHistory.contains(blockId)) {
@@ -953,7 +987,8 @@ private[spark] class BlockManager(
           // (might have been generated and evicted in other executors)
           blockAccessHistory(blockId) = 1L
         }
-        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+        logInfo(s"cache miss: $blockId, need to recompute it " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
       // Need to compute the block.
     }
 
@@ -961,6 +996,9 @@ private[spark] class BlockManager(
     // Initially we hold no locks on this block.
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
+        logInfo(s"after doPutIterator: putting  $blockId succeeded (presumably) " +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
         val blockResult = getAlluxioValues(blockId).getOrElse {
@@ -1159,12 +1197,26 @@ private[spark] class BlockManager(
       if (blockInfoManager.lockNewBlockForWriting(blockId, newInfo)) {
         newInfo
       } else {
-        logWarning(s"Block $blockId already exists on this machine; not re-adding it")
-        if (!keepReadLock) {
-          // lockNewBlockForWriting returned a read lock on the existing block, so we must free it:
-          releaseLock(blockId)
+        if (!blockId.isRDD) {
+          logWarning(s"Block $blockId already exists on this machine; not re-adding it")
+          if (!keepReadLock) {
+            // lockNewBlockForWriting returned a read lock on the existing block,
+            // so we must free it:
+            releaseLock(blockId)
+          }
+          return None
+        } else {
+          if (!keepReadLock) {
+            // lockNewBlockForWriting returned a read lock on the existing block,
+            // so we must free it:
+            releaseLock(blockId)
+          } else {
+            // lockNewBlockForWriting returned a read lock on the existing block,
+            // AND didn't hold a write lock, so we must hold it here:
+            blockInfoManager.lockForWriting(blockId)
+          }
+          blockInfoManager.get(blockId).get
         }
-        return None
       }
     }
 
@@ -1176,8 +1228,10 @@ private[spark] class BlockManager(
       if (res.isEmpty) {
         // the block was successfully stored
         if (keepReadLock) {
+          // downgrade a write lock to a shared read lock
           blockInfoManager.downgradeLock(blockId)
         } else {
+          // unlock the write lock
           blockInfoManager.unlock(blockId)
         }
       } else {
@@ -1225,28 +1279,36 @@ private[spark] class BlockManager(
   def putAlluxio(blockId: BlockId)
                 (writeFunc: WritableByteChannel => Unit): Long = {
     var size = 0L
+
+    /*
+    // the block to write is either 1) written for the first time
+    // or evicted and written.
+    // If metadata exists, it is evicted and written.
+    val sizeIfExists = disaggManager.getSize(blockId, executorId)
+    if (sizeIfExists > 0L) {
+      // metadata for the block exists
+      // which means that it is written already and not yet evicted
+      sizeIfExists
+    }
+    */
+
     try {
       val result = executor.submit(new Runnable {
         override def run(): Unit = {
           try {
             disaggManager.writeLock(blockId, executorId)
+            // metadata for the block doesn't exist
             val out = disaggManager.createFileOutputStream(blockId)
             val channel = new CountingWritableChannel(Channels.newChannel(out))
             writeFunc(channel)
             size = channel.getCount
             channel.close()
+            out.close()
           } catch {
-            case _: FileAlreadyExistsException =>
-              logInfo(s"$blockId already exists in alluxio " +
-                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-              size = disaggManager.getSize(blockId, executorId)
-            case e: UnavailableException =>
-              logInfo(s"Cannot put $blockId as alluxio is temporarily unavailable " +
-                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-              e.printStackTrace()
             case e: IOException => e.printStackTrace()
-              logInfo(s"Exception in createFileInputStream $blockId " +
-                s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+              logInfo(s"Exception in createFileOutputStream $blockId " +
+                s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+                s"task ${TaskContext.get().taskAttemptId()}")
               throw e
           } finally {
             disaggManager.writeUnlock(blockId, executorId, size)
@@ -1254,19 +1316,25 @@ private[spark] class BlockManager(
         }
       })
       result.get()
-      size
       // Future.successful(true)
     } catch {
       case e: Exception =>
         logInfo(s"Exception in putAlluxio for $blockId " +
-          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
         throw e
     }
+
+    size
   }
 
   private def putIteratorToAlluxio[T](blockId: BlockId,
                                       values: Iterator[T],
                                       classTag: ClassTag[T]): Long = {
+    logInfo(s"putIteratorToAlluxio for $blockId " +
+      s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+      s"task ${TaskContext.get().taskAttemptId()}")
+
     val size = putAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
@@ -1299,9 +1367,19 @@ private[spark] class BlockManager(
       if (blockId.isRDD) {
         // store the iterator to alluxio
         size = putIteratorToAlluxio(blockId, iterator(), classTag)
-        logInfo(s"Successfully put $blockId " +
-          s"executor $executorId task ${TaskContext.get().taskAttemptId()}")
-        // size = disaggManager.getSize(blockId, executorId)
+        logInfo(s"after putIteratorToAlluxio $blockId, size $size" +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+
+        if (size > 0L) {
+          logInfo(s"Successfully put $blockId to alluxio" +
+            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+            s"task ${TaskContext.get().taskAttemptId()}")
+        } else {
+          logInfo(s"putting $blockId to alluxio returned size 0" +
+            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+            s"task ${TaskContext.get().taskAttemptId()}")
+        }
       } else {
         if (level.useMemory) {
           // Put it in memory first, even if it also has useDisk set to true;
@@ -1361,7 +1439,14 @@ private[spark] class BlockManager(
         }
         addUpdatedBlockStatusToTaskMetrics(blockId, putBlockStatus)
       }
-      assert(blockWasSuccessfullyStored == iteratorFromFailedMemoryStorePut.isEmpty)
+      if (size > 0L) {
+        assert(blockWasSuccessfullyStored == iteratorFromFailedMemoryStorePut.isEmpty)
+      } else {
+        logInfo(s"size for $blockId is 0 after doPutIterator: " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()} " +
+          s"maybe others have put it - go ahead and read it")
+      }
       iteratorFromFailedMemoryStorePut
     }
   }

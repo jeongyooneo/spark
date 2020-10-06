@@ -55,7 +55,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
     }
   }
 
-  private def fileWrite(blockId: BlockId, executorId: String): Boolean = {
+  private def fileWriteStart(blockId: BlockId, executorId: String): Boolean = {
     val blockInfo = new CrailBlockInfo(blockId, executorId)
     disaggBlockInfo.put(blockId, blockInfo)
     true
@@ -63,7 +63,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
   // THIS METHOD SHOULD BE CALLED AFTER WRITE LOCK !!
   // THIS METHOD SHOULD BE CALLED AFTER WRITE LOCK !!
-  private def fileWriteEnd(blockId: BlockId, size: Long): Boolean = {
+  private def fileWriteEnd(blockId: BlockId, executorId: String, size: Long): Boolean = {
     val info = disaggBlockInfo.get(blockId)
     if (info.isEmpty) {
       throw new RuntimeException(s"Written file for a non-existent block $blockId")
@@ -112,7 +112,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case FileReadLock(blockId, executorId) =>
       if (blockReadLock(blockId, executorId)) {
-        // held read lock
         context.reply(fileInfoExists(blockId, executorId))
       } else {
         context.reply(2)
@@ -124,15 +123,20 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
     case FileWriteLock(blockId, executorId) =>
       if (blockWriteLock(blockId)) {
-        val result = fileWrite(blockId, executorId)
+        val result = fileWriteStart(blockId, executorId)
         context.reply(result)
       } else {
         context.reply(false)
       }
 
-    case FileWriteUnlock(blockId, size) =>
-      fileWriteEnd(blockId, size)
+    case FileWriteUnlock(blockId, executorId, size) =>
+      fileWriteEnd(blockId, executorId, size)
       blockWriteUnlock(blockId)
+
+    case RemoveFileInfo(blockId) =>
+      logInfo(s"removing metadata of evicted $blockId")
+      disaggBlockInfo.remove(blockId)
+      context.reply(true)
 
     case GetSize(blockId) =>
       val size = if (disaggBlockInfo.get(blockId).isEmpty) {
