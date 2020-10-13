@@ -41,13 +41,13 @@ private[spark] class DisaggBlockManager(
       false
     } else if (readSucceeded == 1) {
       logInfo(s"Read lock succeeded for $blockId " +
-        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        s"executor $executorId")
       true
     } else {
       // retry... the block is being written
       Thread.sleep(500)
       logInfo(s"Read lock try to acquire lock... $blockId " +
-        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        s"executor $executorId")
       readLock(blockId, executorId)
     }
   }
@@ -55,18 +55,16 @@ private[spark] class DisaggBlockManager(
   def readUnlock(blockId: BlockId, executorId: String): Unit = {
     driverEndpoint.ask[Unit](FileReadUnlock(blockId, executorId))
     logInfo(s"Read unlock succeeded for $blockId " +
-    s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+    s"executor $executorId")
   }
 
   /**
-   * This method should be called when read lock is held.
+   * This method should be called only when read lock is held.
    * @param blockId of the block to remove metadata
    * @param executorId of the executor where the task that performs this is running
    */
   def removeFileInfo(blockId: BlockId, executorId: String): Boolean = {
-    // readLock(blockId, executorId)
     driverEndpoint.askSync[Boolean](RemoveFileInfo(blockId))
-    // readUnlock(blockId, executorId)
   }
 
   def getSize(blockId: BlockId, executorId: String): Long = {
@@ -83,12 +81,12 @@ private[spark] class DisaggBlockManager(
     val writeSucceeded = driverEndpoint.askSync[Boolean](FileWriteLock(blockId, executorId))
     if (writeSucceeded) {
       logInfo(s"Write lock succeeded for $blockId " +
-        s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        s"executor $executorId")
     } else {
       // retry...
       Thread.sleep(500)
-      logInfo(s"Write lock try to acquire lock... $blockId " +
-        s"executor $executorId ") //  task ${TaskContext.get().taskAttemptId()}")
+      logInfo(s"Write lock: trying to acquire lock... $blockId " +
+        s"executor $executorId")
       writeLock(blockId, executorId)
     }
   }
@@ -96,21 +94,24 @@ private[spark] class DisaggBlockManager(
   def writeUnlock(blockId: BlockId, executorId: String, size: Long): Unit = {
     driverEndpoint.ask(FileWriteUnlock(blockId, executorId, size))
     logInfo(s"Write finished in alluxio, unlocked: $blockId " +
-      s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+      s"executor $executorId")
   }
 
   def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
     val path = new AlluxioURI("/" + blockId)
     logInfo(s"createFileInputStream for $blockId " +
-      s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+      s"executor $executorId")
     try {
-      if (fs.exists(path)) {
-        logInfo(s"createFileInputStream for $blockId: exists, returning it " +
-          s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+      // path exists and is not lost
+      val exists = fs.exists(path)
+      val isLost = fs.getStatus(path).getPersistenceState.contains("LOST")
+      if (exists && !isLost) {
+        logInfo(s"createFileInputStream for $blockId: " +
+          s"executor $executorId")
         Some(fs.openFile(path))
       } else {
-        logInfo(s"createFileInputStream for $blockId: doesn't exist " +
-          s"executor $executorId ") // task ${TaskContext.get().taskAttemptId()}")
+        logInfo(s"createFileInputStream for $blockId: path doesn't exist or evicted " +
+          s"executor $executorId")
         None
       }
     } catch {
@@ -152,4 +153,5 @@ private[spark] class DisaggBlockManager(
 private[spark] object DisaggBlockManager {
   val DRIVER_ENDPOINT_NAME = "DisaggBlockManager"
 }
+
 

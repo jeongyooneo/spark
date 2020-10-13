@@ -876,9 +876,10 @@ private[spark] class BlockManager(
                 val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
                 result = Some(new BlockResult(ci, DataReadMethod.Network, len))
               case None =>
-                logInfo(s"$blockId not in alluxio: " +
+                logInfo(s"$blockId path doesn't exist or evicted in alluxio: " +
                   s"executor $executorId, stage ${TaskContext.get().stageId()} " +
                   s"task ${TaskContext.get().taskAttemptId()}")
+                handleAlluxioReadFailure(blockId)
                 disaggManager.removeFileInfo(blockId, executorId)
                 result = None
             }
