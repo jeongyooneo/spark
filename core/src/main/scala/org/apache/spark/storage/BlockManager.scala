@@ -603,6 +603,7 @@ private[spark] class BlockManager(
    * Must be called while holding a read lock on the block.
    */
   private def handleAlluxioReadFailure(blockId: BlockId): Unit = {
+    // release the read lock
     releaseLock(blockId)
     // Remove the missing block so that its unavailability is reported to the driver
     removeBlock(blockId)
@@ -992,7 +993,7 @@ private[spark] class BlockManager(
           // Fetched from other executors
           blockAccessHistory(blockId) = 1L
         }
-        // logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
+        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
         if (blockAccessHistory.contains(blockId)) {
@@ -1028,9 +1029,14 @@ private[spark] class BlockManager(
         // of lock acquisitions is 1 (since the caller will only call release() once).
         releaseLock(blockId)
 
+
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
         val accessHistory = blockAccessHistory(blockId)
+        logInfo(s"after doPutIterator and getAlluxioValues: " +
+          s"$blockId rctime $elapsed" +
+          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
+
         master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
           s"stage${TaskContext.get().stageId()}\t$elapsed")
 
@@ -1793,14 +1799,13 @@ private[spark] class BlockManager(
    */
   private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean): Unit = {
     // Removals are idempotent in disk store and memory store. At worst, we get a warning.
-    /*
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
 
-    if (!removedFromMemory && !removedFromDisk) {
+    if (!removedFromMemory && !removedFromDisk && !blockId.isRDD) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
-    */
+
     blockInfoManager.removeBlock(blockId)
     if (tellMaster) {
       reportBlockStatus(blockId, BlockStatus.empty)
@@ -1984,6 +1989,7 @@ private[spark] object BlockManager {
     }
   }
 }
+
 
 
 

@@ -306,10 +306,11 @@ private[storage] class BlockInfoManager extends Logging {
   def unlock(blockId: BlockId, taskAttemptId: Option[TaskAttemptId] = None): Unit = synchronized {
     val taskId = taskAttemptId.getOrElse(currentTaskAttemptId)
     logInfo(s"Task $taskId releasing lock for $blockId")
-    val info = get(blockId).getOrElse {
+    val info = infos.get(blockId).getOrElse {
       throw new IllegalStateException(s"Block $blockId not found")
     }
-    if (info.writerTask != BlockInfo.NO_WRITER) {
+
+  if (info.writerTask != BlockInfo.NO_WRITER) {
       info.writerTask = BlockInfo.NO_WRITER
       writeLocksByTask.removeBinding(taskId, blockId)
       logInfo(s"Task $taskId released write lock for $blockId")
@@ -322,8 +323,9 @@ private[storage] class BlockInfoManager extends Logging {
         s"Task $taskId release lock on block $blockId more times than it acquired it")
       logInfo(s"Task $taskId released read lock for $blockId")
     }
-    notifyAll()
-  }
+
+  notifyAll()
+}
 
   /**
    * Attempt to acquire the appropriate lock for writing a new block.
@@ -451,6 +453,8 @@ private[storage] class BlockInfoManager extends Logging {
           throw new IllegalStateException(
             s"Task $currentTaskAttemptId called remove() on block $blockId without a write lock")
         } else {
+          logInfo(s"$blockId before removing: readerCount ${blockInfo.readerCount} " +
+            s"writerTasks ${blockInfo.writerTask} ")
           infos.remove(blockId)
           blockInfo.readerCount = 0
           blockInfo.writerTask = BlockInfo.NO_WRITER
@@ -477,4 +481,5 @@ private[storage] class BlockInfoManager extends Logging {
     notifyAll()
   }
 }
+
 

@@ -282,9 +282,17 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    val blockId = RDDBlockId(id, split.index)
+
     if (storageLevel != StorageLevel.NONE) {
+      logInfo(s"iterator of RDD $id will call getOrCompute for $blockId " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+
       getOrCompute(split, context)
     } else {
+      logInfo(s"iterator of RDD $id (stl NONE) will call computeOrReadCheckpoint " +
+        s"for $blockId task ${TaskContext.get().taskAttemptId()}")
+
       computeOrReadCheckpoint(split, context)
     }
   }
@@ -338,6 +346,9 @@ abstract class RDD[T: ClassTag](
     }) match {
       case Left(blockResult) =>
         if (readCachedBlock) {
+          logInfo(s"getOrCompute $blockId (readCachedBlock) from RDD $id: fetched data " +
+            s"task ${TaskContext.get().taskAttemptId()}")
+
           val existingMetrics = context.taskMetrics().inputMetrics
           existingMetrics.incBytesRead(blockResult.bytes)
           new InterruptibleIterator[T](context, blockResult.data.asInstanceOf[Iterator[T]]) {
@@ -347,9 +358,15 @@ abstract class RDD[T: ClassTag](
             }
           }
         } else {
+          logInfo(s"getOrCompute $blockId (readCachedBlock=false) from RDD $id: " +
+            s"fetched data task ${TaskContext.get().taskAttemptId()}")
+
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
       case Right(iter) =>
+        logInfo(s"getOrCompute $blockId from RDD $id: failed to fetch data " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
   }
@@ -2014,3 +2031,4 @@ object RDD {
 private[spark] object DeterministicLevel extends Enumeration {
   val DETERMINATE, UNORDERED, INDETERMINATE = Value
 }
+
