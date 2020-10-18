@@ -51,14 +51,14 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   }
 
   override def persist(newLevel: StorageLevel): Graph[VD, ED] = {
-    vertices.persist(newLevel)
-    replicatedVertexView.edges.persist(newLevel)
+    // vertices.persist(newLevel)
+    // replicatedVertexView.edges.persist(newLevel)
     this
   }
 
   override def cache(): Graph[VD, ED] = {
-    vertices.cache()
-    replicatedVertexView.edges.cache()
+    // vertices.cache()
+    // replicatedVertexView.edges.cache()
     this
   }
 
@@ -79,13 +79,13 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   }
 
   override def unpersist(blocking: Boolean = true): Graph[VD, ED] = {
-    unpersistVertices(blocking)
-    replicatedVertexView.edges.unpersist(blocking)
+    // unpersistVertices(blocking)
+    // replicatedVertexView.edges.unpersist(blocking)
     this
   }
 
   override def unpersistVertices(blocking: Boolean = true): Graph[VD, ED] = {
-    vertices.unpersist(blocking)
+    // vertices.unpersist(blocking)
     // TODO: unpersist the replicated vertices in `replicatedVertexView` but leave the edges alone
     this
   }
@@ -111,7 +111,7 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
         }
         val edgePartition = builder.toEdgePartition
         Iterator((pid, edgePartition))
-      }, preservesPartitioning = true)).cache()
+      }, preservesPartitioning = true)) // .cache()
     GraphImpl.fromExistingRDDs(vertices.withEdges(newEdges), newEdges)
   }
 
@@ -124,9 +124,9 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
     // The implicit parameter eq will be populated by the compiler if VD and VD2 are equal, and left
     // null if not
     if (eq != null) {
-      vertices.cache()
+      // vertices.cache()
       // The map preserves type, so we can use incremental replication
-      val newVerts = vertices.mapVertexPartitions(_.map(f)).cache()
+      val newVerts = vertices.mapVertexPartitions(_.map(f)) // .cache()
       val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]].diff(newVerts)
       val newReplicatedVertexView = replicatedVertexView.asInstanceOf[ReplicatedVertexView[VD2, ED]]
         .updateVertices(changedVerts)
@@ -147,7 +147,7 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   override def mapTriplets[ED2: ClassTag](
       f: (PartitionID, Iterator[EdgeTriplet[VD, ED]]) => Iterator[ED2],
       tripletFields: TripletFields): Graph[VD, ED2] = {
-    vertices.cache()
+    // vertices.cache()
     replicatedVertexView.upgrade(vertices, tripletFields.useSrc, tripletFields.useDst)
     val newEdges = replicatedVertexView.edges.mapEdgePartitions { (pid, part) =>
       part.map(f(pid, part.tripletIterator(tripletFields.useSrc, tripletFields.useDst)))
@@ -158,7 +158,7 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
   override def subgraph(
       epred: EdgeTriplet[VD, ED] => Boolean = x => true,
       vpred: (VertexId, VD) => Boolean = (a, b) => true): Graph[VD, ED] = {
-    vertices.cache()
+    // vertices.cache()
     // Filter the vertices, reusing the partitioner and the index from this graph
     val newVerts = vertices.mapVertexPartitions(_.filter(vpred))
     // Filter the triplets. We must always upgrade the triplet view fully because vpred always runs
@@ -191,7 +191,7 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
       tripletFields: TripletFields,
       activeSetOpt: Option[(VertexRDD[_], EdgeDirection)]): VertexRDD[A] = {
 
-    vertices.cache()
+    // vertices.cache()
     // For each vertex, replicate its attribute only to partitions where it is
     // in the relevant position in an edge.
     replicatedVertexView.upgrade(vertices, tripletFields.useSrc, tripletFields.useDst)
@@ -250,9 +250,9 @@ class GraphImpl[VD: ClassTag, ED: ClassTag] protected (
     // The implicit parameter eq will be populated by the compiler if VD and VD2 are equal, and left
     // null if not
     if (eq != null) {
-      vertices.cache()
+      // vertices.cache()
       // updateF preserves type, so we can use incremental replication
-      val newVerts = vertices.leftJoin(other)(updateF).cache()
+      val newVerts = vertices.leftJoin(other)(updateF) // .cache()
       val changedVerts = vertices.asInstanceOf[VertexRDD[VD2]].diff(newVerts)
       val newReplicatedVertexView = replicatedVertexView.asInstanceOf[ReplicatedVertexView[VD2, ED]]
         .updateVertices(changedVerts)
@@ -325,12 +325,12 @@ object GraphImpl {
       vertices: VertexRDD[VD],
       edges: EdgeRDD[ED]): GraphImpl[VD, ED] = {
 
-    vertices.cache()
+    // vertices.cache()
 
     // Convert the vertex partitions in edges to the correct type
     val newEdges = edges.asInstanceOf[EdgeRDDImpl[ED, _]]
       .mapEdgePartitions((pid, part) => part.withoutVertexAttributes[VD])
-      .cache()
+      // .cache()
 
     GraphImpl.fromExistingRDDs(vertices, newEdges)
   }
@@ -355,7 +355,7 @@ object GraphImpl {
       defaultVertexAttr: VD,
       edgeStorageLevel: StorageLevel,
       vertexStorageLevel: StorageLevel): GraphImpl[VD, ED] = {
-    val edgesCached = edges.withTargetStorageLevel(edgeStorageLevel).cache()
+    val edgesCached = edges.withTargetStorageLevel(edgeStorageLevel) // .cache()
     val vertices =
       VertexRDD.fromEdges(edgesCached, edgesCached.partitions.length, defaultVertexAttr)
       .withTargetStorageLevel(vertexStorageLevel)

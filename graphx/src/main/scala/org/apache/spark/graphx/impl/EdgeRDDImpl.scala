@@ -26,7 +26,7 @@ import org.apache.spark.storage.StorageLevel
 
 class EdgeRDDImpl[ED: ClassTag, VD: ClassTag] private[graphx] (
     @transient override val partitionsRDD: RDD[(PartitionID, EdgePartition[ED, VD])],
-    val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
+    val targetStorageLevel: StorageLevel = StorageLevel.NONE)
   extends EdgeRDD[ED](partitionsRDD.context, List(new OneToOneDependency(partitionsRDD))) {
 
   override def setName(_name: String): this.type = {
@@ -54,20 +54,20 @@ class EdgeRDDImpl[ED: ClassTag, VD: ClassTag] private[graphx] (
    * storage level.
    */
   override def persist(newLevel: StorageLevel): this.type = {
-    partitionsRDD.persist(newLevel)
+    // partitionsRDD.persist(newLevel)
     this
   }
 
   override def unpersist(blocking: Boolean = true): this.type = {
-    partitionsRDD.unpersist(blocking)
+    // partitionsRDD.unpersist(blocking)
     this
   }
 
   /**
-   * Persists the edge partitions using `targetStorageLevel`, which defaults to MEMORY_ONLY.
+   * Persists the edge partitions using `targetStorageLevel`, which defaults to NONE.
    */
   override def cache(): this.type = {
-    partitionsRDD.persist(targetStorageLevel)
+    // partitionsRDD.persist(targetStorageLevel)
     this
   }
 

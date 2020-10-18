@@ -272,8 +272,8 @@ private[spark] object GradientBoostedTrees extends Logging {
     treeStrategy.assertValid()
 
     // Cache input
-    val persistedInput = true
-    input.persist(StorageLevel.MEMORY_ONLY)
+    val persistedInput = false
+    input.persist(StorageLevel.NONE)
 
     // Prepare periodic checkpointers
     val predErrorCheckpointer = new PeriodicRDDCheckpointer[(Double, Double)](

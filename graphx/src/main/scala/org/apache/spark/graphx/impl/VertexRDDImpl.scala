@@ -26,7 +26,7 @@ import org.apache.spark.storage.StorageLevel
 
 class VertexRDDImpl[VD] private[graphx] (
     @transient val partitionsRDD: RDD[ShippableVertexPartition[VD]],
-    val targetStorageLevel: StorageLevel = StorageLevel.MEMORY_ONLY)
+    val targetStorageLevel: StorageLevel = StorageLevel.NONE)
   (implicit override protected val vdTag: ClassTag[VD])
   extends VertexRDD[VD](partitionsRDD.context, List(new OneToOneDependency(partitionsRDD))) {
 
@@ -54,20 +54,20 @@ class VertexRDDImpl[VD] private[graphx] (
    * storage level.
    */
   override def persist(newLevel: StorageLevel): this.type = {
-    partitionsRDD.persist(newLevel)
+    // partitionsRDD.persist(newLevel)
     this
   }
 
   override def unpersist(blocking: Boolean = true): this.type = {
-    partitionsRDD.unpersist(blocking)
+    // partitionsRDD.unpersist(blocking)
     this
   }
 
   /**
-   * Persists the vertex partitions at `targetStorageLevel`, which defaults to MEMORY_ONLY.
+   * Persists the vertex partitions at `targetStorageLevel`, which defaults to NONE.
    */
   override def cache(): this.type = {
-    partitionsRDD.persist(targetStorageLevel)
+    // partitionsRDD.persist(targetStorageLevel)
     this
   }
 

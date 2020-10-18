@@ -33,8 +33,9 @@ object SVDPlusPlusExample {
     // $example on$
     // Load the graph as in the PageRank example
     val svdppErr = 8.0
+    val inputPath = args(0)
 
-    val edges = sc.textFile("/svdpp-output/0").map { line =>
+    val edges = sc.textFile(inputPath).map { line =>
       val fields = line.split("::")
       Edge(fields(0).toLong * 2, fields(1).toLong * 2 + 1, fields(2).toDouble)
     }
@@ -51,4 +52,5 @@ object SVDPlusPlusExample {
     spark.stop()
   }
 }
+
 

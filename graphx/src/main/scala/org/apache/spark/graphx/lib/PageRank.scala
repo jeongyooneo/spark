@@ -133,7 +133,7 @@ object PageRank extends Logging {
     var iteration = 0
     var prevRankGraph: Graph[Double, Double] = null
     while (iteration < numIter) {
-      rankGraph.cache()
+      // rankGraph.cache()
 
       // Compute the outgoing rank contributions of each vertex, perform local preaggregation, and
       // do the final aggregation at the receiving vertices. Requires a shuffle for aggregation.
@@ -152,12 +152,12 @@ object PageRank extends Logging {
 
       rankGraph = rankGraph.outerJoinVertices(rankUpdates) {
         (id, oldRank, msgSumOpt) => rPrb(src, id) + (1.0 - resetProb) * msgSumOpt.getOrElse(0.0)
-      }.cache()
+      } // .cache()
 
       rankGraph.edges.foreachPartition(x => {}) // also materializes rankGraph.vertices
       logInfo(s"PageRank finished iteration $iteration.")
-      prevRankGraph.vertices.unpersist(false)
-      prevRankGraph.edges.unpersist(false)
+      // prevRankGraph.vertices.unpersist(false)
+      // prevRankGraph.edges.unpersist(false)
 
       iteration += 1
     }
