@@ -282,9 +282,17 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    val blockId = RDDBlockId(id, split.index)
+
     if (storageLevel != StorageLevel.NONE) {
+      logInfo(s"iterator of RDD $id will call getOrCompute for $blockId " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+
       getOrCompute(split, context)
     } else {
+      logInfo(s"iterator of RDD $id (StorageLevel=NONE) will call computeOrReadCheckpoint " +
+        s"for $blockId task ${TaskContext.get().taskAttemptId()}")
+
       computeOrReadCheckpoint(split, context)
     }
   }
@@ -2014,3 +2022,6 @@ object RDD {
 private[spark] object DeterministicLevel extends Enumeration {
   val DETERMINATE, UNORDERED, INDETERMINATE = Value
 }
+
+
+

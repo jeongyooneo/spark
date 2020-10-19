@@ -48,8 +48,24 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext): Iterator[U] =
-    f(context, split.index, firstParent[T].iterator(split, context))
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    val blockCompStartTime = System.currentTimeMillis()
+    logInfo(s"MapPartitionsRDD $id: index ${split.index} " +
+      s"will call ${firstParent[T].id}.iterator()")
+    val parentIterStart = System.currentTimeMillis()
+    val parentIter = firstParent[T].iterator(split, context)
+    val parentIterElapsed = System.currentTimeMillis() - parentIterStart
+
+    val res = f(context, split.index, parentIter)
+
+    val elapsed = System.currentTimeMillis() - blockCompStartTime
+
+    logInfo(s"MapPartitionsRDD $id: index ${split.index} " +
+      s"${firstParent[T].id}.iterator() time: $parentIterElapsed ms " +
+      s"compute() time: $elapsed ms")
+
+    res
+  }
 
   override def clearDependencies() {
     super.clearDependencies()
@@ -67,3 +83,5 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     }
   }
 }
+
+
