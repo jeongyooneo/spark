@@ -293,7 +293,13 @@ abstract class RDD[T: ClassTag](
       logInfo(s"iterator of RDD $id (StorageLevel=NONE) will call computeOrReadCheckpoint " +
         s"for $blockId task ${TaskContext.get().taskAttemptId()}")
 
-      computeOrReadCheckpoint(split, context)
+      val blockCompStartTime = System.currentTimeMillis()
+      val res = computeOrReadCheckpoint(split, context)
+      val elapsed = System.currentTimeMillis() - blockCompStartTime
+      logInfo(s"CompTime\t$blockId\t" +
+        s"stage${TaskContext.get().stageId()}\t$elapsed ms")
+
+      res
     }
   }
 
@@ -2022,5 +2028,6 @@ object RDD {
 private[spark] object DeterministicLevel extends Enumeration {
   val DETERMINATE, UNORDERED, INDETERMINATE = Value
 }
+
 
 
