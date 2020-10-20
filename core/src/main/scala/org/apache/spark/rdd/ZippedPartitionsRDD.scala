@@ -85,19 +85,28 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
   extends ZippedPartitionsBaseRDD[V](sc, List(rdd1, rdd2), preservesPartitioning) {
 
   override def compute(s: Partition, context: TaskContext): Iterator[V] = {
-    @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
-    val start = System.currentTimeMillis()
-
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
-    log.info("ZippedPartitionsRDD2 partition # " + partitions.length)
+    val blockCompStartTime = System.currentTimeMillis()
+    logInfo(s"ZipPartitionsRDD2 $id: " +
+      s"will call ${rdd1.id}.iterator() and ${rdd2.id}.iterator()")
+    val rdd1IterStart = System.currentTimeMillis()
+    val rdd1Iter = rdd1.iterator(partitions(0), context)
+    val rdd1IterElapsed = System.currentTimeMillis() - rdd1IterStart
 
-    val ret = f(rdd1.iterator(partitions(0), context), rdd2.iterator(partitions(1), context))
+    val rdd2IterStart = System.currentTimeMillis()
+    val rdd2Iter = rdd2.iterator(partitions(1), context)
+    val rdd2IterElapsed = System.currentTimeMillis() - rdd2IterStart
 
-    val elapsed = System.currentTimeMillis() - start
-    log.info("ZippedPartitionsRDD2 stage " + context.stageId() + " task " + context.taskAttemptId()
-      + " partitionId " + context.partitionId() + " elapsed time " + elapsed)
+    val res = f(rdd1Iter, rdd2Iter)
 
-    ret
+    val elapsed = System.currentTimeMillis() - blockCompStartTime
+
+    logInfo(s"ZipPartitionsRDD2 $id: " +
+      s"${rdd1.id}.iterator() time: $rdd1IterElapsed ms, " +
+      s"${rdd2.id}.iterator() time: $rdd2IterElapsed ms, " +
+      s"compute() time: $elapsed ms")
+
+    res
   }
 
   override def clearDependencies() {
@@ -162,3 +171,7 @@ private[spark] class ZippedPartitionsRDD4
     f = null
   }
 }
+
+
+
+

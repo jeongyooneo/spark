@@ -294,20 +294,25 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       } else {
         if (localFull) {
           if (disaggThreshold < estimateSize) {
+            logInfo(s"cachingDecision $blockId: local full, disaggThreshold < estimateSize")
             val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
 
             if (l.isEmpty) {
+              logInfo(s"cachingDecision $blockId: l empty")
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost, estimateSize, "Empty?!?!")
               recentlyRecachedBlocks.remove(blockId)
               false
             } else {
               if (l.head.reduction > storingCost.reduction) {
+                logInfo(s"cachingDecision $blockId: l not empty 1")
+
                 BlazeLogger.discardLocal(blockId, executorId,
                   storingCost.reduction, storingCost.disaggCost, estimateSize, "Minimum")
                 recentlyRecachedBlocks.remove(blockId)
                 false
               } else {
+                logInfo(s"cachingDecision $blockId: l not empty 2")
 
                 if (recentlyRecachedBlocks.remove(blockId).isDefined) {
                   BlazeLogger.recacheDisaggToLocal(blockId, executorId)
@@ -320,8 +325,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               }
             }
           } else {
+            logInfo(s"cachingDecision $blockId: local full, disaggThreshold >= estimateSize")
             if (evictionPolicy
               .decisionLocalEviction(storingCost, executorId, blockId, estimateSize)) {
+              logInfo(s"cachingDecision $blockId: decisionLocalEviction true")
+
               addToLocal(blockId, executorId, estimateSize)
               BlazeLogger.logLocalCaching(blockId, executorId,
                 estimateSize, storingCost.reduction, storingCost.disaggCost, "2")
@@ -332,6 +340,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               true
             } else {
+              logInfo(s"cachingDecision $blockId: decisionLocalEviction false")
+
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost, estimateSize, s"$estimateSize")
               recentlyRecachedBlocks.remove(blockId)
@@ -341,6 +351,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else {
           // local caching
           // put until threshold
+          logInfo(s"cachingDecision $blockId: local not full -> local caching")
+
           addToLocal(blockId, executorId, estimateSize)
           BlazeLogger.logLocalCaching(blockId, executorId,
             estimateSize, storingCost.reduction, storingCost.disaggCost, "3")
@@ -353,6 +365,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       }
     } else {
+      logInfo(s"cachingDecision $blockId: disaggDecision")
+
       disaggDecision(blockId, estimateSize, executorId, true)
     }
   }
@@ -545,7 +559,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       return false
     }
 
+    logInfo(s"cachingDecision $blockId: disaggDecision: try to acquire lock")
     disaggBlockLockMap.synchronized {
+      logInfo(s"cachingDecision $blockId: disaggDecision: acquired lock")
+
       if (disaggBlockInfo.contains(blockId)) {
         BlazeLogger.discardDisagg(
           blockId, cost.reduction, cost.disaggCost, estimateSize, "by master1")
@@ -621,7 +638,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
     }
 
+    logInfo(s"cachingDecision $blockId: disaggDecision: released lock")
     if (totalDiscardSize < removalSize) {
+      logInfo(s"cachingDecision $blockId: disaggDecision: totalDiscardSize < removalSize")
+
       // the cost due to discarding >  cost to store
       // we won't store it
       removeBlocks.foreach {
@@ -631,6 +651,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         estimateSize, "by master3")
       false
     } else {
+      logInfo(s"cachingDecision $blockId: disaggDecision: totalDiscardSize >= removalSize")
+
       evictBlocks(removeBlocks.toList)
       rmBlocks.foreach { t =>
         BlazeLogger.evictDisagg(t.blockId, t.reduction, t.disaggCost,
@@ -974,17 +996,24 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     // FOR LOCAL
     // FOR LOCAL
     case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull) =>
-      localExecutorLockMap.putIfAbsent(executorId, new Object)
+      synchronized {
+        logInfo(s"StoreBlockOrNot $blockId executor $executorId: acquired lock")
+        localExecutorLockMap.putIfAbsent(executorId, new Object)
 
-      if (putDisagg) {
-        context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
-      } else {
+        if (putDisagg) {
+          context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
+        } else {
+          /*
+        logInfo(s"StoreBlockOrNot $blockId executor $executorId")
         val lock = localExecutorLockMap(executorId)
         lock.synchronized {
+          logInfo(s"StoreBlockOrNot $blockId executor $executorId: acquired lock")
+          context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
+        }
+         */
           context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
         }
       }
-
 
     case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
@@ -1032,6 +1061,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
   }
 }
+
 
 
 
