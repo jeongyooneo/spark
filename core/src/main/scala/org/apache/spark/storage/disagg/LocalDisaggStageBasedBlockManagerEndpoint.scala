@@ -67,14 +67,19 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   val task = new Runnable {
     def run(): Unit = {
       try {
+        val costAnalyzerStart = System.currentTimeMillis()
+
         costAnalyzer.update
+        /*
         val map = blockManagerMaster.blockManagerInfo.map {
           entry => val executor = entry._1.executorId
             val blocks = entry._2.blocks.filter(p => p._1.isRDD).keySet
             (executor, blocks)
         }.toMap
 
-        /*
+        val elapsed = System.currentTimeMillis() - costAnalyzerStart
+        logInfo(s"costAnalyzer.update took $elapsed ms")
+
         metricTracker.localStoredBlocksMap.asScala.foreach {
           entry => {
             val v1 = map(entry._1)
@@ -88,8 +93,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
         logInfo(s"Total disagg: ${metricTracker.disaggTotalSize.get() / (1024 * 1024)}" +
           s" / ${disaggThreshold / 1024 / 1024}")
-
-
 
         // logInfo(s"Disagg blocks: ${disaggBlockInfo.keySet}")
       } catch {
@@ -266,6 +269,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean): Boolean = {
 
+    val cachingDecStart = System.currentTimeMillis
+
     disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
     // logInfo(s"Caching decision call " +
     //  s"$blockId, $estimateSize, $executorId, $putDisagg, $localFull")
@@ -351,7 +356,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else {
           // local caching
           // put until threshold
-          logInfo(s"cachingDecision $blockId: local not full -> local caching")
+          val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
+
+          logInfo(s"cachingDecision $blockId $cachingDecElapsed ms: " +
+            s"local not full -> local caching")
 
           addToLocal(blockId, executorId, estimateSize)
           BlazeLogger.logLocalCaching(blockId, executorId,
