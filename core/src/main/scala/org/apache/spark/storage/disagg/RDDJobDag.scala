@@ -35,8 +35,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val reverseDag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val metricTracker: MetricTracker) extends Logging {
 
-  val dagChanged = new AtomicBoolean(true)
-  private var prevVertices: Map[Int, RDDNode] = new mutable.HashMap[Int, RDDNode]()
+  val dagChanged = new AtomicBoolean(false)
+  private var  prevVertices: Map[Int, RDDNode] = dag.keySet.map(node => (node.rddId, node)).toMap
   val explicitCachingRDDs = new mutable.HashSet[Int]()
 
   def vertices: Map[Int, RDDNode] = {
