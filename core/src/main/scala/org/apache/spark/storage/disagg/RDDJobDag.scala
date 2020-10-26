@@ -674,7 +674,7 @@ object RDDJobDag extends Logging {
       dag.keys.foreach {
         // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
         node => logInfo(s"PRDD ${node.rddId}, Edges: ${dag(node)}")
-          if (dag(node).toSet.map(n => n.rddId).contains(node.rddId)) {
+          if (dag(node).map(n => n.rddId).contains(node.rddId)) {
             throw new RuntimeException(s"RDD ${node.rddId} has cycle ${dag(node)}")
           }
       }
@@ -686,7 +686,7 @@ object RDDJobDag extends Logging {
       rddjobdag.reverseDag.keys.foreach {
         // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
         node => logInfo(s"ReversePRDD ${node.rddId}, Edges: ${dag(node)}")
-          if (rddjobdag.reverseDag(node).toSet.map(n => n.rddId).contains(node.rddId)) {
+          if (rddjobdag.reverseDag(node).map(n => n.rddId).contains(node.rddId)) {
             throw new RuntimeException(s"RDD ${node.rddId} " +
               s"has cycle ${rddjobdag.reverseDag(node)}")
           }
