@@ -28,7 +28,7 @@ import org.mortbay.util.ajax.JSON
 
 import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
-import scala.collection.{mutable, Map, _}
+import scala.collection.{Map, mutable}
 import scala.io.Source
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
@@ -40,24 +40,19 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   val explicitCachingRDDs = new mutable.HashSet[Int]()
 
   def vertices: Map[Int, RDDNode] = {
-    dagChanged.synchronized {
-      if (dagChanged.get()) {
-        val start = System.currentTimeMillis()
-        prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
-        dagChanged.set(false)
-        val elapsed = System.currentTimeMillis() - start
-        logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
-        prevVertices
-      } else {
-        prevVertices
-      }
+    if (dagChanged.get()) {
+      val start = System.currentTimeMillis()
+      dagChanged.set(false)
+      val elapsed = System.currentTimeMillis() - start
+      logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
+      prevVertices
+    } else {
+      prevVertices
     }
   }
 
   def onlineUpdate(newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
-    dagChanged.synchronized {
       // update dag
-
       newDag.foreach { pair =>
 
         val parent = pair._1
@@ -76,6 +71,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         if (!dag.contains(pair._1)) {
           logInfo(s"New vertex is created ${pair._1}->${pair._2}")
           dag.put(pair._1, pair._2)
+          prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
           dagChanged.set(true)
         } else {
 
@@ -89,6 +85,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             pair._2.foreach { dag(pair._1).add(_) }
             logInfo(s"New edges are created for RDD " +
               s"${pair._1.rddId}, ${dag(pair._1)}")
+            prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
             dagChanged.set(true)
           }
         }
@@ -112,7 +109,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }.toList
 
       if (unmatchedRDDs.nonEmpty) {
-        dagChanged.set(true)
         unmatchedRDDs.foreach {
           pair =>
             val child = pair._1
@@ -125,11 +121,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 dag(prevParent).remove(child)
             }
         }
+        prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
+        dagChanged.set(true)
       }
 
       // logInfo(s"Print DAG: $dag")
       // logInfo(s"Print ReverseDAG: $reverseDag")
-    }
   }
 
   override def toString: String = {
@@ -164,29 +161,27 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     val start = System.currentTimeMillis()
 
-    dagChanged.synchronized {
-      if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
-        val rootTaskId = getTaskId(rddNode.rootStage, blockId)
-        metricTracker.taskStartTime.get(rootTaskId) match {
-          case None =>
-            metricTracker.getTaskStartTimeFromBlockId(rddNode.rootStage, blockId) match {
-              case None =>
-                b.append(blockId)
-                l.append(metricTracker.stageStartTime(rddNode.rootStage))
-              case Some(startTime) =>
-                b.append(blockId)
-                l.append(startTime)
-            }
-          case Some(startTime) =>
-            b.append(blockId)
-            l.append(startTime)
-        }
-      } else {
-        for (parent <- reverseDag(rddNode)) {
-          val (bb, ll) = findRootStageStartTimes(parent, blockId)
-          b.appendAll(bb)
-          l.appendAll(ll)
-        }
+    if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
+      val rootTaskId = getTaskId(rddNode.rootStage, blockId)
+      metricTracker.taskStartTime.get(rootTaskId) match {
+        case None =>
+          metricTracker.getTaskStartTimeFromBlockId(rddNode.rootStage, blockId) match {
+            case None =>
+              b.append(blockId)
+              l.append(metricTracker.stageStartTime(rddNode.rootStage))
+            case Some(startTime) =>
+              b.append(blockId)
+              l.append(startTime)
+          }
+        case Some(startTime) =>
+          b.append(blockId)
+          l.append(startTime)
+      }
+    } else {
+      for (parent <- reverseDag(rddNode)) {
+        val (bb, ll) = findRootStageStartTimes(parent, blockId)
+        b.appendAll(bb)
+        l.appendAll(ll)
       }
     }
 
@@ -595,7 +590,7 @@ object RDDJobDag extends Logging {
   private def buildReverseDag(dag: Map[RDDNode, mutable.Set[RDDNode]]):
   mutable.Map[RDDNode, mutable.Set[RDDNode]] = {
 
-    val reverseDag = new mutable.HashMap[RDDNode, mutable.Set[RDDNode]]
+    val reverseDag = new ConcurrentHashMap[RDDNode, mutable.Set[RDDNode]]().asScala
     dag.foreach {
       pair =>
         val node = pair._1
