@@ -177,7 +177,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     } else {
       for (parent <- reverseDag(rddNode)) {
-        logInfo(s"recursive findRootStageStartTimes for $blockId")
+        logInfo(s"recursive findRootStageStartTimes for $blockId, parent: $parent")
         val (bb, ll) = findRootStageStartTimes(parent, blockId)
         b.appendAll(bb)
         l.appendAll(ll)
@@ -672,18 +672,22 @@ object RDDJobDag extends Logging {
         dag(parent_rdd_object).add(child_rdd_object)
       }
 
+      val vv = new mutable.HashSet[RDDNode]()
       dag.keys.foreach {
         // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
         node => logInfo(s"PRDD ${node.rddId}, Edges: ${dag(node)}")
           if (dag(node).map(n => n.rddId).contains(node.rddId)) {
             throw new RuntimeException(s"RDD ${node.rddId} has cycle ${dag(node)}")
           }
+
+          logInfo("Detect to cycle dag for node $node")
+          cycleDetection(node, dag, vv, new ListBuffer[RDDNode])
       }
 
       val rddjobdag = new RDDJobDag(dag, buildReverseDag(dag),
         metricTracker)
 
-
+      val visited = new mutable.HashSet[RDDNode]()
       rddjobdag.reverseDag.keys.foreach {
         // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
         node => logInfo(s"ReversePRDD ${node.rddId}, Edges: ${dag(node)}")
@@ -691,11 +695,36 @@ object RDDJobDag extends Logging {
             throw new RuntimeException(s"RDD ${node.rddId} " +
               s"has cycle ${rddjobdag.reverseDag(node)}")
           }
+
+          logInfo("Detect to cycle reverseDag for node $node")
+          cycleDetection(node, dag, visited, new ListBuffer[RDDNode])
       }
 
       // logInfo(s"RddJobDagPrint $rddjobdag")
       Option(rddjobdag)
     }
+  }
+
+  private def cycleDetection(root: RDDNode,
+                             dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
+                             visited: mutable.Set[RDDNode],
+                             path: mutable.ListBuffer[RDDNode]): Boolean = {
+    if (!visited.contains(root)) {
+      visited.add(root)
+      path.append(root)
+
+      dag(root).foreach { node =>
+
+        if (path.contains(node)) {
+          throw new RuntimeException(s"Cycle detected... $path")
+        }
+
+        cycleDetection(node, dag, visited, path)
+        path.remove(path.size-1)
+      }
+    }
+
+    true
   }
 
   private def findSameStage(l: mutable.Set[RDDNode], n: RDDNode): Boolean = {
