@@ -140,16 +140,17 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
   def update: Unit = {
 
-    var totalImportance: Long = 0L
     var totalSize: Long = 0L
-
-    val blocks = metricTracker.storedBlocks
 
     val disaggL = metricTracker
       .getDisaggBlocks.map(blockId => {
       compDisaggCost(blockId)
     }).toList
 
+    val updateStart = System.currentTimeMillis()
+
+    val profLocalLMap = new mutable.HashMap[String, Int]
+    val localLMapSize = metricTracker.getExecutorBlocksMap.size
     val localLMap = metricTracker.getExecutorBlocksMap
       .map(entry => {
         val executorId = entry._1
@@ -157,24 +158,28 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         val l = blocks.map(blockId => {
           compDisaggCost(blockId)
         }).toList
+        profLocalLMap.put(executorId, l.size)
         (executorId, l)
       })
 
-    val diskLocalLMap = metricTracker.localDiskStoredBlocksMap.toMap
-      .map(entry => {
-        val executorId = entry._1
-        val blocks = entry._2
-        val l = blocks.map(blockId => {
-          compDisaggCost(blockId)
-        }).toList
-        (executorId, l)
-      })
+    var elapsed = System.currentTimeMillis() - updateStart
 
     totalSize = Math.max(1, totalSize)
+
+    profLocalLMap.foreach(entry =>
+      logInfo(s"costAnalyzer.update: constructing localLMap took $elapsed ms " +
+        s"localLMap size ${localLMapSize} " +
+        s"executor ${entry._1}'s number of blocks ${entry._2}")
+    )
+    var start = System.currentTimeMillis()
 
     sortedBlockByCompCostInDisagg =
       Some(disaggL.sortWith(_.reduction < _.reduction))
 
+    elapsed = System.currentTimeMillis() - start
+    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")
+
+    start = System.currentTimeMillis()
     sortedBlockByCompSizeRatioInDisagg =
       Some(disaggL.sortWith((x, y) => {
         val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
@@ -182,18 +187,30 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         b1 < b2
       }))
 
+    elapsed = System.currentTimeMillis() - start
+    logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInDisagg took $elapsed ms")
+
+    start = System.currentTimeMillis()
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.reduction < _.reduction))
       }))
 
+    elapsed = System.currentTimeMillis() - start
+    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInLocal took $elapsed ms")
+
+    start = System.currentTimeMillis()
     sortedBlockByCompCostInDiskLocal.set(
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.reduction < _.reduction))
       }))
 
+    elapsed = System.currentTimeMillis() - start
+    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDiskLocal took $elapsed ms")
+
+    start = System.currentTimeMillis()
     sortedBlockByCompSizeRatioInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
@@ -203,6 +220,9 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           b1 < b2
         }))
       }))
+
+    elapsed = System.currentTimeMillis() - start
+    logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInLocal took $elapsed ms")
 
     /*
     val sb = new StringBuilder
@@ -320,3 +340,4 @@ object CostAnalyzer {
       }
   }
 }
+

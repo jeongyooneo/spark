@@ -28,7 +28,7 @@ import org.mortbay.util.ajax.JSON
 
 import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
-import scala.collection.{mutable, _}
+import scala.collection.{mutable, Map, _}
 import scala.io.Source
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
@@ -42,8 +42,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   def vertices: Map[Int, RDDNode] = {
     dagChanged.synchronized {
       if (dagChanged.get()) {
+        val start = System.currentTimeMillis()
         prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
         dagChanged.set(false)
+        val elapsed = System.currentTimeMillis() - start
+        logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
         prevVertices
       } else {
         prevVertices
@@ -159,6 +162,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
+    val start = System.currentTimeMillis()
+
     dagChanged.synchronized {
       if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
         val rootTaskId = getTaskId(rddNode.rootStage, blockId)
@@ -184,6 +189,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         }
       }
     }
+
+    val elapsed = System.currentTimeMillis() - start
+    logInfo(s"findRootStageStartTimes for $blockId took $elapsed ms")
 
     (b, l)
   }
@@ -391,8 +399,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   }
 
   def getRDDNode(blockId: BlockId): RDDNode = {
+    val start = System.currentTimeMillis()
     val rddId = blockIdToRDDId(blockId)
-    vertices(rddId)
+    val res = vertices(rddId)
+    val elapsed = System.currentTimeMillis() - start
+    logInfo(s"getRecompTime for $blockId took $elapsed ms")
+    res
   }
 
   def getStageRefCnt(blockId: BlockId): Int = {
@@ -412,7 +424,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddNode = vertices(rddId)
 
     if (!dag.contains(rddNode)) {
-      logWarning(s"Not coressponding rdd Node ${rddNode.rddId}")
+      logWarning(s"No corresponding rdd Node exists ${rddNode.rddId}")
       return List.empty
     }
 
@@ -424,6 +436,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def getRecompTime(blockId: BlockId, nodeCreatedTime: Long)
   : Long = {
+    val start = System.currentTimeMillis()
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
@@ -437,6 +450,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       rddRootStartTimes.putIfAbsent(rddId, findRootStageStartTimes(rddNode, blockId)._2.min)
       rddRootStartTimes(rddId)
     }
+
+    val elapsed = System.currentTimeMillis() - start
+    logInfo(s"getRecompTime for $blockId took $elapsed ms")
 
     nodeCreatedTime - rootTime
 
@@ -698,4 +714,5 @@ object RDDJobDag extends Logging {
     }
   }
 }
+
 

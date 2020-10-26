@@ -77,9 +77,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             (executor, blocks)
         }.toMap
 
-        val elapsed = System.currentTimeMillis() - costAnalyzerStart
-        logInfo(s"costAnalyzer.update took $elapsed ms")
-
         metricTracker.localStoredBlocksMap.asScala.foreach {
           entry => {
             val v1 = map(entry._1)
@@ -90,6 +87,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           }
         }
         */
+
+        val elapsed = System.currentTimeMillis() - costAnalyzerStart
+        logInfo(s"costAnalyzer.update took $elapsed ms")
 
         logInfo(s"Total disagg: ${metricTracker.disaggTotalSize.get() / (1024 * 1024)}" +
           s" / ${disaggThreshold / 1024 / 1024}")

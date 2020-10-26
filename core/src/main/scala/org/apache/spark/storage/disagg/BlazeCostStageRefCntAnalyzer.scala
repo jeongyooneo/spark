@@ -24,7 +24,6 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
                                                   metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-
   // 10Gib per sec to byte per sec
   private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
 
@@ -62,3 +61,4 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
   }
 
 }
+
