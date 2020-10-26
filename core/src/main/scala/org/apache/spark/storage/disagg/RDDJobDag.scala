@@ -40,15 +40,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   val explicitCachingRDDs = new mutable.HashSet[Int]()
 
   def vertices: Map[Int, RDDNode] = {
+    val start = System.currentTimeMillis()
     if (dagChanged.get()) {
-      val start = System.currentTimeMillis()
       dagChanged.set(false)
-      val elapsed = System.currentTimeMillis() - start
-      logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
-      prevVertices
-    } else {
-      prevVertices
     }
+    val elapsed = System.currentTimeMillis() - start
+    // logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
+    prevVertices
   }
 
   def onlineUpdate(newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
@@ -398,7 +396,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val res = vertices(rddId)
     val elapsed = System.currentTimeMillis() - start
-    logInfo(s"getRecompTime for $blockId took $elapsed ms")
+    if (blockId.asRDDId.get.rddId > 100) {
+      logInfo(s"getRDDNode for $blockId took $elapsed ms")
+    }
     res
   }
 
@@ -447,7 +447,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     val elapsed = System.currentTimeMillis() - start
-    logInfo(s"getRecompTime for $blockId took $elapsed ms")
+    if (blockId.asRDDId.get.rddId > 100) {
+      logInfo(s"getRecompTime for $blockId took $elapsed ms")
+    }
 
     nodeCreatedTime - rootTime
 
@@ -670,13 +672,27 @@ object RDDJobDag extends Logging {
       }
 
       dag.keys.foreach {
-        node => logInfo(s"PRDD ${node.rddId}, STAGES: ${node.getStages}")
+        // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
+        node => logInfo(s"PRDD ${node.rddId}, Edges: ${dag(node)}")
+          if (dag(node).toSet.map(n => n.rddId).contains(node.rddId)) {
+            throw new RuntimeException(s"RDD ${node.rddId} has cycle ${dag(node)}")
+          }
       }
 
       val rddjobdag = new RDDJobDag(dag, buildReverseDag(dag),
         metricTracker)
 
-      logInfo(s"RddJobDagPrint $rddjobdag")
+
+      rddjobdag.reverseDag.keys.foreach {
+        // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
+        node => logInfo(s"ReversePRDD ${node.rddId}, Edges: ${dag(node)}")
+          if (rddjobdag.reverseDag(node).toSet.map(n => n.rddId).contains(node.rddId)) {
+            throw new RuntimeException(s"RDD ${node.rddId} " +
+              s"has cycle ${rddjobdag.reverseDag(node)}")
+          }
+      }
+
+      // logInfo(s"RddJobDagPrint $rddjobdag")
       Option(rddjobdag)
     }
   }

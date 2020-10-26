@@ -81,6 +81,7 @@ class RDDNode(val rddId: Int,
   }
 
   override def toString: String = {
-    s"(rdd: $rddId, stage: $stageIds)"
+    // s"(rdd: $rddId, stage: $stageIds)"
+    s"(rdd: $rddId)"
   }
 }
