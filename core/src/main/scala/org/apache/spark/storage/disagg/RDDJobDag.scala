@@ -177,7 +177,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     } else {
       for (parent <- reverseDag(rddNode)) {
-        logInfo(s"recursive findRootStageStartTimes for $blockId, parent: $parent")
+        logInfo(s"recursive findRootStageStartTimes for $blockId, " +
+          s"current: $rddNode, parent: $parent")
         val (bb, ll) = findRootStageStartTimes(parent, blockId)
         b.appendAll(bb)
         l.appendAll(ll)
