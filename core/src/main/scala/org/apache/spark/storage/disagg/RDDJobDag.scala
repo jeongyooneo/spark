@@ -680,7 +680,7 @@ object RDDJobDag extends Logging {
             throw new RuntimeException(s"RDD ${node.rddId} has cycle ${dag(node)}")
           }
 
-          logInfo("Detect to cycle dag for node $node")
+          logInfo(s"Detect to cycle dag for node $node")
           cycleDetection(node, dag, vv, new ListBuffer[RDDNode])
       }
 
@@ -696,7 +696,7 @@ object RDDJobDag extends Logging {
               s"has cycle ${rddjobdag.reverseDag(node)}")
           }
 
-          logInfo("Detect to cycle reverseDag for node $node")
+          logInfo(s"Detect to cycle reverseDag for node $node")
           cycleDetection(node, dag, visited, new ListBuffer[RDDNode])
       }
 
@@ -720,8 +720,9 @@ object RDDJobDag extends Logging {
         }
 
         cycleDetection(node, dag, visited, path)
-        path.remove(path.size-1)
       }
+
+      path.remove(path.size-1)
     }
 
     true
