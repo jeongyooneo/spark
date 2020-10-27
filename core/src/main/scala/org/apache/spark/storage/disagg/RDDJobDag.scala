@@ -153,9 +153,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   private def findRootStageStartTimes(rddNode: RDDNode, blockId: BlockId):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
+    findRootStageStartTimeHelper(rddNode, blockId, new mutable.HashSet[RDDNode]())
+  }
 
+  private def findRootStageStartTimeHelper(rddNode: RDDNode, blockId: BlockId,
+                                           visited: mutable.Set[RDDNode]):
+  (ListBuffer[BlockId], ListBuffer[Long]) = {
     val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
+
+    if (visited.contains(rddNode)) {
+      return (b, l)
+    }
+
+    visited.add(rddNode)
 
     val start = System.currentTimeMillis()
 
@@ -179,7 +190,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       for (parent <- reverseDag(rddNode)) {
         logInfo(s"recursive findRootStageStartTimes for $blockId, " +
           s"current: $rddNode, parent: $parent")
-        val (bb, ll) = findRootStageStartTimes(parent, blockId)
+        val (bb, ll) = findRootStageStartTimeHelper(parent, blockId, visited)
         b.appendAll(bb)
         l.appendAll(ll)
       }
@@ -444,8 +455,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rootTime = if (rddRootStartTimes.contains(rddId)) {
       rddRootStartTimes(rddId)
     } else {
-      rddRootStartTimes.putIfAbsent(rddId, findRootStageStartTimes(rddNode, blockId)._2.min)
-      rddRootStartTimes(rddId)
+      rddNode.synchronized {
+        rddRootStartTimes.putIfAbsent(rddId, findRootStageStartTimes(rddNode, blockId)._2.min)
+        rddRootStartTimes(rddId)
+      }
     }
 
     val elapsed = System.currentTimeMillis() - start
