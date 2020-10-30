@@ -188,8 +188,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     } else {
       for (parent <- reverseDag(rddNode)) {
-        logInfo(s"recursive findRootStageStartTimes for $blockId, " +
-          s"current: $rddNode, parent: $parent")
+        // logInfo(s"recursive findRootStageStartTimes for $blockId, " +
+        //  s"current: $rddNode, parent: $parent")
         val (bb, ll) = findRootStageStartTimeHelper(parent, blockId, visited)
         b.appendAll(bb)
         l.appendAll(ll)
@@ -197,7 +197,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     val elapsed = System.currentTimeMillis() - start
-    logInfo(s"findRootStageStartTimes for $blockId took $elapsed ms")
+    // logInfo(s"findRootStageStartTimes for $blockId took $elapsed ms")
 
     (b, l)
   }
@@ -410,7 +410,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val res = vertices(rddId)
     val elapsed = System.currentTimeMillis() - start
     if (blockId.asRDDId.get.rddId > 100) {
-      logInfo(s"getRDDNode for $blockId took $elapsed ms")
+      // logInfo(s"getRDDNode for $blockId took $elapsed ms")
     }
     res
   }
@@ -420,7 +420,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddNode = vertices(rddId)
 
     if (!dag.contains(rddNode)) {
-      logWarning(s"Not coressponding rdd Node ${rddNode.rddId}")
+      logWarning(s"No corresponding rdd Node ${rddNode.rddId}")
       return 0
     }
 
@@ -463,7 +463,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     val elapsed = System.currentTimeMillis() - start
     if (blockId.asRDDId.get.rddId > 100) {
-      logInfo(s"getRecompTime for $blockId took $elapsed ms")
+      // logInfo(s"getRecompTime for $blockId took $elapsed ms")
     }
 
     nodeCreatedTime - rootTime
