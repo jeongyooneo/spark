@@ -33,7 +33,6 @@ object SVDPlusPlusExample {
     // $example on$
     // Load the graph as in the PageRank example
     val svdppErr = 8.0
-
     val path = args(0)
     val edges = sc.textFile(path).map { line =>
       val fields = line.split("::")

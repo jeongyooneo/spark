@@ -124,5 +124,3 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   private[spark] override def isBarrier(): Boolean = false
 }
 
-
-
