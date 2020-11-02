@@ -591,6 +591,7 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
+            logInfo(s"Found $blockId locally in memory")
             memoryStore.getValues(blockId).get
           } else {
             serializerManager.dataDeserializeStream(
@@ -605,6 +606,7 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
+          logInfo(s"Found $blockId locally in disk")
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val diskValues = serializerManager.dataDeserializeStream(
@@ -734,6 +736,14 @@ private[spark] class BlockManager(
     // Because all the remote blocks are registered in driver, it is not necessary to ask
     // all the slave executors to get block status.
     val locationsAndStatus = master.getLocationsAndStatus(blockId)
+
+    // Get the storage type of the stored block
+    if (locationsAndStatus.isDefined) {
+      val memSize = locationsAndStatus.get.status.memSize
+      val diskSize = locationsAndStatus.get.status.diskSize
+      logInfo(s"Found $blockId remotely memSize $memSize diskSize $diskSize ")
+    }
+
     val blockSize = locationsAndStatus.map { b =>
       b.status.diskSize.max(b.status.memSize)
     }.getOrElse(0L)
@@ -815,12 +825,10 @@ private[spark] class BlockManager(
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val local = getLocalValues(blockId)
     if (local.isDefined) {
-      logInfo(s"Found block $blockId locally")
       return local
     }
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
-      logInfo(s"Found block $blockId remotely")
       return remote
     }
     None
@@ -1830,3 +1838,4 @@ private[spark] object BlockManager {
     }
   }
 }
+
