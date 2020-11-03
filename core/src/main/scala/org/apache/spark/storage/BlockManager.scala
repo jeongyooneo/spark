@@ -608,10 +608,14 @@ private[spark] class BlockManager(
           val diskData = diskStore.getBytes(blockId)
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
+              val startDeser = System.currentTimeMillis()
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
-              logInfo(s"DiskIO: disk read - $blockId locally")
+              val deserTime = System.currentTimeMillis() - startDeser
+              val size = diskData.size
+              logInfo(s"DiskIO: disk read - deserTime $deserTime size $size " +
+                s"found $blockId locally")
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
@@ -1205,12 +1209,15 @@ private[spark] class BlockManager(
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
               if (level.useDisk) {
+                val startSer = System.currentTimeMillis()
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
+                val serTime = System.currentTimeMillis() - startSer
                 size = diskStore.getSize(blockId)
-                logInfo(s"DiskIO: disk write - cached $blockId to disk instead")
+                logInfo(s"DiskIO: disk write - serTime $serTime size $size " +
+                  s"cached $blockId to disk")
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1544,6 +1551,7 @@ private[spark] class BlockManager(
     if (level.useDisk && !diskStore.contains(blockId)) {
       data() match {
         case Left(elements) =>
+          val startSer = System.currentTimeMillis()
           diskStore.put(blockId) { channel =>
             val out = Channels.newOutputStream(channel)
             serializerManager.dataSerializeStream(
@@ -1551,10 +1559,13 @@ private[spark] class BlockManager(
               out,
               elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
           }
+          val size = diskStore.getSize(blockId)
+          val serTime = System.currentTimeMillis() - startSer
+          logInfo(s"DiskIO: disk write - serTime $serTime size $size " +
+            s"dropped $blockId to disk")
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }
-      logInfo(s"DiskIO: disk write - dropped $blockId to disk")
       blockIsUpdated = true
     }
 
