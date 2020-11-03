@@ -93,15 +93,15 @@ class DisaggBlockManager(
   }
 
   def sendSerMetric(blockId: BlockId, size: Long, cost: Long): Unit = {
-    driverEndpoint.ask(WriteDisaggBlock(blockId, cost))
+    driverEndpoint.ask(WriteDisaggBlock(blockId, size, cost))
   }
 
   def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean): Unit = {
     driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote))
   }
 
-  def sendDeserMetric(blockId: BlockId, time: Long): Unit = {
-    driverEndpoint.ask(ReadDisaggBlock(blockId, time))
+  def sendDeserMetric(blockId: BlockId, size: Long, time: Long): Unit = {
+    driverEndpoint.ask(ReadDisaggBlock(blockId, size, time))
   }
 
   def cacheDisaggDataInMemory(blockId: BlockId, size: Long,

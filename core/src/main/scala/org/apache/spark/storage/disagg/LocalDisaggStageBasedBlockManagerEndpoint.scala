@@ -941,12 +941,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         context.reply(2)
       }
 
-    case ReadDisaggBlock(blockId, time) =>
-      BlazeLogger.deserTime(blockId, time)
+    case ReadDisaggBlock(blockId, size, time) =>
+      BlazeLogger.deserTime(blockId, size, time)
       metricTracker.blockDeserCostMap.putIfAbsent(blockId, time)
 
-    case WriteDisaggBlock(blockId, time) =>
-      BlazeLogger.serTime(blockId, time)
+    case WriteDisaggBlock(blockId, size, time) =>
+      BlazeLogger.serTime(blockId, size, time)
       metricTracker.blockSerCostMap.putIfAbsent(blockId, time)
 
     case SendRecompTime(blockId, time) =>

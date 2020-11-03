@@ -85,8 +85,8 @@ private[spark] object DisaggBlockManagerMessages {
   extends ToBlockManagerMaster
 
   // metric
-  case class ReadDisaggBlock(blockId: BlockId, time: Long) extends ToBlockManagerMaster
-  case class WriteDisaggBlock(blockId: BlockId, time: Long) extends ToBlockManagerMaster
+  case class ReadDisaggBlock(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster
+  case class WriteDisaggBlock(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster
   case class SendRecompTime(blockId: BlockId, time: Long) extends ToBlockManagerMaster
   case class SendNoCachedRDDCompTime(rddId: Int, time: Long) extends ToBlockManagerMaster
 

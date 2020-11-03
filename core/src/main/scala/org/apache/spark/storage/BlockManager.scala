@@ -654,12 +654,13 @@ private[spark] class BlockManager(
     // Getting disagg data
 
     val disaggData = disaggStore.getStream(blockId)
+    val disaggDataSize = disaggData.blockSize
     val disaggIter = serializerManager.dataDeserializeStream(
       blockId,
       disaggData.toInputStream())(implicitly[ClassTag[T]])
 
     val endTime = System.currentTimeMillis()
-    disaggManager.sendDeserMetric(blockId, endTime - startTime)
+    disaggManager.sendDeserMetric(blockId, disaggDataSize, endTime - startTime)
 
     val size = disaggManager.getLocalBlockSize(blockId)
     if (size <= 0) {
@@ -1088,8 +1089,7 @@ private[spark] class BlockManager(
       throw new RuntimeException(s"EstimateSize is negative.. $blockId")
     }
 
-    val blockStartTime = System.currentTimeMillis()
-
+    // ser metric is logged inside disaggStore#put
     val disaggSuccess =
       disaggStore.put(blockId, estimateSize, executorId) { channel =>
         val out = Channels.newOutputStream(channel)
@@ -1110,13 +1110,14 @@ private[spark] class BlockManager(
         val readTime = System.currentTimeMillis()
 
         val disaggData = disaggStore.getStream(blockId)
+        val disaggDataSize = disaggData.blockSize
         val disaggIter = serializerManager.dataDeserializeStream(
           blockId,
           disaggData.toInputStream())(classTag)
 
         val blockEndTime = System.currentTimeMillis()
 
-        disaggManager.sendDeserMetric(blockId, blockEndTime - readTime)
+        disaggManager.sendDeserMetric(blockId, disaggDataSize, blockEndTime - readTime)
 
         val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
           logInfo(s"Release disagg readlock $blockId because reading is completed 11")
