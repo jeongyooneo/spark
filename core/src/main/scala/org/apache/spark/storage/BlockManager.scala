@@ -606,6 +606,7 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
+          logInfo(s"Found $blockId locally in disk")
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val startDeser = System.currentTimeMillis()
@@ -1853,3 +1854,4 @@ private[spark] object BlockManager {
     }
   }
 }
+
