@@ -126,12 +126,13 @@ object SVDPlusPlus {
       // Phase 1, calculate pu + |N(u)|^(-0.5)*sum(y) for user nodes
       g.cache()
       val t1 = g.aggregateMessages[Array[Double]](
+        // job 9 stage 51 mapPartitions at GraphImpl.scala:207
         ctx => ctx.sendToSrc(ctx.dstAttr._2),
         (g1, g2) => {
           val out = g1.clone()
           blas.daxpy(out.length, 1.0, g2, 1, out, 1)
           out
-        })
+        }) // job 10 stage 62 mapPartitions at VertexRDDImpl.scala:247
       val gJoinT1 = g.outerJoinVertices(t1) {
         (vid: VertexId, vd: (Array[Double], Array[Double], Double, Double),
          msg: Option[Array[Double]]) =>
@@ -141,8 +142,8 @@ object SVDPlusPlus {
             (vd._1, out, vd._3, vd._4)
           } else {
             vd
-          }
-      }.cache()
+          } // job 10 stage 63 fold at EdgeRDDImpl.scala 90
+      }.cache() // job 9 stage 52 fold at VertexRDDImpl.scala:
       materialize(gJoinT1)
       g.unpersist()
       g = gJoinT1
@@ -157,7 +158,7 @@ object SVDPlusPlus {
           blas.daxpy(out1.length, 1.0, g2._1, 1, out1, 1)
           val out2 = g2._2.clone()
           blas.daxpy(out2.length, 1.0, g2._2, 1, out2, 1)
-          (out1, out2, g1._3 + g2._3)
+          (out1, out2, g1._3 + g2._3) // job 8 stage 41 mapPartitions at VertexRDDImpl.scala:247
         })
       val gJoinT2 = g.outerJoinVertices(t2) {
         (vid: VertexId,
@@ -168,7 +169,7 @@ object SVDPlusPlus {
           val out2 = vd._2.clone()
           blas.daxpy(out2.length, 1.0, msg.get._2, 1, out2, 1)
           (out1, out2, vd._3 + msg.get._3, vd._4)
-        }
+        } // job 8 stage 42, fold at VertexRDDImpl.scala:90
       }.cache()
       materialize(gJoinT2)
       g.unpersist()
@@ -209,5 +210,4 @@ object SVDPlusPlus {
     g.vertices.count()
     g.edges.count()
   }
-
 }

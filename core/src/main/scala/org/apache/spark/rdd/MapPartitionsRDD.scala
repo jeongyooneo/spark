@@ -50,7 +50,7 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def compute(split: Partition, context: TaskContext): Iterator[U] = {
     val blockCompStartTime = System.currentTimeMillis()
-    logInfo(s"MapPartitionsRDD $id: index ${split.index} " +
+    logInfo(s"MapPartitionsRDD ${id}_${split.index} " +
       s"will call ${firstParent[T].id}.iterator()")
     val parentIterStart = System.currentTimeMillis()
     val parentIter = firstParent[T].iterator(split, context)
