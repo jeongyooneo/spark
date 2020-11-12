@@ -85,7 +85,7 @@ private[spark] class DiskStore(
       }
     }
     val finishTime = System.currentTimeMillis
-    logDebug("Block %s stored as %s file on disk in %d ms".format(
+    logInfo("Block %s stored as %s file on disk in %d ms".format(
       file.getName,
       Utils.bytesToString(file.length()),
       finishTime - startTime))

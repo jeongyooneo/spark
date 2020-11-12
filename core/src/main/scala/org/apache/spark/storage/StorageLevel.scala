@@ -153,7 +153,7 @@ object StorageLevel {
   val NONE = new StorageLevel(false, false, false, false)
   val DISK_ONLY = new StorageLevel(true, false, false, false)
   val DISK_ONLY_2 = new StorageLevel(true, false, false, false, 2)
-  val MEMORY_ONLY = new StorageLevel(false, true, false, true)
+  val MEMORY_ONLY = new StorageLevel(true, true, false, true)
   val MEMORY_ONLY_2 = new StorageLevel(false, true, false, true, 2)
   val MEMORY_ONLY_SER = new StorageLevel(false, true, false, false)
   val MEMORY_ONLY_SER_2 = new StorageLevel(false, true, false, false, 2)

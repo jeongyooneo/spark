@@ -99,7 +99,7 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
     val elapsed = System.currentTimeMillis() - blockCompStartTime
 
-    logInfo(s"ZipPartitionsRDD2 ${id}_${s.index}: " +
+    logInfo(s"ZipPartitionsRDD2 rdd_${id}_${s.index}: " +
       s"${rdd1.id}.iterator() time: $rdd1IterElapsed ms, " +
       s"${rdd2.id}.iterator() time: $rdd2IterElapsed ms, " +
       s"compute() time: $elapsed ms")

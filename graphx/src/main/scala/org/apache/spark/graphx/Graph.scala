@@ -91,7 +91,8 @@ abstract class Graph[VD: ClassTag, ED: ClassTag] protected () extends Serializab
 
   /**
    * Caches the vertices and edges associated with this graph at the previously-specified target
-   * storage levels, which default to `MEMORY_AND_DISK`. This is used to pin a graph in memory enabling
+   * storage levels, which default to `MEMORY_AND_DISK`.
+   * This is used to pin a graph in memory enabling
    * multiple queries to reuse the same construction process.
    */
   def cache(): Graph[VD, ED]
