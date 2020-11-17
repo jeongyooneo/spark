@@ -166,18 +166,13 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     totalSize = Math.max(1, totalSize)
 
-    profLocalLMap.foreach(entry =>
-      logInfo(s"costAnalyzer.update: constructing localLMap took $elapsed ms " +
-        s"localLMap size ${localLMapSize} " +
-        s"executor ${entry._1}'s number of blocks ${entry._2}")
-    )
     var start = System.currentTimeMillis()
 
     sortedBlockByCompCostInDisagg =
       Some(disaggL.sortWith(_.reduction < _.reduction))
 
     elapsed = System.currentTimeMillis() - start
-    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")
+    // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")
 
     start = System.currentTimeMillis()
     sortedBlockByCompSizeRatioInDisagg =
@@ -188,7 +183,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       }))
 
     elapsed = System.currentTimeMillis() - start
-    logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInDisagg took $elapsed ms")
+    // logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInDisagg took $elapsed ms")
 
     start = System.currentTimeMillis()
     sortedBlockByCompCostInLocal.set(
@@ -198,7 +193,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       }))
 
     elapsed = System.currentTimeMillis() - start
-    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInLocal took $elapsed ms")
+    // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInLocal took $elapsed ms")
 
     start = System.currentTimeMillis()
     sortedBlockByCompCostInDiskLocal.set(
@@ -208,7 +203,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       }))
 
     elapsed = System.currentTimeMillis() - start
-    logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDiskLocal took $elapsed ms")
+    // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDiskLocal took $elapsed ms")
 
     start = System.currentTimeMillis()
     sortedBlockByCompSizeRatioInLocal.set(
@@ -222,7 +217,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
       }))
 
     elapsed = System.currentTimeMillis() - start
-    logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInLocal took $elapsed ms")
+    // logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInLocal took $elapsed ms")
 
     /*
     val sb = new StringBuilder
