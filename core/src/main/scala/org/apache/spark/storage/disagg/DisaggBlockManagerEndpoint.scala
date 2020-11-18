@@ -25,8 +25,8 @@ import org.apache.spark.storage.BlockId
 
 /**
  */
-private[spark] abstract class DisaggBlockManagerEndpoint()
-  extends CrailManager(true) with Logging with RpcEndpoint {
+private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolean)
+  extends CrailManager(true, crailEnable) with Logging with RpcEndpoint {
 
   // Public methods
   def removeExecutor(executorId: String): Unit

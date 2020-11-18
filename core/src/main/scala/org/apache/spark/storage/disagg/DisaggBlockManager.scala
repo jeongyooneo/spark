@@ -30,7 +30,8 @@ import scala.collection.convert.decorateAsScala._
 
 class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
-      conf: SparkConf) extends CrailManager(false) with Logging {
+      conf: SparkConf) extends CrailManager(false,
+  conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) with Logging {
 
   def discardBlocksIfNecessary(estimateSize: Long) : Unit = {
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))

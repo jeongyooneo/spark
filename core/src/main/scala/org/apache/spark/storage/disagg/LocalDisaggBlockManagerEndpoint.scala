@@ -45,7 +45,7 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
                                           val metricTracker: MetricTracker,
                                           val cachingPolicy: CachingPolicy,
                                           val evictionPolicy: EvictionPolicy)
-  extends DisaggBlockManagerEndpoint {
+  extends DisaggBlockManagerEndpoint(false) {
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
