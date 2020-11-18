@@ -87,8 +87,6 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
   override def compute(s: Partition, context: TaskContext): Iterator[V] = {
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
     val blockCompStartTime = System.currentTimeMillis()
-    logInfo(s"ZipPartitionsRDD2 $id: " +
-      s"will call ${rdd1.id}.iterator() and ${rdd2.id}.iterator()")
     val rdd1IterStart = System.currentTimeMillis()
     val rdd1Iter = rdd1.iterator(partitions(0), context)
     val rdd1IterElapsed = System.currentTimeMillis() - rdd1IterStart
@@ -101,7 +99,7 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
     val elapsed = System.currentTimeMillis() - blockCompStartTime
 
-    logInfo(s"ZipPartitionsRDD2 $id: " +
+    logInfo(s"ZipPartitionsRDD2 rdd_${id}_${s.index}: " +
       s"${rdd1.id}.iterator() time: $rdd1IterElapsed ms, " +
       s"${rdd2.id}.iterator() time: $rdd2IterElapsed ms, " +
       s"compute() time: $elapsed ms")
@@ -171,7 +169,4 @@ private[spark] class ZippedPartitionsRDD4
     f = null
   }
 }
-
-
-
 
