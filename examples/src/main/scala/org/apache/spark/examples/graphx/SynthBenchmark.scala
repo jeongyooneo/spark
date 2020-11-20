@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-// scalastyle:off println
+// scalastyle:off logInfo
 package org.apache.spark.examples.graphx
 
 import java.io.{FileOutputStream, PrintWriter}
@@ -23,13 +23,14 @@ import java.io.{FileOutputStream, PrintWriter}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.graphx.{GraphXUtils, PartitionStrategy}
 import org.apache.spark.graphx.util.GraphGenerators
+import org.apache.spark.internal.Logging
 
 /**
  * The SynthBenchmark application can be used to run various GraphX algorithms on
  * synthetic log-normal graphs.  The intent of this code is to enable users to
  * profile the GraphX system without access to large graph datasets.
  */
-object SynthBenchmark {
+object SynthBenchmark extends Logging {
 
   /**
    * To run this program use the following:
@@ -86,15 +87,16 @@ object SynthBenchmark {
     val sc = new SparkContext(conf)
 
     // Create the graph
-    println("Creating graph...")
+    logInfo("Creating graph...")
     val unpartitionedGraph = GraphGenerators.logNormalGraph(sc, numVertices,
       numEPart.getOrElse(sc.defaultParallelism), mu, sigma, seed)
+    logInfo(s"numEPart ${numEPart.getOrElse(sc.defaultParallelism)} " +
+        s"defaultPar ${sc.defaultParallelism}")
     // Repartition the graph
     val graph = partitionStrategy.foldLeft(unpartitionedGraph)(_.partitionBy(_)).cache()
-
     var startTime = System.currentTimeMillis()
     val numEdges = graph.edges.count()
-    println(s"Done creating graph. Num Vertices = $numVertices, Num Edges = $numEdges")
+    logInfo(s"Done creating graph. Num Vertices = $numVertices, Num Edges = $numEdges")
     val loadTime = System.currentTimeMillis() - startTime
 
     // Collect the degree distribution (if desired)
@@ -111,22 +113,23 @@ object SynthBenchmark {
     // Run PageRank
     startTime = System.currentTimeMillis()
     if (app == "pagerank") {
-      println("Running PageRank")
+      logInfo("Running PageRank")
       val totalPR = graph.staticPageRank(niter).vertices.map(_._2).sum()
-      println(s"Total PageRank = $totalPR")
+      logInfo(s"Total PageRank = $totalPR")
     } else if (app == "cc") {
-      println("Running Connected Components")
+      logInfo("Running Connected Components")
       val numComponents = graph.connectedComponents.vertices.map(_._2).distinct().count()
-      println(s"Number of components = $numComponents")
+      logInfo(s"Number of components = $numComponents")
     }
     val runTime = System.currentTimeMillis() - startTime
 
-    println(s"Num Vertices = $numVertices")
-    println(s"Num Edges = $numEdges")
-    println(s"Creation time = ${loadTime/1000.0} seconds")
-    println(s"Run time = ${runTime/1000.0} seconds")
+    logInfo(s"Num Vertices = $numVertices")
+    logInfo(s"Num Edges = $numEdges")
+    logInfo(s"Creation time = ${loadTime/1000.0} seconds")
+    logInfo(s"Run time = ${runTime/1000.0} seconds")
 
     sc.stop()
   }
 }
-// scalastyle:on println
+// scalastyle:on logInfo
+
