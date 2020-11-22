@@ -153,7 +153,7 @@ private[spark] class BlockManager(
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
     new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this)
-  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
+  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager, this)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -282,7 +282,7 @@ private[spark] class BlockManager(
   private def registerWithExternalShuffleServer() {
     logInfo("Registering executor with local external shuffle service.")
     val shuffleConfig = new ExecutorShuffleInfo(
-      diskBlockManager.localDirs.map(_.toString),
+      diskBlockManager.shuffleLocalDirs.map(_.toString),
       diskBlockManager.subDirsPerLocalDir,
       shuffleManager.getClass.getName)
 
@@ -591,6 +591,7 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
+            logInfo(s"MemIO: memory read - $blockId locally")
             memoryStore.getValues(blockId).get
           } else {
             serializerManager.dataDeserializeStream(
@@ -605,11 +606,17 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
+          logInfo(s"Found $blockId locally in disk")
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
+              val startDeser = System.currentTimeMillis()
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
+              val deserTime = System.currentTimeMillis() - startDeser
+              val size = diskData.size
+              logInfo(s"DiskIO: disk read - deserTime $deserTime size $size " +
+                s"found $blockId locally")
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
@@ -734,6 +741,14 @@ private[spark] class BlockManager(
     // Because all the remote blocks are registered in driver, it is not necessary to ask
     // all the slave executors to get block status.
     val locationsAndStatus = master.getLocationsAndStatus(blockId)
+
+    // Get the storage type of the stored block
+    if (locationsAndStatus.isDefined) {
+      val memSize = locationsAndStatus.get.status.memSize
+      val diskSize = locationsAndStatus.get.status.diskSize
+      logInfo(s"Found $blockId remotely memSize $memSize diskSize $diskSize ")
+    }
+
     val blockSize = locationsAndStatus.map { b =>
       b.status.diskSize.max(b.status.memSize)
     }.getOrElse(0L)
@@ -815,12 +830,10 @@ private[spark] class BlockManager(
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val local = getLocalValues(blockId)
     if (local.isDefined) {
-      logInfo(s"Found block $blockId locally")
       return local
     }
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
-      logInfo(s"Found block $blockId remotely")
       return remote
     }
     None
@@ -1197,12 +1210,15 @@ private[spark] class BlockManager(
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
               if (level.useDisk) {
-                logWarning(s"Persisting block $blockId to disk instead.")
+                val startSer = System.currentTimeMillis()
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
+                val serTime = System.currentTimeMillis() - startSer
                 size = diskStore.getSize(blockId)
+                logInfo(s"DiskIO: disk write - serTime $serTime size $size " +
+                  s"cached $blockId to disk")
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1214,12 +1230,12 @@ private[spark] class BlockManager(
             case Left(partiallySerializedValues) =>
               // Not enough space to unroll this block; drop to disk if applicable
               if (level.useDisk) {
-                logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   partiallySerializedValues.finishWritingToStream(out)
                 }
                 size = diskStore.getSize(blockId)
+                logInfo(s"cached $blockId to disk")
               } else {
                 iteratorFromFailedMemoryStorePut = Some(partiallySerializedValues.valuesIterator)
               }
@@ -1340,11 +1356,15 @@ private[spark] class BlockManager(
         } else {
           memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
             case Left(iter) =>
+              logInfo(s"DiskIO: caching $blockId in memory from disk failed, " +
+                s"just use iterators")
               // The memory store put() failed, so it returned the iterator back to us:
               iter
             case Right(_) =>
               // The put() succeeded, so we can read the values back:
+              logInfo(s"DiskIO: cached $blockId in memory from disk")
               memoryStore.getValues(blockId).get
+
           }
         }
       }.asInstanceOf[Iterator[T]]
@@ -1530,9 +1550,9 @@ private[spark] class BlockManager(
 
     // Drop to disk, if storage level requires
     if (level.useDisk && !diskStore.contains(blockId)) {
-      logInfo(s"Writing block $blockId to disk")
       data() match {
         case Left(elements) =>
+          val startSer = System.currentTimeMillis()
           diskStore.put(blockId) { channel =>
             val out = Channels.newOutputStream(channel)
             serializerManager.dataSerializeStream(
@@ -1540,6 +1560,10 @@ private[spark] class BlockManager(
               out,
               elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
           }
+          val size = diskStore.getSize(blockId)
+          val serTime = System.currentTimeMillis() - startSer
+          logInfo(s"DiskIO: disk write - serTime $serTime size $size " +
+            s"dropped $blockId to disk")
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }
@@ -1616,6 +1640,26 @@ private[spark] class BlockManager(
     }
   }
 
+  def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Boolean = {
+    logDebug(s"Removing block $blockId")
+    blockInfoManager.lockForWriting(blockId, false) match {
+      case None =>
+        // The block has already been removed; do nothing.
+        logWarning(s"Asked to remove block $blockId, which does not exist")
+        false
+      case Some(info) =>
+        val removedFromDisk = diskStore.remove(blockId)
+        if (!removedFromDisk) {
+          logWarning(s"Block $blockId could not be removed as it was not found on disk")
+        } else {
+          blockInfoManager.removeBlock(blockId)
+          reportBlockStatus(blockId, BlockStatus.empty)
+          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+        }
+
+        removedFromDisk
+    }
+  }
   /**
    * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
    * lock on the block.
@@ -1810,3 +1854,4 @@ private[spark] object BlockManager {
     }
   }
 }
+
