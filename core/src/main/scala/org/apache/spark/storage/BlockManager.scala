@@ -153,7 +153,7 @@ private[spark] class BlockManager(
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
     new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this)
-  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager, this)
+  private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -282,7 +282,7 @@ private[spark] class BlockManager(
   private def registerWithExternalShuffleServer() {
     logInfo("Registering executor with local external shuffle service.")
     val shuffleConfig = new ExecutorShuffleInfo(
-      diskBlockManager.shuffleLocalDirs.map(_.toString),
+      diskBlockManager.localDirs.map(_.toString),
       diskBlockManager.subDirsPerLocalDir,
       shuffleManager.getClass.getName)
 
@@ -591,7 +591,7 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
-            logInfo(s"MemIO: memory read - $blockId locally")
+            logInfo(s"MemIO: read $blockId locally executor $executorId")
             memoryStore.getValues(blockId).get
           } else {
             serializerManager.dataDeserializeStream(
@@ -606,7 +606,6 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
-          logInfo(s"Found $blockId locally in disk")
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val startDeser = System.currentTimeMillis()
@@ -1206,6 +1205,7 @@ private[spark] class BlockManager(
         if (level.deserialized) {
           memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
+              logInfo(s"MemIO: write $blockId executor $executorId")
               size = s
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
@@ -1547,6 +1547,7 @@ private[spark] class BlockManager(
     val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
     var blockIsUpdated = false
     val level = info.level
+    var droppedToDisk = false
 
     // Drop to disk, if storage level requires
     if (level.useDisk && !diskStore.contains(blockId)) {
@@ -1564,6 +1565,7 @@ private[spark] class BlockManager(
           val serTime = System.currentTimeMillis() - startSer
           logInfo(s"DiskIO: disk write - serTime $serTime size $size " +
             s"dropped $blockId to disk")
+          droppedToDisk = true
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }
@@ -1588,13 +1590,22 @@ private[spark] class BlockManager(
       addUpdatedBlockStatusToTaskMetrics(blockId, status)
     }
     if (blockId.isRDD) {
-      logInfo(s"Dropping block $blockId from memory")
       if (TaskContext.get() != null) {
-        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
-          s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
+        if (droppedToDisk) {
+          master.sendLog(s"Dropped $blockId to disk executor $executorId " +
+            s"${TaskContext.get().stageId()} $droppedMemorySize bytes")
+        } else {
+          master.sendLog(s"Evicted $blockId executor $executorId " +
+            s"${TaskContext.get().stageId()} $droppedMemorySize bytes")
+        }
       } else {
-        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
-          s"-1\t$droppedMemorySize bytes")
+        if (droppedToDisk) {
+          master.sendLog(s"Dropped $blockId to disk executor $executorId " +
+            s"-1 $droppedMemorySize bytes")
+        } else {
+          master.sendLog(s"Evicted $blockId executor $executorId " +
+            s"-1 $droppedMemorySize bytes")
+        }
       }
     }
     status.storageLevel

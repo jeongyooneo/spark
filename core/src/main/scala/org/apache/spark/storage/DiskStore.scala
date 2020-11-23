@@ -85,10 +85,12 @@ private[spark] class DiskStore(
       }
     }
     val finishTime = System.currentTimeMillis
+    /*
     logInfo("Block %s stored as %s file on disk in %d ms".format(
       file.getName,
       Utils.bytesToString(file.length()),
       finishTime - startTime))
+     */
   }
 
   def putBytes(blockId: BlockId, bytes: ChunkedByteBuffer): Unit = {
