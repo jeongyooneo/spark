@@ -389,14 +389,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
               m.remove(discardingBlock.blockId)
               if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                if (onDisk) {
-                  sizeSum +=
+                val s = if (onDisk) {
                     blockManagerInfo.blocks(discardingBlock.blockId).diskSize
                 } else {
-                  sizeSum +=
                     blockManagerInfo.blocks(discardingBlock.blockId).memSize
                 }
-                evictionList.append(discardingBlock.blockId)
+
+                if (s > 0) {
+                  sizeSum += s
+                  evictionList.append(discardingBlock.blockId)
+                }
               }
 
               if (sizeSum > evictionSize) {

@@ -593,6 +593,10 @@ private[spark] class MemoryStore(
             while (iterator.hasNext) {
               val evictBlock = iterator.next()
               val entry = entries.get(evictBlock)
+
+              if (entry == null) {
+                throw new NullPointerException(s"Block ${evictBlock} is null... cannot evict")
+              }
               if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
                 selectedBlocks += evictBlock
                 freedMemory += entry.size
