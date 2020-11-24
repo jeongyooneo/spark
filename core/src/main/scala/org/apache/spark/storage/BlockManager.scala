@@ -830,6 +830,7 @@ private[spark] class BlockManager(
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val local = getLocalValues(blockId)
     if (local.isDefined) {
+      logInfo(s"cache hit (local): $blockId ${TaskContext.get().stageId()}")
       return local
     }
     val remote = getRemoteValues[T](blockId)
@@ -888,24 +889,8 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
-        // Accessed again in this executor
-        if (blockAccessHistory.contains(blockId)) {
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // Fetched from other executors
-          blockAccessHistory(blockId) = 1L
-        }
-        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
-        if (blockAccessHistory.contains(blockId)) {
-          // Cache miss in this executor
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // First time generating this block *in this executor*
-          // (might have been generated and evicted in other executors)
-          blockAccessHistory(blockId) = 1L
-        }
         logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
       // Need to compute the block.
     }
