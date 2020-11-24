@@ -83,10 +83,10 @@ private[spark] class DiskStore(
         disaggManager.diskCaching(blockId, out.getCount, executorId)
       }
 
-      synchronized {
-        totalSize.addAndGet(out.getCount)
+      val tsize = totalSize.addAndGet(out.getCount)
 
-        if (blockId.isRDD && totalSize.get() > THRESHOLD) {
+      if (blockId.isRDD && tsize > THRESHOLD) {
+        totalSize.synchronized {
           // Eviction
           val requiredEviction = totalSize.get() - THRESHOLD
           var evictionSize = 0L
