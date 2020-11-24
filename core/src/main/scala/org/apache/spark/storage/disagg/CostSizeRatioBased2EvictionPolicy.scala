@@ -86,7 +86,9 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
       costAnalyzer.sortedBlockByCompCostInLocal
     }
 
-    if (blocks.get() != null) {
+    // logInfo(s"onDisk: ${onDisk}, blocks: ${blocks.get()}")
+
+    if (blocks.get() != null && blocks.get().contains(executorId)) {
       val l =
         blocks.get()(executorId)
           .filter(p => {

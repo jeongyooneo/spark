@@ -135,7 +135,7 @@ private[spark] class DiskStore(
     // We should evict if requiredEvictionSize > 0
     val prevEvictedSelection = new mutable.HashSet[BlockId]()
     var cnt = 0
-    while (totalSize.get() + pending < THRESHOLD && cnt < 2) {
+    while (totalSize.get() + pending > THRESHOLD && cnt < 2) {
       val evictBlockList: List[BlockId] =
         disaggManager.localEviction(
           Option(blockId), executorId, size, prevEvictedSelection.toSet, true)
@@ -163,7 +163,7 @@ private[spark] class DiskStore(
       cnt += 1
     }
 
-    if (totalSize.get() + pending < THRESHOLD) {
+    if (totalSize.get() + pending > THRESHOLD) {
       disaggManager.cachingFail(blockId, size, executorId, false, true, true)
       return
     }
