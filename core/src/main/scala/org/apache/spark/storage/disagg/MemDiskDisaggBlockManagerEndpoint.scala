@@ -47,7 +47,7 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
                           val cachingPolicy: CachingPolicy,
                           val evictionPolicy: EvictionPolicy,
                           val rddJobDag: Option[RDDJobDag])
-  extends DisaggBlockManagerEndpoint(true) {
+  extends DisaggBlockManagerEndpoint(false) {
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
