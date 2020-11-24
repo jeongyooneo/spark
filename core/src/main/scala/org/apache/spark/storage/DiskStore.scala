@@ -199,6 +199,8 @@ private[spark] class DiskStore(
     }
     val finishTime = System.currentTimeMillis
 
+    disaggManager.diskCachingDone(blockId, out.getCount, executorId)
+
     logInfo("Block %s stored as %s file on disk in %d ms".format(
       file.getName,
       Utils.bytesToString(file.length()),

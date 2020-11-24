@@ -1016,6 +1016,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           putDisagg, localFull, onDisk))
       }
 
+    case DiskCachingDone(blockId, size, executorId) =>
+      metricTracker.localDiskStoredBlocksSizeMap.put(blockId, size)
+
     case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)

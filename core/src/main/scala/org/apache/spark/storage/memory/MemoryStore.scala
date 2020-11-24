@@ -595,15 +595,16 @@ private[spark] class MemoryStore(
               val entry = entries.get(evictBlock)
 
               if (entry == null) {
-                throw new NullPointerException(s"Block ${evictBlock} is null... cannot evict")
-              }
-              if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
-                selectedBlocks += evictBlock
-                freedMemory += entry.size
+                logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
               } else {
-                logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                  s"from executor $executorId, entry: $entry")
-                disaggManager.evictionFail(evictBlock, executorId, false)
+                if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                  selectedBlocks += evictBlock
+                  freedMemory += entry.size
+                } else {
+                  logInfo(s"LocalDecision]  eviction fail $evictBlock " +
+                    s"from executor $executorId, entry: $entry")
+                  disaggManager.evictionFail(evictBlock, executorId, false)
+                }
               }
             }
           }
