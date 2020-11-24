@@ -737,6 +737,7 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (USE_DISK && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
+          disaggManager.readLocalBlock(blockId, executorId, false, true)
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val diskValues = serializerManager.dataDeserializeStream(

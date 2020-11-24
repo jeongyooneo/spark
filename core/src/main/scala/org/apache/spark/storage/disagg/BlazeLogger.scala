@@ -47,9 +47,9 @@ private[spark] object BlazeLogger extends Logging {
                       comp: Double, disaggCost: Long, msg: String,
                       onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$size\t$msg")
+      logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$comp\t$size\t$msg")
     } else {
-      logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
+      logInfo(s"CACHING_L\t$executor\t$blockId\t$comp\t$size\t$msg")
     }
   }
 
