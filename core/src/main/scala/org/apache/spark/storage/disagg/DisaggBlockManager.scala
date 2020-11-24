@@ -59,31 +59,15 @@ class DisaggBlockManager(
     }
   }
 
-  // LOCAL DISK
-  def diskCaching(blockId: BlockId, size: Long, executorId: String): Unit = {
-    driverEndpoint.ask(CachingInDisk(blockId, size, executorId))
-  }
-
-  def diskEvictionDecision(blockId: BlockId,
-                           size: Long, executorId: String): List[BlockId] = {
-    driverEndpoint.askSync[List[BlockId]](DiskEvictionDecision(blockId, size, executorId))
-  }
-
-  def diskEvictionDone(blockId: BlockId, executorId: String, size: Long): Unit = {
-    driverEndpoint.ask(DiskBlockEvictionDone(blockId, executorId, size))
-  }
-
-  def diskEvictionFail(blockId: BlockId, executorId: String): Unit = {
-    driverEndpoint.ask(DiskBlockEvictionFail(blockId, executorId))
-  }
-
   def localEviction(blockId: Option[BlockId], executorId: String, size: Long,
-                    prevEvicted: Set[BlockId]): List[BlockId] = {
-    driverEndpoint.askSync[List[BlockId]](LocalEviction(blockId, executorId, size, prevEvicted))
+                    prevEvicted: Set[BlockId],
+                    onDisk: Boolean): List[BlockId] = {
+    driverEndpoint.askSync[List[BlockId]](
+      LocalEviction(blockId, executorId, size, prevEvicted, onDisk))
   }
 
-  def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
-    driverEndpoint.ask(LocalEvictionDone(blockId, executorId))
+  def localEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
+    driverEndpoint.ask(LocalEvictionDone(blockId, executorId, onDisk))
   }
 
   def sendRDDCompTime(rddId: Int, time: Long): Unit = {
@@ -98,8 +82,9 @@ class DisaggBlockManager(
     driverEndpoint.ask(WriteDisaggBlock(blockId, size, cost))
   }
 
-  def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean): Unit = {
-    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote))
+  def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean,
+                     onDisk: Boolean): Unit = {
+    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk))
   }
 
   def sendDeserMetric(blockId: BlockId, size: Long, time: Long): Unit = {
@@ -108,8 +93,10 @@ class DisaggBlockManager(
 
   def cacheDisaggDataInMemory(blockId: BlockId, size: Long,
                               executorId: String,
-                              enoughSpace: Boolean): Boolean = {
-    driverEndpoint.askSync[Boolean](CacheDisaggInMemory(blockId, size, executorId, enoughSpace))
+                              enoughSpace: Boolean,
+                              fromDisk: Boolean): Boolean = {
+    driverEndpoint.askSync[Boolean](PromoteToMemory(blockId, size,
+      executorId, enoughSpace, fromDisk))
   }
 
   private val localBlockCache = new ConcurrentHashMap[BlockId, Long].asScala
@@ -128,14 +115,14 @@ class DisaggBlockManager(
     }
   }
 
-  def evictionFail(blockId: BlockId, executorId: String): Unit = {
-    driverEndpoint.ask(EvictionFail(blockId, executorId))
+  def evictionFail(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
+    driverEndpoint.ask(EvictionFail(blockId, executorId, onDisk))
   }
 
   def cachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                  putDisagg: Boolean, localFull: Boolean): Unit = {
+                  putDisagg: Boolean, localFull: Boolean, onDisk: Boolean): Unit = {
     driverEndpoint.ask(
-      CachingFail(blockId, estimateSize, executorId, putDisagg, localFull))
+      CachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk))
   }
 
   def cachingDone(blockId: BlockId, estimateSize: Long, executorId: String): Unit = {
@@ -144,13 +131,14 @@ class DisaggBlockManager(
   }
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,
-                      executorId: String, putDisagg: Boolean, localFull: Boolean): Boolean = {
+                      executorId: String, putDisagg: Boolean,
+                      localFull: Boolean, onDisk: Boolean): Boolean = {
 
     // val taskContext = TaskContext.get()
     // val taskId = s"${taskContext.stageId()}-" +
     //  s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
     driverEndpoint.askSync[Boolean](
-      StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull))
+      StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk))
   }
 
   def read(blockId: BlockId, executorId: String) : Boolean = {

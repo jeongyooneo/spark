@@ -217,7 +217,7 @@ private[spark] class BlockManager(
 
   private[spark] val diskStore = new DiskStore(
     conf, diskBlockManager, securityManager, this,
-    disaggManager, disaggStore, executorId)
+    disaggManager, disaggStore, executorId, memoryStore)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -668,7 +668,7 @@ private[spark] class BlockManager(
     }
 
     val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
-    if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace)) {
+    if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace, false)) {
       doPutIterator(blockId, () => disaggIter, StorageLevel.DISAGG,
         implicitly[ClassTag[T]], true, true) match {
         case None =>
@@ -954,7 +954,8 @@ private[spark] class BlockManager(
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
-      disaggManager.readLocalBlock(blockId, executorId, false)
+        disaggManager.readLocalBlock(blockId, executorId, false,
+          local.get.readMethod.equals(DataReadMethod.Disk))
       return local
     }
 
@@ -971,10 +972,9 @@ private[spark] class BlockManager(
 
     val remote = getRemoteValues[T](blockId)
 
-
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
-      disaggManager.readLocalBlock(blockId, executorId, true)
+      disaggManager.readLocalBlock(blockId, executorId, true, false)
       return remote
     }
     None
@@ -1428,12 +1428,18 @@ private[spark] class BlockManager(
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
               if (USE_DISK) {
+                val estimateSize = memoryStore.sizeEstimationMap.get(blockId)
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
-                size = diskStore.getSize(blockId)
+
+                if (diskStore.contains(blockId)) {
+                  size = diskStore.getSize(blockId)
+                } else {
+                  iteratorFromFailedMemoryStorePut = Some(iter)
+                }
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1570,13 +1576,17 @@ private[spark] class BlockManager(
           // Note: if we had a means to discard the disk iterator, we would do that here.
           memoryStore.getValues(blockId).get
         } else {
-          memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
-            case Left(iter) =>
-              // The memory store put() failed, so it returned the iterator back to us:
-              iter
-            case Right(_) =>
-              // The put() succeeded, so we can read the values back:
-              memoryStore.getValues(blockId).get
+          val size = memoryStore.sizeEstimationMap.get(blockId)
+          val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
+          if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace, true)) {
+            memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
+              case Left(iter) =>
+                // The memory store put() failed, so it returned the iterator back to us:
+                iter
+              case Right(_) =>
+                // The put() succeeded, so we can read the values back:
+                memoryStore.getValues(blockId).get
+            }
           }
         }
       }.asInstanceOf[Iterator[T]]

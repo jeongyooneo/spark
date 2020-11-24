@@ -47,7 +47,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val cachingPolicy: CachingPolicy,
                           val evictionPolicy: EvictionPolicy,
                           val rddJobDag: Option[RDDJobDag])
-  extends DisaggBlockManagerEndpoint(true) {
+  extends DisaggBlockManagerEndpoint(!conf.get(BlazeParameters.USE_DISK)
+  && conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
+
+  private val BLAZE_COST_FUNC = conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
@@ -125,6 +128,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   // val executorCacheMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   val recentlyEvictFailBlocksFromLocal: mutable.Map[BlockId, Long] =
     new mutable.HashMap[BlockId, Long]().withDefaultValue(0L)
+  val recentlyEvictFailBlocksFromLocalDisk: mutable.Map[BlockId, Long] =
+    new mutable.HashMap[BlockId, Long]().withDefaultValue(0L)
 
   // Public methods
   def removeExecutor(executorId: String): Unit = {
@@ -179,8 +184,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageCompleted(stageId)
 
     if (autocaching) {
-      removeDupRDDsFromDisagg
-
+      // removeDupRDDsFromDisagg
       autocaching.synchronized {
         if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
           // unpersist rdds
@@ -242,28 +246,31 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.stageSubmitted(stageId)
   }
 
-  def removeFromLocal(blockId: BlockId, executorId: String): Unit = {
-    metricTracker.removeExecutorBlock(blockId, executorId)
+  def removeFromLocal(blockId: BlockId, executorId: String,
+                      onDisk: Boolean): Unit = {
+    metricTracker.removeExecutorBlock(blockId, executorId, onDisk)
   }
 
   // Private methods
 
-  private def addToLocal(blockId: BlockId, executorId: String, estimateSize: Long): Unit = {
-    metricTracker.addExecutorBlock(blockId, executorId, estimateSize)
+  private def addToLocal(blockId: BlockId, executorId: String,
+                         estimateSize: Long, onDisk: Boolean): Unit = {
+    metricTracker.addExecutorBlock(blockId, executorId, estimateSize, onDisk)
   }
 
   private def cachingFail(blockId: BlockId, estimateSize: Long,
                               executorId: String,
-                              putDisagg: Boolean, localFull: Boolean): Unit = {
-    BlazeLogger.cachingFailure(blockId, executorId, estimateSize)
-    removeFromLocal(blockId, executorId)
+                              putDisagg: Boolean, localFull: Boolean,
+                          onDisk: Boolean): Unit = {
+    BlazeLogger.cachingFailure(blockId, executorId, estimateSize, onDisk)
+    removeFromLocal(blockId, executorId, onDisk)
   }
 
-  private val disaggFirst = conf.get(BlazeParameters.DISAGG_FIRST)
 
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
-                              putDisagg: Boolean, localFull: Boolean): Boolean = {
+                              putDisagg: Boolean, localFull: Boolean,
+                              onDisk: Boolean): Boolean = {
 
     val cachingDecStart = System.currentTimeMillis
 
@@ -285,67 +292,53 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
 
     if (!putDisagg) {
+
+      if (!BLAZE_COST_FUNC) {
+        // We just cache  if it is not blaze cost function !!
+        // (if it is LRC or MRD)
+        addToLocal(blockId, executorId, estimateSize, onDisk)
+        BlazeLogger.logLocalCaching(blockId, executorId,
+          estimateSize, storingCost.reduction, storingCost.disaggCost,
+          "1", onDisk)
+        return true
+      }
+
       if (disableLocalCaching) {
         // Do not cache blocks in local
         // just return false
         BlazeLogger.discardLocal(blockId, executorId,
-          storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg")
+          storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
         recentlyRecachedBlocks.remove(blockId)
         false
       } else {
         if (localFull) {
-          if (disaggThreshold < estimateSize) {
-            val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
+          if (evictionPolicy
+            .decisionLocalEviction(storingCost, executorId, blockId, estimateSize, onDisk)) {
+            addToLocal(blockId, executorId, estimateSize, onDisk)
+            BlazeLogger.logLocalCaching(blockId, executorId,
+              estimateSize, storingCost.reduction, storingCost.disaggCost,
+              "2", onDisk)
 
-            if (l.isEmpty) {
-              BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.reduction, storingCost.disaggCost, estimateSize, "Empty?!?!")
-              recentlyRecachedBlocks.remove(blockId)
-              false
-            } else {
-              if (l.head.reduction > storingCost.reduction) {
-                BlazeLogger.discardLocal(blockId, executorId,
-                  storingCost.reduction, storingCost.disaggCost, estimateSize, "Minimum")
-                recentlyRecachedBlocks.remove(blockId)
-                false
-              } else {
-                if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-                  BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-                }
-
-                addToLocal(blockId, executorId, estimateSize)
-                BlazeLogger.logLocalCaching(blockId, executorId,
-                  estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
-                true
-              }
+            if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+              BlazeLogger.recacheDisaggToLocal(blockId, executorId)
             }
+
+            true
           } else {
-            if (evictionPolicy
-              .decisionLocalEviction(storingCost, executorId, blockId, estimateSize)) {
-              addToLocal(blockId, executorId, estimateSize)
-              BlazeLogger.logLocalCaching(blockId, executorId,
-                estimateSize, storingCost.reduction, storingCost.disaggCost, "2")
-
-              if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-                BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-              }
-
-              true
-            } else {
-              BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.reduction, storingCost.disaggCost, estimateSize, s"$estimateSize")
-              recentlyRecachedBlocks.remove(blockId)
-              false
-            }
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.reduction, storingCost.disaggCost,
+              estimateSize, s"$estimateSize", onDisk)
+            recentlyRecachedBlocks.remove(blockId)
+            false
           }
         } else {
           // local caching
           // put until threshold
           val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
 
-          addToLocal(blockId, executorId, estimateSize)
+          addToLocal(blockId, executorId, estimateSize, onDisk)
           BlazeLogger.logLocalCaching(blockId, executorId,
-            estimateSize, storingCost.reduction, storingCost.disaggCost, "3")
+            estimateSize, storingCost.reduction, storingCost.disaggCost, "3", onDisk)
 
           if (recentlyRecachedBlocks.remove(blockId).isDefined) {
             BlazeLogger.recacheDisaggToLocal(blockId, executorId)
@@ -361,7 +354,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private def localEviction(blockId: Option[BlockId],
                             executorId: String, evictionSize: Long,
-                            prevEvicted: Set[BlockId]): List[BlockId] = {
+                            prevEvicted: Set[BlockId],
+                            onDisk: Boolean): List[BlockId] = {
 
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
@@ -373,18 +367,35 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       // we should evict blocks to free space for execution !!
       logInfo(s"Evict to free space at executor " +
         s"$executorId, blockId: $blockId, size: $evictionSize")
-      val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
+      val l = if (onDisk) {
+        costAnalyzer.sortedBlockByCompCostInDiskLocal.get()(executorId)
+      } else {
+        costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
+      }
+
+      val m = if (onDisk) {
+        recentlyEvictFailBlocksFromLocalDisk
+      } else {
+        recentlyEvictFailBlocksFromLocal
+      }
+
       l.foreach {
         discardingBlock => {
           if (!prevEvicted.contains(discardingBlock.blockId)) {
             val elapsed = currTime -
-              recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
+              m.getOrElse(discardingBlock.blockId, 0L)
             val createdTime = metricTracker
               .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
             if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
-              recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
+              m.remove(discardingBlock.blockId)
               if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                if (onDisk) {
+                  sizeSum +=
+                    blockManagerInfo.blocks(discardingBlock.blockId).diskSize
+                } else {
+                  sizeSum +=
+                    blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                }
                 evictionList.append(discardingBlock.blockId)
               }
 
@@ -401,7 +412,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val bid = blockId.get
     val storingCost = costAnalyzer.compDisaggCost(bid)
 
-    evictionPolicy.selectEvictFromLocal(storingCost, executorId, blockId.get) {
+    evictionPolicy.selectEvictFromLocal(storingCost, executorId, blockId.get, onDisk) {
       iter =>
         if (iter.isEmpty) {
           logWarning(s"Low comp disagg block is empty " +
@@ -410,17 +421,22 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else {
           var sum = 0.0
 
+          val map = if (onDisk) {
+            recentlyEvictFailBlocksFromLocalDisk
+          } else {
+            recentlyEvictFailBlocksFromLocal
+          }
+
           iter.foreach {
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
                 && discardingBlock.reduction <= storingCost.reduction) {
-                val elapsed = currTime -
-                  recentlyEvictFailBlocksFromLocal.getOrElse(discardingBlock.blockId, 0L)
+                val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
-                  recentlyEvictFailBlocksFromLocal.remove(discardingBlock.blockId)
+                  map.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
                     sum <= storingCost.reduction) {
                     sum += discardingBlock.reduction
@@ -449,44 +465,38 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  private def localEvictionFail(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"Local eviction failed: $blockId, $executorId")
-    recentlyEvictFailBlocksFromLocal.put(blockId, System.currentTimeMillis())
+  private def localEvictionFail(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
+    logInfo(s"Local eviction failed from disk $onDisk: $blockId, $executorId")
+    if (onDisk) {
+      recentlyEvictFailBlocksFromLocal.put(blockId, System.currentTimeMillis())
+    } else {
+      recentlyEvictFailBlocksFromLocalDisk.put(blockId, System.currentTimeMillis())
+    }
     // addToLocal(blockId, executorId, metricTracker.localBlockSizeHistoryMap.get(blockId))
   }
 
-  private def localEvictionDone(blockId: BlockId, executorId: String): Unit = {
+  private def localEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
     val cost = costAnalyzer.compDisaggCost(blockId)
     BlazeLogger.evictLocal(
-      blockId, executorId, cost.reduction, cost.disaggCost, metricTracker.getBlockSize(blockId))
-    removeFromLocal(blockId, executorId)
+      blockId, executorId, cost.reduction, cost.disaggCost,
+      metricTracker.getBlockSize(blockId), onDisk)
+    removeFromLocal(blockId, executorId, onDisk)
   }
 
 
   private val recentlyRecachedBlocks = new ConcurrentHashMap[BlockId, Boolean]().asScala
 
-  def cacheDisaggDataInMemory(blockId: BlockId, size: Long,
-                              executorId: String,
-                              enoughSpace: Boolean): Boolean = {
-
-    // logInfo(s"Maybe cache into memory " +
-    //  s"$blockId, $size, $executorId, $enoughSpace")
-
-    /*
-    val costForStoredBlock = costAnalyzer.compDisaggCost(blockId)
-
-    if (evictionPolicy.decisionPromote(costForStoredBlock, executorId, blockId, size)) {
-      // we store this rdd and evict others
-      BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-      true
-    } else {
-      false
-    }
-    */
-
+  def promoteToMemory(blockId: BlockId, size: Long,
+                      executorId: String,
+                      enoughSpace: Boolean): Boolean = {
 
     // We only recache the block if the block was stored in the executor
-    if (disableLocalCaching || metricTracker.storedBlockInLocal(blockId) ) {
+    if (disableLocalCaching || metricTracker.storedBlockInLocalMemory(blockId) ) {
+      return false
+    }
+
+    if (!BLAZE_COST_FUNC) {
+      // Prevent promotion in LRC and MRD
       return false
     }
 
@@ -695,8 +705,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def removeRddsFromLocal(rdds: Set[Int]): Unit = {
-    metricTracker.getExecutorBlocksMap.synchronized {
-      metricTracker.getExecutorBlocksMap.foreach {
+    metricTracker.getExecutorLocalMemoryBlocksMap.synchronized {
+      metricTracker.getExecutorLocalMemoryBlocksMap.foreach {
         entrySet =>
           val executorId = entrySet._1
           val blockSet = entrySet._2
@@ -709,7 +719,28 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 }
                 removeSet.foreach(pair => {
                   BlazeLogger.removeZeroBlocks(pair._1, pair._2)
-                  removeFromLocal(pair._1, pair._2)
+                  removeFromLocal(pair._1, pair._2, false)
+                })
+            }
+          }
+      }
+    }
+
+    metricTracker.getExecutorLocalDiskBlocksMap.synchronized {
+      metricTracker.getExecutorLocalDiskBlocksMap.foreach {
+        entrySet =>
+          val executorId = entrySet._1
+          val blockSet = entrySet._2
+          val removeSet = new mutable.HashSet[(BlockId, String)]()
+          localExecutorLockMap(executorId).synchronized {
+            blockSet.foreach {
+              bid =>
+                if (rdds.contains(bid.asRDDId.get.rddId)) {
+                  removeSet.add((bid, executorId))
+                }
+                removeSet.foreach(pair => {
+                  BlazeLogger.removeZeroBlocksDisk(pair._1, pair._2)
+                  removeFromLocal(pair._1, pair._2, true)
                 })
             }
           }
@@ -717,9 +748,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+  /*
   private def removeDupRDDsFromDisagg: Unit = {
     disaggBlockInfo.keys.foreach(bid => {
-      if (metricTracker.storedBlockInLocal(bid)) {
+      if (metricTracker.storedBlockInLocalMemory(bid)) {
         if (tryWriteLockHeldForDisagg(bid)) {
           if (removeFromDisagg(bid).isDefined) {
             BlazeLogger.removeDuplicateBlocksInDisagg(bid)
@@ -729,6 +761,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
     })
   }
+  */
 
   private def removeRddsFromDisagg(rdds: Set[Int]): Unit = {
     disaggBlockInfo.filter(pair => rdds.contains(pair._1.asRDDId.get.rddId))
@@ -974,62 +1007,52 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     // FOR LOCAL
     // FOR LOCAL
-    case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull) =>
+    case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>
       synchronized {
         localExecutorLockMap.putIfAbsent(executorId, new Object)
-        if (putDisagg) {
-          context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
-        } else {
-          /*
-        logInfo(s"StoreBlockOrNot $blockId executor $executorId")
-        val lock = localExecutorLockMap(executorId)
-        lock.synchronized {
-          logInfo(s"StoreBlockOrNot $blockId executor $executorId: acquired lock")
-          context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
-        }
-         */
-          context.reply(cachingDecision(blockId, estimateSize, executorId, putDisagg, localFull))
-        }
+        context.reply(cachingDecision(blockId, estimateSize, executorId,
+          putDisagg, localFull, onDisk))
       }
 
-    case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull) =>
+    case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        cachingFail(blockId, estimateSize, executorId, putDisagg, localFull)
+        cachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk)
       }
 
-    case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
-      BlazeLogger.readLocal(blockId, executorId, fromRemote)
+    case ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk) =>
+      BlazeLogger.readLocal(blockId, executorId, fromRemote, onDisk)
 
     case IsRddCache(rddId) =>
       context.reply(isRddCache(rddId))
 
-    case LocalEviction(blockId, executorId, size, prevEvicted) =>
+    case LocalEviction(blockId, executorId, size, prevEvicted, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        context.reply(localEviction(blockId, executorId, size + 1 * 1024 * 1024, prevEvicted))
+        context.reply(localEviction(blockId, executorId,
+          size + 1 * 1024 * 1024, prevEvicted, onDisk))
       }
-    case EvictionFail(blockId, executorId) =>
+    case EvictionFail(blockId, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        localEvictionFail(blockId, executorId)
+        localEvictionFail(blockId, executorId, onDisk)
       }
-    case LocalEvictionDone(blockId, executorId) =>
+    case LocalEvictionDone(blockId, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        localEvictionDone(blockId, executorId)
+        localEvictionDone(blockId, executorId, onDisk)
       }
-    case CacheDisaggInMemory(blockId, size, executorId, enoughSpace) =>
+    case PromoteToMemory(blockId, size, executorId, enoughSpace, fromDisk) =>
+      BlazeLogger.tryToPromote(blockId, executorId, size, fromDisk)
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        context.reply(cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace))
+        context.reply(promoteToMemory(blockId, size, executorId, enoughSpace))
       }
-
     case GetLocalBlockSize(blockId) =>
       if (metricTracker.localBlockSizeHistoryMap.containsKey(blockId)) {
         context.reply(metricTracker.localBlockSizeHistoryMap.get(blockId))

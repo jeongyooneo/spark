@@ -29,9 +29,16 @@ private[spark] class OnlyCostBasedEvictionPolicy(
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,
                             blockId: BlockId,
-                            estimateSize: Long): Boolean = {
-    if (costAnalyzer.sortedBlockByCompCostInLocal.get() != null) {
-      val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
+                            estimateSize: Long,
+                            onDisk: Boolean): Boolean = {
+    val sortedBlocks = if (onDisk) {
+      costAnalyzer.sortedBlockByCompCostInDiskLocal
+    } else {
+      costAnalyzer.sortedBlockByCompCostInLocal
+    }
+
+    if (sortedBlocks.get() != null) {
+      val l = sortedBlocks.get()(executorId)
       if (l.isEmpty) {
         false
       } else {
@@ -69,22 +76,17 @@ private[spark] class OnlyCostBasedEvictionPolicy(
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId)
+                           blockId: BlockId,
+                           onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
-    if (costAnalyzer.sortedBlockByCompCostInLocal.get() != null) {
-      val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
-      func(l)
+    val blocks = if (onDisk) {
+      costAnalyzer.sortedBlockByCompCostInDiskLocal
     } else {
-      func(List.empty)
+      costAnalyzer.sortedBlockByCompCostInLocal
     }
-  }
 
-  def selectEvictFromDisk(storingCost: CompDisaggCost,
-                               executorId: String,
-                               blockId: BlockId)
-                              (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
-    if (costAnalyzer.sortedBlockByCompCostInDiskLocal.get() != null) {
-      val l = costAnalyzer.sortedBlockByCompCostInDiskLocal.get()(executorId)
+    if (blocks.get() != null) {
+      val l = blocks.get()(executorId)
       func(l)
     } else {
       func(List.empty)

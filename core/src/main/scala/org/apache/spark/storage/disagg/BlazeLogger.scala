@@ -44,13 +44,13 @@ private[spark] object BlazeLogger extends Logging {
 
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
-                      comp: Double, disaggCost: Long, msg: String): Unit = {
-    logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
-  }
-  def logLocalDiskCaching(blockId: BlockId, executor: String,
-                          size: Long,
-                          comp: Double, disaggCost: Long, msg: String): Unit = {
-    logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$size\t$msg")
+                      comp: Double, disaggCost: Long, msg: String,
+                      onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$size\t$msg")
+    } else {
+      logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
+    }
   }
 
   def logDisaggCaching(blockId: BlockId,
@@ -61,8 +61,13 @@ private[spark] object BlazeLogger extends Logging {
 
   // local caching fail
   def cachingFailure(blockId: BlockId, executorId: String,
-                     size: Long): Unit = {
-    logInfo(s"FAIL_CACHING_L\t$executorId\t$blockId\t$size")
+                     size: Long,
+                     onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"FAIL_CACHING_DISK\t$executorId\t$blockId\t$size")
+    } else {
+      logInfo(s"FAIL_CACHING_L\t$executorId\t$blockId\t$size")
+    }
   }
 
   // For executor failure
@@ -76,8 +81,13 @@ private[spark] object BlazeLogger extends Logging {
                    reduction: Double,
                    disaggCost: Long,
                    size: Long,
-                   msg: String): Unit = {
-    logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
+                   msg: String,
+                   onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"DISCARD_DISK\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
+    } else {
+      logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
+    }
   }
   def discardDisagg(blockId: BlockId, reduction: Double,
                     disagg: Long, size: Long, msg: String): Unit = {
@@ -88,16 +98,27 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"PROMOTE\t$executorId\t$blockId")
   }
 
+  def tryToPromote(blockId: BlockId, executorId: String, size: Long,
+                   onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"TRY_PROMOTE_FROM_DISK\t$executorId\t$blockId\t$size")
+    } else {
+      logInfo(s"TRY_PROMOTE\t$executorId\t$blockId\t$size")
+    }
+  }
+
   // Evict: this rdd is cached in local/disagg
   def evictLocal(blockId: BlockId, executor: String,
                  comp: Double, disaggCost: Long,
-                 size: Long): Unit = {
-    logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+                 size: Long,
+                 onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"EVICT_DISK\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+    } else {
+      logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+    }
   }
-  def evictDisk(blockId: BlockId, executor: String,
-                size: Long): Unit = {
-    logInfo(s"EVICT_DISK_L\t$executor\t$blockId\t$size")
-  }
+
   def evictDisagg(blockId: BlockId,
                   comp: Double,
                   disagg: Long,
@@ -110,12 +131,21 @@ private[spark] object BlazeLogger extends Logging {
   }
 
   // Read operations
-  def readLocal(blockId: BlockId, executorId: String, fromRemote: Boolean): Unit = {
-    logInfo(s"READ_L\t$executorId\t$blockId\t$fromRemote")
+  def readLocal(blockId: BlockId, executorId: String, fromRemote: Boolean,
+                onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"READ_DISK\t$executorId\t$blockId\t$fromRemote")
+    } else {
+      logInfo(s"READ_L\t$executorId\t$blockId\t$fromRemote")
+    }
   }
 
   def removeZeroBlocks(blockId: BlockId, executorId: String): Unit = {
     logInfo(s"RM_ZERO_L\t$executorId\t$blockId")
+  }
+
+  def removeZeroBlocksDisk(blockId: BlockId, executorId: String): Unit = {
+    logInfo(s"RM_ZERO_DISK_L\t$executorId\t$blockId")
   }
 
   def removeDuplicateBlocksInDisagg(blockId: BlockId): Unit = {

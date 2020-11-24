@@ -29,7 +29,8 @@ private[spark] class DefaultEvictionPolicy(
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,
                             blockId: BlockId,
-                            estimateSize: Long): Boolean = {
+                            estimateSize: Long,
+                            onDisk: Boolean): Boolean = {
     // wheter to store it into local or disagg
     // first, check cost in local executors
     val lowCompDisaggBlocks =
@@ -60,23 +61,17 @@ private[spark] class DefaultEvictionPolicy(
                             executorId: String,
                             blockId: BlockId,
                             estimateSize: Long): Boolean = {
-    decisionLocalEviction(storingCost, executorId, blockId, estimateSize)
+    decisionLocalEviction(storingCost, executorId, blockId, estimateSize, false)
   }
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId)
+                           blockId: BlockId,
+                           onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
     val lowCompDisaggBlocks = costAnalyzer
       .findLowCompDisaggCostBlocks(storingCost, executorId, blockId, true)
     func(lowCompDisaggBlocks)
-  }
-
-  def selectEvictFromDisk(storingCost: CompDisaggCost,
-                           executorId: String,
-                           blockId: BlockId)
-                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
-    throw new RuntimeException("todo")
   }
 
   def selectEvictFromDisagg(storingCost: CompDisaggCost,

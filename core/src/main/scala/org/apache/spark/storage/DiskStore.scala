@@ -32,11 +32,13 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManager, DisaggStore}
+import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.Utils
 import org.apache.spark.util.io.ChunkedByteBuffer
 import org.apache.spark.{SecurityManager, SparkConf}
 
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -49,7 +51,8 @@ private[spark] class DiskStore(
     blockManager: BlockManager,
     disaggManager: DisaggBlockManager,
     disaggStore: DisaggStore,
-    executorId: String) extends Logging {
+    executorId: String,
+    memoryStore: MemoryStore) extends Logging {
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
@@ -57,6 +60,7 @@ private[spark] class DiskStore(
 
   private val THRESHOLD = conf.get(BlazeParameters.DISK_THRESHOLD)
   private val totalSize = new AtomicLong(0)
+  private val pendingSize = new AtomicLong(0)
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
 
@@ -67,10 +71,103 @@ private[spark] class DiskStore(
    */
   def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
     if (contains(blockId)) {
-      throw new IllegalStateException(s"Block $blockId is already present in the disk store")
+      logWarning(s"Block $blockId is already present in the disk store")
+      return
     }
+
     logDebug(s"Attempting to put block $blockId")
     logInfo(s"Disk threshold: $THRESHOLD, totalSize: $totalSize")
+
+    if (!blockId.isRDD) {
+      val startTime = System.currentTimeMillis
+      val file = diskManager.getFile(blockId)
+      val out = new CountingWritableChannel(openForWrite(file))
+      var threwException: Boolean = true
+      try {
+        writeFunc(out)
+        blockSizes.put(blockId, out.getCount)
+        totalSize.addAndGet(out.getCount)
+        threwException = false
+      } finally {
+        try {
+          out.close()
+        } catch {
+          case ioe: IOException =>
+            if (!threwException) {
+              threwException = true
+              throw ioe
+            }
+        } finally {
+          if (threwException) {
+            remove(blockId)
+          }
+        }
+      }
+      val finishTime = System.currentTimeMillis
+      logInfo("Block %s stored as %s file on disk in %d ms".format(
+        file.getName,
+        Utils.bytesToString(file.length()),
+        finishTime - startTime))
+
+      return
+    }
+
+
+    val size = memoryStore.getEstimateSize(blockId)
+    var total = 0L
+    var requiredEvictionSize = 0L
+
+    val pending = pendingSize.synchronized {
+      total = totalSize.get()
+      pendingSize.addAndGet(size)
+    }
+
+    if (total + pending > THRESHOLD) {
+      requiredEvictionSize = size
+    }
+
+    if (!disaggManager.cachingDecision(blockId, size,
+      executorId, false, requiredEvictionSize > 0L, true)) {
+      pendingSize.addAndGet(-size)
+      return
+    }
+
+    // We should evict if requiredEvictionSize > 0
+    val prevEvictedSelection = new mutable.HashSet[BlockId]()
+    var cnt = 0
+    while (totalSize.get() + pending < THRESHOLD && cnt < 2) {
+      val evictBlockList: List[BlockId] =
+        disaggManager.localEviction(
+          Option(blockId), executorId, size, prevEvictedSelection.toSet, true)
+
+      evictBlockList.foreach {
+        eblock => prevEvictedSelection.add(eblock)
+      }
+
+      val iterator = evictBlockList.iterator
+
+      logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
+        s"from executor disk $executorId, totalSize: ${totalSize.get()}")
+
+      while (iterator.hasNext) {
+        val bid = iterator.next()
+        val bsize = blockSizes.get(bid)
+        logInfo(s"Evicting block $bid from disk size $bsize")
+        if (blockManager.removeBlockFromDisk(bid, true)) {
+          logInfo(s"Evicting done $bid")
+          disaggManager.localEvictionDone(blockId, executorId, true)
+        } else {
+          disaggManager.evictionFail(bid, executorId, true)
+        }
+      }
+      cnt += 1
+    }
+
+    if (totalSize.get() + pending < THRESHOLD) {
+      disaggManager.cachingFail(blockId, size, executorId, false, true, true)
+      return
+    }
+
     val startTime = System.currentTimeMillis
     val file = diskManager.getFile(blockId)
     val out = new CountingWritableChannel(openForWrite(file))
@@ -79,33 +176,9 @@ private[spark] class DiskStore(
       writeFunc(out)
       blockSizes.put(blockId, out.getCount)
 
-      if (blockId.isRDD) {
-        disaggManager.diskCaching(blockId, out.getCount, executorId)
-      }
-
-      val tsize = totalSize.addAndGet(out.getCount)
-
-      if (blockId.isRDD && tsize > THRESHOLD) {
-        totalSize.synchronized {
-          // Eviction
-          val requiredEviction = totalSize.get() - THRESHOLD
-          var evictionSize = 0L
-          val l = disaggManager.diskEvictionDecision(blockId, requiredEviction, executorId)
-          val iterator = l.iterator
-          while (iterator.hasNext && evictionSize < requiredEviction) {
-            val bid = iterator.next()
-            val bsize = blockSizes.get(bid)
-            logInfo(s"Evicting block $bid from disk size $bsize")
-            if (blockManager.removeBlockFromDisk(bid, true)) {
-              // sent to disagg
-              disaggManager.diskEvictionDone(bid, executorId, bsize)
-              evictionSize += bsize
-              logInfo(s"Evicting done $bid")
-            } else {
-              disaggManager.diskEvictionFail(bid, executorId)
-            }
-          }
-        }
+      pendingSize.synchronized {
+        pendingSize.addAndGet(-size)
+        totalSize.addAndGet(out.getCount)
       }
 
       threwException = false
@@ -125,6 +198,7 @@ private[spark] class DiskStore(
       }
     }
     val finishTime = System.currentTimeMillis
+
     logInfo("Block %s stored as %s file on disk in %d ms".format(
       file.getName,
       Utils.bytesToString(file.length()),
@@ -161,7 +235,7 @@ private[spark] class DiskStore(
       if (blockId.isRDD && toDisagg) {
         // Send to disagg or not?
         if (disaggManager
-          .cachingDecision(blockId, bsize, executorId, true, true)) {
+          .cachingDecision(blockId, bsize, executorId, true, true, true)) {
           val inputStream = new FileInputStream(file)
           logInfo(s"Caching from disk to disagg $blockId, executor $executorId")
           disaggStore.put(blockId,

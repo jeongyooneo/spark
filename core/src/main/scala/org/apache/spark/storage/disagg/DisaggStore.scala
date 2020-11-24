@@ -63,7 +63,7 @@ private[spark] class DisaggStore(
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
 
-    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId, true, true)) {
+    if (!disaggManager.cachingDecision(blockId, estimateSize, executorId, true, true, false)) {
       return false
     }
 

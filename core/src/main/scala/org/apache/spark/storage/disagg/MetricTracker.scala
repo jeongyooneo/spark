@@ -29,15 +29,15 @@ import scala.collection.convert.decorateAsScala._
 private[spark] class MetricTracker extends Logging {
 
   // Private values
-  val localDiskStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]().asScala
-  val localDiskStoredBlocksSizeMap = new ConcurrentHashMap[BlockId, Long]().asScala
+  val localDiskStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
+  val localDiskStoredBlocksSizeMap = new ConcurrentHashMap[BlockId, Long]()
 
-  val localStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
+  val localMemStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   val localStoredBlocksHistoryMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   private val disaggStoredBlocks = new mutable.HashSet[BlockId]()
 
   private val disaggBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
-  private val localBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
+  private val localMemBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
   // Public values
@@ -64,18 +64,14 @@ private[spark] class MetricTracker extends Logging {
   // TODO set
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
 
-  def storedBlocks: Set[BlockId] = {
-    localStoredBlocksMap.values.asScala
-      .reduceOption((x, y) => x.union(y)) match {
-      case None =>
-        Set.empty
-      case Some(set) =>
-        set.union(disaggStoredBlocks).toSet
-    }
-  }
-
   def blockStored(blockId: BlockId): Boolean = {
-    localStoredBlocksMap.entrySet().iterator().asScala
+    localMemStoredBlocksMap.entrySet().iterator().asScala
+      .foreach {
+        entry => if (entry.getValue.contains(blockId)) {
+          return true
+        }
+      }
+    localDiskStoredBlocksMap.entrySet().iterator().asScala
       .foreach {
         entry => if (entry.getValue.contains(blockId)) {
           return true
@@ -85,24 +81,30 @@ private[spark] class MetricTracker extends Logging {
   }
 
   def getBlockSize(blockId: BlockId): Long = synchronized {
-    if (localBlockSizeMap.containsKey(blockId)) {
-      localBlockSizeMap.get(blockId)
+    if (localMemBlockSizeMap.containsKey(blockId)) {
+      localMemBlockSizeMap.get(blockId)
     } else if (disaggBlockSizeMap.containsKey(blockId)) {
       disaggBlockSizeMap.get(blockId)
     } else if (localBlockSizeHistoryMap.containsKey(blockId)) {
       localBlockSizeHistoryMap.get(blockId)
+    } else if (localDiskStoredBlocksSizeMap.containsKey(blockId)) {
+      localDiskStoredBlocksSizeMap.get(blockId)
     } else {
       logWarning(s"No block size $blockId")
       0L
     }
   }
 
-  def getExecutorBlocksMap: Map[String, mutable.Set[BlockId]] = {
-    localStoredBlocksMap.asScala.toMap
+  def getExecutorLocalDiskBlocksMap: Map[String, mutable.Set[BlockId]] = {
+    localDiskStoredBlocksMap.asScala.toMap
   }
 
-  def storedBlockInLocal(blockId: BlockId): Boolean = {
-    localStoredBlocksMap.asScala.foreach {
+  def getExecutorLocalMemoryBlocksMap: Map[String, mutable.Set[BlockId]] = {
+    localMemStoredBlocksMap.asScala.toMap
+  }
+
+  def storedBlockInLocalMemory(blockId: BlockId): Boolean = {
+    localMemStoredBlocksMap.asScala.foreach {
       entry => if (entry._2.contains(blockId)) {
         return true
       }
@@ -110,33 +112,38 @@ private[spark] class MetricTracker extends Logging {
     false
   }
 
-  def containBlockInLocal(blockId: BlockId, executorId: String): Boolean = {
-    localStoredBlocksHistoryMap.get(executorId).contains(blockId)
-  }
-
-  def getExecutorBlocks(executorId: String): mutable.Set[BlockId] = {
-    localStoredBlocksMap.putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
-    localStoredBlocksMap.get(executorId)
-  }
-
   def removeExecutorBlocks(executorId: String): Unit = synchronized {
-    localStoredBlocksMap.remove(executorId).foreach {
+    localMemStoredBlocksMap.remove(executorId).foreach {
       blockId => {
-        val size = localBlockSizeMap.remove(blockId)
+        val size = localMemBlockSizeMap.remove(blockId)
         BlazeLogger.removeLocal(blockId, executorId, size)
       }
     }
   }
 
-  def removeExecutorBlock(blockId: BlockId, executorId: String): Unit = {
-    localBlockSizeMap.remove(blockId)
-    localStoredBlocksMap.get(executorId).remove(blockId)
+  def removeExecutorBlock(blockId: BlockId, executorId: String,
+                          onDisk: Boolean): Unit = {
+    if (onDisk) {
+      localDiskStoredBlocksSizeMap.remove(blockId)
+      localDiskStoredBlocksMap.get(executorId).remove(blockId)
+    } else {
+      localMemBlockSizeMap.remove(blockId)
+      localMemStoredBlocksMap.get(executorId).remove(blockId)
+    }
   }
 
-  def addExecutorBlock(blockId: BlockId, executorId: String, size: Long): Unit = {
-    localBlockSizeMap.put(blockId, size)
-    localStoredBlocksMap.putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
-    localStoredBlocksMap.get(executorId).add(blockId)
+  def addExecutorBlock(blockId: BlockId, executorId: String, size: Long,
+                       onDisk: Boolean): Unit = {
+    if (onDisk) {
+      localDiskStoredBlocksSizeMap.put(blockId, size)
+      localDiskStoredBlocksMap.putIfAbsent(executorId,
+        ConcurrentHashMap.newKeySet[BlockId].asScala)
+      localDiskStoredBlocksMap.get(executorId).add(blockId)
+    } else {
+      localMemBlockSizeMap.put(blockId, size)
+      localMemStoredBlocksMap.putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+      localMemStoredBlocksMap.get(executorId).add(blockId)
+    }
   }
 
   def addBlockInDisagg(blockId: BlockId, size: Long): Unit = {
@@ -159,7 +166,6 @@ private[spark] class MetricTracker extends Logging {
       disaggStoredBlocks.remove(blockId)
     }
   }
-
 
   def getDisaggBlocks: mutable.Set[BlockId] = {
     disaggStoredBlocks

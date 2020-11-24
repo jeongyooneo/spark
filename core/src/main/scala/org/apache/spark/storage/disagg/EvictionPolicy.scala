@@ -27,7 +27,8 @@ private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,
                             blockId: BlockId,
-                            estimateSize: Long): Boolean
+                            estimateSize: Long,
+                            onDisk: Boolean): Boolean
 
 
   def decisionPromote(storingCost: CompDisaggCost,
@@ -37,13 +38,9 @@ private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId)
+                           blockId: BlockId,
+                           onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
-
-  def selectEvictFromDisk(storingCost: CompDisaggCost,
-                          executorId: String,
-                          blockId: BlockId)
-                         (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
 
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)

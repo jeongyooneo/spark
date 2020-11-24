@@ -29,9 +29,17 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
   def decisionLocalEviction(storingCost: CompDisaggCost,
                             executorId: String,
                             blockId: BlockId,
-                            estimateSize: Long): Boolean = {
-    if (costAnalyzer.sortedBlockByCompCostInLocal.get() != null) {
-      val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
+                            estimateSize: Long,
+                            onDisk: Boolean): Boolean = {
+
+    val sortedBlocks = if (onDisk) {
+      costAnalyzer.sortedBlockByCompCostInDiskLocal
+    } else {
+      costAnalyzer.sortedBlockByCompCostInLocal
+    }
+
+    if (sortedBlocks.get() != null) {
+      val l = sortedBlocks.get()(executorId)
       if (l.isEmpty) {
         false
       } else {
@@ -69,34 +77,18 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId)
+                           blockId: BlockId,
+                           onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
-    if (costAnalyzer.sortedBlockByCompCostInLocal.get() != null) {
-      val l =
-        costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
-          .filter(p => {
-            if (p.reduction <= 0) {
-              true
-            } else {
-              val costRatio = storingCost.reduction / p.reduction
-              val sizeRatio =
-                metricTracker.getBlockSize(blockId) / metricTracker.getBlockSize(p.blockId)
-              costRatio > sizeRatio
-            }
-          })
-      func(l)
+    val blocks = if (onDisk) {
+      costAnalyzer.sortedBlockByCompCostInDiskLocal
     } else {
-      func(List.empty)
+      costAnalyzer.sortedBlockByCompCostInLocal
     }
-  }
 
-  def selectEvictFromDisk(storingCost: CompDisaggCost,
-                           executorId: String,
-                           blockId: BlockId)
-                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
-    if (costAnalyzer.sortedBlockByCompCostInDiskLocal.get() != null) {
+    if (blocks.get() != null) {
       val l =
-        costAnalyzer.sortedBlockByCompCostInDiskLocal.get()(executorId)
+        blocks.get()(executorId)
           .filter(p => {
             if (p.reduction <= 0) {
               true

@@ -38,24 +38,11 @@ private[spark] object DisaggBlockManagerMessages {
   case class IsRddCache(rddId: Int) extends ToBlockManagerMaster
 
   case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, executorId: String,
-                             putDisagg: Boolean, localFull: Boolean)
-    extends ToBlockManagerMaster
-
-
-  case class CachingInDisk(blockId: BlockId, size: Long, executorId: String)
-    extends ToBlockManagerMaster
-
-  case class DiskEvictionDecision(blockId: BlockId, size: Long, executorId: String)
-    extends ToBlockManagerMaster
-
-  case class DiskBlockEvictionDone(blockId: BlockId, executorId: String, size: Long)
-    extends ToBlockManagerMaster
-
-  case class DiskBlockEvictionFail(blockId: BlockId, executorId: String)
+                             putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                             putDisagg: Boolean, localFull: Boolean)
+                             putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class CachingDone(blockId: BlockId, estimateSize: Long, executorId: String)
@@ -73,15 +60,17 @@ private[spark] object DisaggBlockManagerMessages {
   // for local decision
 
   case class LocalEviction(blockId: Option[BlockId], executorId: String,
-                           size: Long, prevEvicted: Set[BlockId])
+                           size: Long, prevEvicted: Set[BlockId], onDisk: Boolean)
     extends ToBlockManagerMaster
 
-  case class EvictionFail(blockId: BlockId, executorId: String)
+  case class EvictionFail(blockId: BlockId, executorId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 
-  case class LocalEvictionDone(blockId: BlockId, executorId: String) extends ToBlockManagerMaster
+  case class LocalEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean)
+    extends ToBlockManagerMaster
 
-  case class ReadBlockFromLocal(blockId: BlockId, executorId: String, fromRemote: Boolean)
+  case class ReadBlockFromLocal(blockId: BlockId, executorId: String,
+                                fromRemote: Boolean, onDisk: Boolean)
   extends ToBlockManagerMaster
 
   // metric
@@ -90,9 +79,10 @@ private[spark] object DisaggBlockManagerMessages {
   case class SendRecompTime(blockId: BlockId, time: Long) extends ToBlockManagerMaster
   case class SendNoCachedRDDCompTime(rddId: Int, time: Long) extends ToBlockManagerMaster
 
-  case class CacheDisaggInMemory(blockId: BlockId, size: Long,
-                                 executorId: String,
-                                 enoughSpace: Boolean) extends ToBlockManagerMaster
+  case class PromoteToMemory(blockId: BlockId, size: Long,
+                             executorId: String,
+                             enoughSpace: Boolean,
+                             fromDisk: Boolean) extends ToBlockManagerMaster
 
   case class GetLocalBlockSize(blockId: BlockId) extends ToBlockManagerMaster
 }

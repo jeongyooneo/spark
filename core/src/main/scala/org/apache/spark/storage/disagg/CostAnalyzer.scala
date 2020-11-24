@@ -149,18 +149,26 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     val updateStart = System.currentTimeMillis()
 
-    val profLocalLMap = new mutable.HashMap[String, Int]
-    val localLMapSize = metricTracker.getExecutorBlocksMap.size
-    val localLMap = metricTracker.getExecutorBlocksMap
+    val localLMap = metricTracker.getExecutorLocalMemoryBlocksMap
       .map(entry => {
         val executorId = entry._1
         val blocks = entry._2
         val l = blocks.map(blockId => {
           compDisaggCost(blockId)
         }).toList
-        profLocalLMap.put(executorId, l.size)
         (executorId, l)
       })
+
+    val localDiskMap = metricTracker.getExecutorLocalDiskBlocksMap
+      .map(entry => {
+        val executorId = entry._1
+        val blocks = entry._2
+        val l = blocks.map(blockId => {
+          compDisaggCost(blockId)
+        }).toList
+        (executorId, l)
+      })
+
 
     var elapsed = System.currentTimeMillis() - updateStart
 
@@ -197,7 +205,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     start = System.currentTimeMillis()
     sortedBlockByCompCostInDiskLocal.set(
-      localLMap.map(entry => {
+      localDiskMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.reduction < _.reduction))
       }))
@@ -254,6 +262,21 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     if (sortedBlockByCompCostInLocal.get() != null) {
       val map = sortedBlockByCompCostInLocal.get()
+      map.values.foreach {
+        l =>
+          l.foreach {
+            cost =>
+              if (cost.reduction <= 0) {
+                zeros.add(cost.blockId.asRDDId.get.rddId)
+              } else {
+                nonzeros.add(cost.blockId.asRDDId.get.rddId)
+              }
+          }
+      }
+    }
+
+    if (sortedBlockByCompCostInDiskLocal.get() != null) {
+      val map = sortedBlockByCompCostInDiskLocal.get()
       map.values.foreach {
         l =>
           l.foreach {
