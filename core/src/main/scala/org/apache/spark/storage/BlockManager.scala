@@ -1588,6 +1588,8 @@ private[spark] class BlockManager(
                 // The put() succeeded, so we can read the values back:
                 memoryStore.getValues(blockId).get
             }
+          } else {
+            diskIterator
           }
         }
       }.asInstanceOf[Iterator[T]]
