@@ -591,8 +591,9 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
-            logInfo(s"MemIO: memory read - $blockId locally")
-            memoryStore.getValues(blockId).get
+            val res = memoryStore.getValues(blockId).get
+            logInfo(s"Found locally in memory $blockId")
+            res
           } else {
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
@@ -606,7 +607,7 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
-          logInfo(s"Found $blockId locally in disk")
+          logInfo(s"Found locally in disk $blockId")
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val startDeser = System.currentTimeMillis()
@@ -746,7 +747,7 @@ private[spark] class BlockManager(
     if (locationsAndStatus.isDefined) {
       val memSize = locationsAndStatus.get.status.memSize
       val diskSize = locationsAndStatus.get.status.diskSize
-      logInfo(s"Found $blockId remotely memSize $memSize diskSize $diskSize ")
+      logInfo(s"Found remotely $blockId memSize $memSize diskSize $diskSize ")
     }
 
     val blockSize = locationsAndStatus.map { b =>
@@ -830,7 +831,6 @@ private[spark] class BlockManager(
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val local = getLocalValues(blockId)
     if (local.isDefined) {
-      logInfo(s"cache hit (local): $blockId ${TaskContext.get().stageId()}")
       return local
     }
     val remote = getRemoteValues[T](blockId)
