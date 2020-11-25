@@ -569,7 +569,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
       // If we have enough space in disagg memory, cache it
       if (metricTracker.disaggTotalSize.get() + estimateBlockSize < disaggThreshold) {
-        BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
+        BlazeLogger.logDisaggCaching(blockId, executorId, estimateBlockSize,
+          cost.reduction, cost.disaggCost)
         addToDisagg(blockId, estimateBlockSize, cost)
 
         // We create info here and lock here
@@ -648,7 +649,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       rmBlocks.foreach { t =>
         BlazeLogger.evictDisagg(t.blockId, t.reduction, t.disaggCost,
           metricTracker.getBlockSize(t.blockId)) }
-      BlazeLogger.logDisaggCaching(blockId, estimateBlockSize, cost.reduction, cost.disaggCost)
+      BlazeLogger.logDisaggCaching(blockId, executorId,
+        estimateBlockSize, cost.reduction, cost.disaggCost)
       addToDisagg(blockId, estimateBlockSize, cost)
 
       // We create info here and lock here
@@ -701,7 +703,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     } else {
       val v = info.get
       logInfo(s"file read disagg block $blockId at $executorId")
-      BlazeLogger.readDisagg(blockId)
+      BlazeLogger.readDisagg(blockId, executorId)
       1
     }
   }

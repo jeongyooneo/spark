@@ -751,6 +751,7 @@ private[spark] class BlockManager(
               serializerManager.dataDeserializeStream(blockId, stream)(info.classTag)
             }
           }
+
           val ci = CompletionIterator[Any, Iterator[Any]](iterToReturn, {
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
@@ -1578,8 +1579,8 @@ private[spark] class BlockManager(
           memoryStore.getValues(blockId).get
         } else {
           val size = memoryStore.sizeEstimationMap.get(blockId)
-          val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
-          if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, enoughSpace, true)) {
+          // val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
+          if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, true, true)) {
             memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
               case Left(iter) =>
                 // The memory store put() failed, so it returned the iterator back to us:

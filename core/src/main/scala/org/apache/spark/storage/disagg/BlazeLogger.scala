@@ -54,9 +54,10 @@ private[spark] object BlazeLogger extends Logging {
   }
 
   def logDisaggCaching(blockId: BlockId,
+                       executorId: String,
                        size: Long,
                        comp: Double, disaggCost: Long): Unit = {
-    logInfo(s"CACHING_D\t$blockId\t$size\t$comp\t$disaggCost\t$size")
+    logInfo(s"CACHING_D\t$executorId\t$blockId\t$size\t$comp\t$disaggCost\t$size")
   }
 
   // local caching fail
@@ -156,7 +157,7 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"RM_ZERO_D\t$blockId")
   }
 
-  def readDisagg(blockId: BlockId): Unit = {
-    logInfo(s"READ_D\t$blockId")
+  def readDisagg(blockId: BlockId, executorId: String): Unit = {
+    logInfo(s"READ_D\t$executorId\t$blockId")
   }
 }
