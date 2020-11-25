@@ -38,7 +38,7 @@ private[spark] abstract class CrailManager(isDriver: Boolean,
   var fs: CrailStore = _
 
   if (crailEnable) {
-    new CrailConfiguration()
+    crailConf = new CrailConfiguration()
     fs = CrailStore.newInstance(crailConf)
 
     if (isDriver) {
