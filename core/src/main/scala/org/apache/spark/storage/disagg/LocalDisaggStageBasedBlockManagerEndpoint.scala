@@ -1010,11 +1010,23 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     // FOR LOCAL
     // FOR LOCAL
     case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>
-      synchronized {
+      val start = System.currentTimeMillis()
+      logInfo(s"Start cachingDecision ${blockId}, " +
+        s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
+      if (putDisagg) {
+        synchronized {
+          localExecutorLockMap.putIfAbsent(executorId, new Object)
+          context.reply(cachingDecision(blockId, estimateSize, executorId,
+            putDisagg, localFull, onDisk))
+        }
+      } else {
         localExecutorLockMap.putIfAbsent(executorId, new Object)
         context.reply(cachingDecision(blockId, estimateSize, executorId,
           putDisagg, localFull, onDisk))
       }
+      val end = System.currentTimeMillis()
+      logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +
+        s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
 
     case DiskCachingDone(blockId, size, executorId) =>
       metricTracker.localDiskStoredBlocksSizeMap.put(blockId, size)

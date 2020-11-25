@@ -161,6 +161,11 @@ private[spark] class DiskStore(
           disaggManager.evictionFail(bid, executorId, true)
         }
       }
+
+      if (evictBlockList.isEmpty) {
+        cnt = 100
+      }
+
       cnt += 1
     }
 
