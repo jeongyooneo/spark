@@ -130,7 +130,8 @@ class BlockManagerMasterEndpoint(
           }
 
 
-          builder.append(s"BlockManager ${k.executorId/k.host}: memory ${memSizeForManager/unit}, " +
+          builder.append(s"BlockManager ${k.executorId}/${k.host}: " +
+            s"memory ${memSizeForManager/unit}, " +
             s"disk ${diskSizeForManager/unit}\n")
       }
 
