@@ -261,6 +261,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private val disaggFirst = conf.get(BlazeParameters.DISAGG_FIRST)
 
+  private def cachingMemoryDone(blockId: BlockId, estimateSize: Long,
+                                executorId: String): Unit = {
+    addToLocal(blockId, executorId, estimateSize)
+    BlazeLogger.logLocalCachingDone(blockId, executorId,
+      estimateSize, "1")
+  }
+
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean): Boolean = {
@@ -998,6 +1005,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       lock.synchronized {
         cachingFail(blockId, estimateSize, executorId, putDisagg, localFull)
       }
+
+    case CachingDone(blockId, estimateSize, executorId) =>
+      cachingMemoryDone(blockId, estimateSize, executorId)
 
     case ReadBlockFromLocal(blockId, executorId, fromRemote) =>
       BlazeLogger.readLocal(blockId, executorId, fromRemote)

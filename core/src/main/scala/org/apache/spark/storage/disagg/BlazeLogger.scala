@@ -47,6 +47,12 @@ private[spark] object BlazeLogger extends Logging {
                       comp: Double, disaggCost: Long, msg: String): Unit = {
     logInfo(s"CACHING_L\t$executor\t$blockId\t$size\t$msg")
   }
+
+  def logLocalCachingDone(blockId: BlockId, executor: String,
+                      size: Long, msg: String): Unit = {
+    logInfo(s"SUCCESS_CACHING_L\t$executor\t$blockId\t$size\t$msg")
+  }
+
   def logLocalDiskCaching(blockId: BlockId, executor: String,
                           size: Long,
                           comp: Double, disaggCost: Long, msg: String): Unit = {

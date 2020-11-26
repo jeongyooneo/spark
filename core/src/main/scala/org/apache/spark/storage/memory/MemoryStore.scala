@@ -381,9 +381,13 @@ private[spark] class MemoryStore(
         logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
           Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
 
+        /*
         if (blockId.isRDD && decisionByMaster && USE_DISK) {
           disaggManager.cachingDone(blockId, size, executorId)
         }
+        */
+        disaggManager.cachingDone(blockId, size, executorId)
+
         Right(entry.size)
       } else {
 

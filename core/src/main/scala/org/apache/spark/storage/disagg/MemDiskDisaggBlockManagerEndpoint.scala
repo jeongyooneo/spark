@@ -363,8 +363,8 @@ private[spark] class MemDiskDisaggBlockManagerEndpoint(
                           executorId: String): Unit = {
     val storingCost = costAnalyzer.compDisaggCost(blockId)
     addToLocal(blockId, executorId, estimateSize)
-    BlazeLogger.logLocalCaching(blockId, executorId,
-     estimateSize, storingCost.reduction, storingCost.disaggCost, "1")
+    BlazeLogger.logLocalCachingDone(blockId, executorId,
+     estimateSize, "1")
   }
 
   private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
