@@ -224,7 +224,6 @@ private[spark] class LocalDisaggBlockManagerEndpoint(override val rpcEnv: RpcEnv
 
   private def cachingMemoryDone(blockId: BlockId, estimateSize: Long,
                                 executorId: String): Unit = {
-    addToLocal(blockId, executorId, estimateSize)
     BlazeLogger.logLocalCachingDone(blockId, executorId,
       estimateSize, "1")
   }

@@ -263,7 +263,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private def cachingMemoryDone(blockId: BlockId, estimateSize: Long,
                                 executorId: String): Unit = {
-    addToLocal(blockId, executorId, estimateSize)
     BlazeLogger.logLocalCachingDone(blockId, executorId,
       estimateSize, "1")
   }
