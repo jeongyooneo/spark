@@ -42,6 +42,14 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"CMP\t$rddId\t$time")
   }
 
+  def cachingDone(blockId: BlockId, executorId: String, size: Long, onDisk: Boolean): Unit = {
+    if (onDisk) {
+      logInfo(s"CACHING_DONE_DISK\t$executorId\t$blockId\t$size")
+    } else {
+      logInfo(s"CACHING_DONE_MEM\t$executorId\t$blockId\t$size")
+    }
+  }
+
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
                       comp: Double, disaggCost: Long, msg: String,

@@ -1051,7 +1051,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +
         s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
 
+    case CachingDone(blockId, size, executorId, onDisk) =>
+      BlazeLogger.cachingDone(blockId, executorId, size, onDisk)
+
     case DiskCachingDone(blockId, size, executorId) =>
+      BlazeLogger.cachingDone(blockId, executorId, size, true)
       metricTracker.localDiskStoredBlocksSizeMap.put(blockId, size)
 
     case CachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>

@@ -131,9 +131,10 @@ class DisaggBlockManager(
       DiskCachingDone(blockId, estimateSize, executorId))
   }
 
-  def cachingDone(blockId: BlockId, estimateSize: Long, executorId: String): Unit = {
+  def cachingDone(blockId: BlockId, estimateSize: Long, executorId: String,
+                  onDisk: Boolean): Unit = {
     driverEndpoint.ask(
-      CachingDone(blockId, estimateSize, executorId))
+      CachingDone(blockId, estimateSize, executorId, onDisk))
   }
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,

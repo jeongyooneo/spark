@@ -45,7 +45,7 @@ private[spark] object DisaggBlockManagerMessages {
                              putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
     extends ToBlockManagerMaster
 
-  case class CachingDone(blockId: BlockId, estimateSize: Long, executorId: String)
+  case class CachingDone(blockId: BlockId, estimateSize: Long, executorId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class DiskCachingDone(blockId: BlockId, size: Long, executorId: String)

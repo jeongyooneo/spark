@@ -1055,6 +1055,9 @@ private[spark] class BlockManager(
           throw new SparkException(s"get() failed for block $blockId even though we held a lock")
         }
 
+        disaggManager.readLocalBlock(blockId, executorId, false,
+          blockResult.readMethod.equals(DataReadMethod.Disk))
+
         val et = System.currentTimeMillis()
         val elapsed = et - st
         // logInfo(s"Recomp\t$blockId\t$et")
