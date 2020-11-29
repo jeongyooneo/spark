@@ -922,8 +922,8 @@ private[spark] class BlockManager(
 
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
-        val accessHistory = blockAccessHistory(blockId)
-        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
+        // val accessHistory = blockAccessHistory(blockId)
+        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t" +
           s"stage${TaskContext.get().stageId()}\t$elapsed")
 
         Left(blockResult)

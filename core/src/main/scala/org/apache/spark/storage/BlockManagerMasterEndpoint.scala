@@ -103,7 +103,7 @@ class BlockManagerMasterEndpoint(
               diskSize += stat.diskSize
           }
 
-          builder.append(s"BlockManager${k.host} " +
+          builder.append(s"BlockManager${k.executorId}/${k.host} " +
             s"memUsed ${memSizeForManager/unit} memFree ${v.remainingMem/unit} " +
             s"evictions $evictions evictedSize $evictedSizes " +
             s"disk ${diskSizeForManager/unit}\t")
