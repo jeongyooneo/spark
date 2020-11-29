@@ -211,7 +211,7 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
       Option(broadcastCache.get(broadcastId)).map(_.asInstanceOf[T]).getOrElse {
         setConf(SparkEnv.get.conf)
         val blockManager = SparkEnv.get.blockManager
-        blockManager.getLocalValues(broadcastId) match {
+        blockManager.getLocalValues(broadcastId, false) match {
           case Some(blockResult) =>
             if (blockResult.data.hasNext) {
               val x = blockResult.data.next().asInstanceOf[T]
