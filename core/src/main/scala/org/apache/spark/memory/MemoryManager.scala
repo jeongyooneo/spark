@@ -28,6 +28,7 @@ import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.unsafe.memory.MemoryAllocator
 
+
 /**
  * An abstract memory manager that enforces how memory is shared between execution and storage.
  *

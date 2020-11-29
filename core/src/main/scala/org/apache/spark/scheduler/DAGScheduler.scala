@@ -1839,6 +1839,8 @@ private[spark] class DAGScheduler(
       case _ => "Unknown"
     }
     if (errorMessage.isEmpty) {
+      val sct = serviceTime
+      SparkLoggger.logSCT(stage.id, sct)
       logInfo("%s (%s) finished in %s s".format(stage, stage.name, serviceTime))
       stage.latestInfo.completionTime = Some(clock.getTimeMillis())
 

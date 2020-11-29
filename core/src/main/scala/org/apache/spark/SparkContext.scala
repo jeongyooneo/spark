@@ -2186,8 +2186,10 @@ class SparkContext(config: SparkConf) extends Logging {
     val cleanedFunc = clean(func)
     val result = dagScheduler.runApproximateJob(rdd, cleanedFunc, evaluator, callSite, timeout,
       localProperties.get)
-    logInfo(
-      "Job finished: " + callSite.shortForm + ", took " + (System.nanoTime - start) / 1e9 + " s")
+    val jobId = callSite.shortForm
+    val jct = (System.nanoTime - start) / 1e9
+    SparkLoggger.logJCT(jobId, jct)
+    logInfo(s"Job finished: $jobId, took $jct s")
     result
   }
 
