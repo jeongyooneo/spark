@@ -73,7 +73,7 @@ private[spark] object DisaggBlockManagerMessages {
     extends ToBlockManagerMaster
 
   case class ReadBlockFromLocal(blockId: BlockId, executorId: String,
-                                fromRemote: Boolean, onDisk: Boolean)
+                                fromRemote: Boolean, onDisk: Boolean, readTime: Long)
   extends ToBlockManagerMaster
 
   // metric

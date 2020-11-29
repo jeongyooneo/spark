@@ -83,8 +83,8 @@ class DisaggBlockManager(
   }
 
   def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean,
-                     onDisk: Boolean): Unit = {
-    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk))
+                     onDisk: Boolean, time: Long): Unit = {
+    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk, time))
   }
 
   def sendDeserMetric(blockId: BlockId, size: Long, time: Long): Unit = {

@@ -729,7 +729,7 @@ private[spark] class BlockManager(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
 
-          disaggManager.readLocalBlock(blockId, executorId, false, false)
+          disaggManager.readLocalBlock(blockId, executorId, false, false, 0)
           // We need to capture the current taskId in case the iterator completion is triggered
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
           // discussion.
@@ -738,13 +738,18 @@ private[spark] class BlockManager(
           })
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (USE_DISK && diskStore.contains(blockId)) {
+          val st = System.currentTimeMillis()
+
           val diskData = diskStore.getBytes(blockId)
-          disaggManager.readLocalBlock(blockId, executorId, false, true)
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
+
+              val et = System.currentTimeMillis()
+              disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
+
               if (readAfterCache) {
                 diskValues
               } else {
@@ -966,21 +971,23 @@ private[spark] class BlockManager(
     }
 
     logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
-    val disaggFetchStart = System.nanoTime
+    // val disaggFetchStart = System.nanoTime
     val disagg = getDisaggValues[T](blockId)
 
     if (disagg.isDefined) {
       logInfo(s"Found block $blockId in disagg memory")
-      val disaggFetchTime = System.nanoTime - disaggFetchStart
-      logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
+      // val disaggFetchTime = System.nanoTime - disaggFetchStart
+      // logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
       return disagg
     }
 
+    val st = System.currentTimeMillis()
     val remote = getRemoteValues[T](blockId)
 
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
-      disaggManager.readLocalBlock(blockId, executorId, true, false)
+      val et = System.currentTimeMillis()
+      disaggManager.readLocalBlock(blockId, executorId, true, false, et - st)
       return remote
     }
     None

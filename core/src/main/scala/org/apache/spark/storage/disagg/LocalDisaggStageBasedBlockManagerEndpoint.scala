@@ -1065,8 +1065,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         cachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk)
       }
 
-    case ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk) =>
-      BlazeLogger.readLocal(blockId, executorId, fromRemote, onDisk)
+    case ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk, rtime) =>
+      BlazeLogger.readLocal(blockId, executorId, fromRemote, onDisk, rtime)
 
     case IsRddCache(rddId) =>
       context.reply(isRddCache(rddId))
