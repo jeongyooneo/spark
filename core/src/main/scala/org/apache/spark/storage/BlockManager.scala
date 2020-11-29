@@ -728,6 +728,8 @@ private[spark] class BlockManager(
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
+
+          disaggManager.readLocalBlock(blockId, executorId, false, false)
           // We need to capture the current taskId in case the iterator completion is triggered
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
           // discussion.
@@ -956,8 +958,6 @@ private[spark] class BlockManager(
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
-        disaggManager.readLocalBlock(blockId, executorId, false,
-          local.get.readMethod.equals(DataReadMethod.Disk))
       return local
     }
 
@@ -1054,9 +1054,6 @@ private[spark] class BlockManager(
           releaseLock(blockId)
           throw new SparkException(s"get() failed for block $blockId even though we held a lock")
         }
-
-        disaggManager.readLocalBlock(blockId, executorId, false,
-          blockResult.readMethod.equals(DataReadMethod.Disk))
 
         val et = System.currentTimeMillis()
         val elapsed = et - st
