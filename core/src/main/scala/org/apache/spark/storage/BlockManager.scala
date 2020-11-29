@@ -710,7 +710,7 @@ private[spark] class BlockManager(
   /**
    * Get block from local block manager as an iterator of Java objects.
    */
-  def getLocalValues(blockId: BlockId): Option[BlockResult] = {
+  def getLocalValues(blockId: BlockId, readAfterCache: Boolean): Option[BlockResult] = {
     logDebug(s"Getting local block $blockId")
     blockInfoManager.lockForReading(blockId) match {
       case None =>
@@ -745,7 +745,11 @@ private[spark] class BlockManager(
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
-              maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
+              if (readAfterCache) {
+                diskValues
+              } else {
+                maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
+              }
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
                 .map { _.toInputStream(dispose = false) }
@@ -955,7 +959,7 @@ private[spark] class BlockManager(
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
 
-    val local = getLocalValues(blockId)
+    val local = getLocalValues(blockId, false)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
       return local
@@ -1048,7 +1052,7 @@ private[spark] class BlockManager(
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
-        val blockResult = getLocalValues(blockId).getOrElse {
+        val blockResult = getLocalValues(blockId, true).getOrElse {
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
           releaseLock(blockId)
