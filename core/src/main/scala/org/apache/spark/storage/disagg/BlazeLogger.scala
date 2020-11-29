@@ -143,9 +143,17 @@ private[spark] object BlazeLogger extends Logging {
   def readLocal(blockId: BlockId, executorId: String, fromRemote: Boolean,
                 onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"READ_DISK\t$executorId\t$blockId\t$fromRemote")
+      if (fromRemote) {
+        logInfo(s"READ_DISK_R\t$executorId\t$blockId\t$fromRemote")
+      } else {
+        logInfo(s"READ_DISK_L\t$executorId\t$blockId\t$fromRemote")
+      }
     } else {
-      logInfo(s"READ_L\t$executorId\t$blockId\t$fromRemote")
+      if (fromRemote) {
+        logInfo(s"READ_L_R\t$executorId\t$blockId\t$fromRemote")
+      } else {
+        logInfo(s"READ_L_L\t$executorId\t$blockId\t$fromRemote")
+      }
     }
   }
 
