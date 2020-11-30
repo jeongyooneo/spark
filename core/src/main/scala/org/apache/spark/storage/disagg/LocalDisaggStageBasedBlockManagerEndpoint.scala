@@ -162,7 +162,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  private val rddCachedMap =  new ConcurrentHashMap[Int, Boolean]()
+  private val rddCachedMap = new ConcurrentHashMap[Int, Boolean]()
 
   def isRddCache(rddId: Int): Boolean = {
     if (rddCachedMap.containsKey(rddId)) {
