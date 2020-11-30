@@ -42,6 +42,10 @@ private[spark] object BlazeParameters extends Logging {
     .booleanConf
     .createWithDefault(false)
 
+  private[spark] val DISK_LOCALITY_UNAWARE = ConfigBuilder("spark.disagg.diskLocalityUnaware")
+    .booleanConf
+    .createWithDefault(false)
+
   private[spark] val CACHING_POLICY = ConfigBuilder("spark.disagg.cachingpolicy")
     .stringConf
     .createWithDefault("Blaze")

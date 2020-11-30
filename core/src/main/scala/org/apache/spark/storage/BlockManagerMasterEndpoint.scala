@@ -26,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.{DisaggBlockManagerEndpoint, MetricTracker}
+import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManagerEndpoint, MetricTracker}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
@@ -524,8 +524,21 @@ class BlockManagerMasterEndpoint(
     true
   }
 
+  val diskLocalityUnaware = conf.get(BlazeParameters.DISK_LOCALITY_UNAWARE)
+  val useDisk = conf.get(BlazeParameters.USE_DISK)
+
   def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
-    if (blockLocations.containsKey(blockId)) blockLocations.get(blockId).toSeq else Seq.empty
+    if (blockLocations.containsKey(blockId)) {
+      if (useDisk && diskLocalityUnaware) {
+        val locations = blockLocations.get(blockId).toSeq
+        // Disk locality unaware
+        locations.filter { bmId => blockManagerInfo(bmId).getStatus(blockId).get.diskSize == 0 }
+      } else {
+        blockLocations.get(blockId).toSeq
+      }
+    } else {
+      Seq.empty
+    }
   }
 
   private def getLocationsAndStatus(blockId: BlockId): Option[BlockLocationsAndStatus] = {
