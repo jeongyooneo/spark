@@ -318,14 +318,14 @@ private[spark] class DAGScheduler(
     // Note: this doesn't use `getOrElse()` because this method is called O(num tasks) times
     if (!cacheLocs.contains(rdd.id)) {
       // Note: if the storage level is NONE, we don't need to get locations from block manager.
-      val locs: IndexedSeq[Seq[TaskLocation]] = if (rdd.getStorageLevel == StorageLevel.NONE) {
-        IndexedSeq.fill(rdd.partitions.length)(Nil)
-      } else {
+      val locs: IndexedSeq[Seq[TaskLocation]] = if (disaggBlockManagerEndpoint.isRddCache(rdd.id)) {
         val blockIds =
           rdd.partitions.indices.map(index => RDDBlockId(rdd.id, index)).toArray[BlockId]
         blockManagerMaster.getLocations(blockIds).map { bms =>
           bms.map(bm => TaskLocation(bm.host, bm.executorId))
         }
+      } else {
+        IndexedSeq.fill(rdd.partitions.length)(Nil)
       }
       cacheLocs(rdd.id) = locs
     }

@@ -1838,9 +1838,9 @@ private[spark] class BlockManager(
     }
 
     val status = getCurrentBlockStatus(blockId, info)
-    // if (info.tellMaster) {
+    if (info.tellMaster) {
     reportBlockStatus(blockId, status, droppedMemorySize)
-    // }
+    }
     if (blockIsUpdated) {
       addUpdatedBlockStatusToTaskMetrics(blockId, status)
     }
