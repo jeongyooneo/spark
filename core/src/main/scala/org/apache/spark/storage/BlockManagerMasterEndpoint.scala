@@ -483,7 +483,7 @@ class BlockManagerMasterEndpoint(
       memSize: Long,
       diskSize: Long): Boolean = {
 
-    // logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
+    logInfo(s"Update block info haha $blockId diskSize $diskSize")
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.isDriver && !isLocal) {
