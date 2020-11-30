@@ -324,11 +324,12 @@ private[spark] class DAGScheduler(
     } else {
       if (!cacheLocs.contains(rdd.id)) {
         // Note: if the storage level is NONE, we don't need to get locations from block manager.
-        val locs: IndexedSeq[Seq[TaskLocation]] = if (disaggBlockManagerEndpoint.isRddCache(rdd.id)) {
-          val blockIds =
-            rdd.partitions.indices.map(index => RDDBlockId(rdd.id, index)).toArray[BlockId]
-          blockManagerMaster.getLocations(blockIds).map { bms =>
-            bms.map(bm => TaskLocation(bm.host, bm.executorId))
+        val locs: IndexedSeq[Seq[TaskLocation]] =
+          if (disaggBlockManagerEndpoint.isRddCache(rdd.id)) {
+            val blockIds =
+              rdd.partitions.indices.map(index => RDDBlockId(rdd.id, index)).toArray[BlockId]
+            blockManagerMaster.getLocations(blockIds).map { bms =>
+              bms.map(bm => TaskLocation(bm.host, bm.executorId))
           }
         } else {
           IndexedSeq.fill(rdd.partitions.length)(Nil)
