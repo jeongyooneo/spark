@@ -162,12 +162,19 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+  private val rddCachedMap =  new ConcurrentHashMap[Int, Boolean]()
+
   def isRddCache(rddId: Int): Boolean = {
-    val cache = cachingPolicy.isRDDNodeCached(rddId)
-    if (cache) {
-      BlazeLogger.logCachingDecision(rddId)
+    if (rddCachedMap.containsKey(rddId)) {
+      rddCachedMap.get(rddId)
+    } else {
+      val cache = cachingPolicy.isRDDNodeCached(rddId)
+      rddCachedMap.putIfAbsent(rddId, cache)
+      if (cache) {
+        BlazeLogger.logCachingDecision(rddId)
+      }
+      cache
     }
-    cache
   }
 
   def taskStarted(taskId: String): Unit = {
