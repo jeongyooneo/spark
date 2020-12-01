@@ -20,7 +20,7 @@ package org.apache.spark
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.{BlockId, BlockManagerId}
 
-private[spark] object SparkLoggger extends Logging {
+private[spark] object SparkLogger extends Logging {
   def logSCT(stageId: Int, sct: String): Unit = {
     logInfo(s"Stage finished: $stageId, took $sct s")
   }

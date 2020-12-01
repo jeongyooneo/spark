@@ -2188,7 +2188,7 @@ class SparkContext(config: SparkConf) extends Logging {
       localProperties.get)
     val jobId = callSite.shortForm
     val jct = (System.nanoTime - start) / 1e9
-    SparkLoggger.logJCT(jobId, jct)
+    SparkLogger.logJCT(jobId, jct)
     logInfo(s"Job finished: $jobId, took $jct s")
     result
   }

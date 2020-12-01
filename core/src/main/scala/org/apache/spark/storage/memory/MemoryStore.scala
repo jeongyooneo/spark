@@ -27,7 +27,7 @@ import scala.reflect.ClassTag
 
 import com.google.common.io.ByteStreams
 
-import org.apache.spark.{SparkConf, SparkLoggger, TaskContext}
+import org.apache.spark.{SparkConf, SparkLogger, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.{UNROLL_MEMORY_CHECK_PERIOD, UNROLL_MEMORY_GROWTH_FACTOR}
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
@@ -271,7 +271,7 @@ private[spark] class MemoryStore(
 
           logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
             Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
-          SparkLoggger.logCacheMemory(blockId, entry.size)
+          SparkLogger.logCacheMemory(blockId, entry.size)
           Right(entry.size)
         } else {
           // We ran out of space while unrolling the values for this block

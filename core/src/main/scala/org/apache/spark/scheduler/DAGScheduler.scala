@@ -1840,7 +1840,7 @@ private[spark] class DAGScheduler(
     }
     if (errorMessage.isEmpty) {
       val sct = serviceTime
-      SparkLoggger.logSCT(stage.id, sct)
+      SparkLogger.logSCT(stage.id, sct)
       logInfo("%s (%s) finished in %s s".format(stage, stage.name, serviceTime))
       stage.latestInfo.completionTime = Some(clock.getTimeMillis())
 
