@@ -330,6 +330,8 @@ abstract class RDD[T: ClassTag](
    */
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
     val blockId = RDDBlockId(id, partition.index)
+    logInfo(s"getOrCompute $blockId stage ${TaskContext.get().stageId()} "
+    + s"task ${TaskContext.get().partitionId()}")
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {

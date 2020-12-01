@@ -30,27 +30,27 @@ private[spark] object SparkLogger extends Logging {
   }
 
   def logCacheMemory(blockId: BlockId, size: Long, blockManagerId: BlockManagerId): Unit = {
-    logInfo(s"$blockId stored mem\t$size\t$blockManagerId")
+    logInfo(s"CACHE_M\t$blockId\t$size\t$blockManagerId")
   }
 
   def logCacheDisk(blockId: BlockId, size: Long, blockManagerId: BlockManagerId): Unit = {
-    logInfo(s"$blockId stored disk\t$size\t$blockManagerId")
+    logInfo(s"CACHE_D\t$blockId\t$size\t$blockManagerId")
   }
 
   def logLocalMemHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {
-    logInfo(s"Found locally mem\t$blockId\t$blockManagerId")
+    logInfo(s"HIT_M\t$blockId\t$blockManagerId")
   }
 
   def logLocalDiskHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {
-    logInfo(s"Found locally disk\t$blockId\t$blockManagerId")
+    logInfo(s"HIT_D\t$blockId\t$blockManagerId")
   }
 
   def logRemoteMemHit(blockId: BlockId, blockManagerIds: Seq[BlockManagerId]): Unit = {
-    logInfo(s"Found remotely mem\t$blockId\t${blockManagerIds.toList}")
+    logInfo(s"HIT_REMOTE_M\t$blockId\t${blockManagerIds.toList}")
   }
 
   def logRemoteDiskHit(blockId: BlockId, blockManagerIds: Seq[BlockManagerId]): Unit = {
-    logInfo(s"Found remotely disk\t$blockId\t${blockManagerIds.toList}")
+    logInfo(s"HIT_REMOTE_D\t$blockId\t${blockManagerIds.toList}")
   }
 
   def logDiskRead(deserTime: Long, size: Long, blockId: BlockId,
@@ -73,3 +73,4 @@ private[spark] object SparkLogger extends Logging {
     logInfo(s"DiskIO: Promote $blockId ${blockManagerId.toString}")
   }
 }
+
