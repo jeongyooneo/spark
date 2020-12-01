@@ -313,10 +313,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (disableLocalCaching) {
         // Do not cache blocks in local
         // just return false
-        BlazeLogger.discardLocal(blockId, executorId,
-          storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
-        recentlyRecachedBlocks.remove(blockId)
-        false
+        if (onDisk) {
+          true
+        } else {
+          BlazeLogger.discardLocal(blockId, executorId,
+            storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
+          recentlyRecachedBlocks.remove(blockId)
+          false
+        }
       } else {
         if (localFull) {
           if (evictionPolicy
