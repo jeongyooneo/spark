@@ -30,7 +30,7 @@ private[spark] object SparkLogger extends Logging {
   }
 
   def logCacheMemory(blockId: BlockId, size: Long): Unit = {
-    logInfo(s"Block $blockId stored as values in memory (estimated size $size)")
+    logInfo(s"$blockId stored as values in memory $size")
   }
 
   def logLocalMemHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {

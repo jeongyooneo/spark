@@ -592,9 +592,9 @@ private[spark] class BlockManager(
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
             val res = memoryStore.getValues(blockId).get
-
-            SparkLogger.logLocalMemHit(blockId, blockManagerId)
-
+            if (blockId.isRDD) {
+              SparkLogger.logLocalMemHit(blockId, blockManagerId)
+            }
             res
           } else {
             serializerManager.dataDeserializeStream(
@@ -609,7 +609,9 @@ private[spark] class BlockManager(
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
-          SparkLogger.logLocalMemHit(blockId, blockManagerId)
+          if (blockId.isRDD) {
+            SparkLogger.logLocalMemHit(blockId, blockManagerId)
+          }
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
               val startDeser = System.currentTimeMillis()
@@ -618,8 +620,9 @@ private[spark] class BlockManager(
                 diskData.toInputStream())(info.classTag)
               val deserTime = System.currentTimeMillis() - startDeser
               val size = diskData.size
-
-              SparkLogger.logDiskRead(deserTime, size, blockId, blockManagerId)
+              if (blockId.isRDD) {
+                SparkLogger.logDiskRead(deserTime, size, blockId, blockManagerId)
+              }
 
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
@@ -751,10 +754,12 @@ private[spark] class BlockManager(
       val memSize = locationsAndStatus.get.status.memSize
       val diskSize = locationsAndStatus.get.status.diskSize
       val bm = locationsAndStatus.get.locations
-      if (memSize != 0) {
-        SparkLogger.logRemoteMemHit(blockId, bm)
-      } else {
-        SparkLogger.logRemoteDiskHit(blockId, bm)
+      if (blockId.isRDD) {
+        if (memSize != 0) {
+          SparkLogger.logRemoteMemHit(blockId, bm)
+        } else {
+          SparkLogger.logRemoteDiskHit(blockId, bm)
+        }
       }
     }
 
@@ -1210,8 +1215,9 @@ private[spark] class BlockManager(
                 }
                 val serTime = System.currentTimeMillis() - startSer
                 size = diskStore.getSize(blockId)
-
-                SparkLogger.logDiskWrite(serTime, size, blockId, blockManagerId)
+                if (blockId.isRDD) {
+                  SparkLogger.logDiskWrite(serTime, size, blockId, blockManagerId)
+                }
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
@@ -1348,12 +1354,16 @@ private[spark] class BlockManager(
         } else {
           memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
             case Left(iter) =>
-              SparkLogger.logPromoteFail(blockId, blockManagerId)
+              if (blockId.isRDD) {
+                SparkLogger.logPromoteFail(blockId, blockManagerId)
+              }
               // The memory store put() failed, so it returned the iterator back to us:
               iter
             case Right(_) =>
               // The put() succeeded, so we can read the values back:
-              SparkLogger.logPromote(blockId, blockManagerId)
+              if (blockId.isRDD) {
+                SparkLogger.logPromote(blockId, blockManagerId)
+              }
               memoryStore.getValues(blockId).get
           }
         }
@@ -1552,8 +1562,9 @@ private[spark] class BlockManager(
           }
           val size = diskStore.getSize(blockId)
           val serTime = System.currentTimeMillis() - startSer
-
-          SparkLogger.logDiskWrite(serTime, size, blockId, blockManagerId)
+          if (blockId.isRDD) {
+            SparkLogger.logDiskWrite(serTime, size, blockId, blockManagerId)
+          }
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }

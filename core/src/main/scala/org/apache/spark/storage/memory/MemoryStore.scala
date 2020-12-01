@@ -271,7 +271,9 @@ private[spark] class MemoryStore(
 
           logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
             Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
-          SparkLogger.logCacheMemory(blockId, entry.size)
+          if (blockId.isRDD) {
+            SparkLogger.logCacheMemory(blockId, entry.size)
+          }
           Right(entry.size)
         } else {
           // We ran out of space while unrolling the values for this block
