@@ -610,7 +610,7 @@ private[spark] class BlockManager(
         } else if (level.useDisk && diskStore.contains(blockId)) {
           val diskData = diskStore.getBytes(blockId)
           if (blockId.isRDD) {
-            SparkLogger.logLocalMemHit(blockId, blockManagerId)
+            SparkLogger.logLocalDiskHit(blockId, blockManagerId)
           }
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {

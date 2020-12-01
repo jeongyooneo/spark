@@ -28,8 +28,8 @@ import scala.collection.mutable.ListBuffer
 
 import com.google.common.io.Closeables
 import io.netty.channel.DefaultFileRegion
+import org.apache.spark.{SecurityManager, SparkConf, SparkLogger}
 
-import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
@@ -115,6 +115,7 @@ private[spark] class DiskStore(
       file.getName,
       Utils.bytesToString(file.length()),
       finishTime - startTime))
+    SparkLogger.logCacheDisk(blockId, file.length())
   }
 
   def putBytes(blockId: BlockId, bytes: ChunkedByteBuffer): Unit = {

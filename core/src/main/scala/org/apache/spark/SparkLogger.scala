@@ -30,19 +30,27 @@ private[spark] object SparkLogger extends Logging {
   }
 
   def logCacheMemory(blockId: BlockId, size: Long): Unit = {
-    logInfo(s"$blockId stored as values in memory $size")
+    logInfo(s"$blockId stored mem $size")
+  }
+
+  def logCacheDisk(blockId: BlockId, size: Long): Unit = {
+    logInfo(s"$blockId stored disk $size")
   }
 
   def logLocalMemHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {
-    logInfo(s"Found locally in memory $blockId $blockManagerId")
+    logInfo(s"Found locally mem\t$blockId\t$blockManagerId")
+  }
+
+  def logLocalDiskHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {
+    logInfo(s"Found locally disk\t$blockId\t$blockManagerId")
   }
 
   def logRemoteMemHit(blockId: BlockId, blockManagerIds: Seq[BlockManagerId]): Unit = {
-    logInfo(s"Found remotely in memory $blockId ${blockManagerIds.toList}")
+    logInfo(s"Found remotely mem\t$blockId\t${blockManagerIds.toList}")
   }
 
   def logRemoteDiskHit(blockId: BlockId, blockManagerIds: Seq[BlockManagerId]): Unit = {
-    logInfo(s"Found remotely in disk $blockId ${blockManagerIds.toList}")
+    logInfo(s"Found remotely disk\t$blockId\t${blockManagerIds.toList}")
   }
 
   def logDiskRead(deserTime: Long, size: Long, blockId: BlockId,
