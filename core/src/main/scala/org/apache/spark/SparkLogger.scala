@@ -29,12 +29,12 @@ private[spark] object SparkLogger extends Logging {
     logInfo(s"Job finished: $jobId, took $jct s")
   }
 
-  def logCacheMemory(blockId: BlockId, size: Long): Unit = {
-    logInfo(s"$blockId stored mem $size")
+  def logCacheMemory(blockId: BlockId, size: Long, blockManagerId: BlockManagerId): Unit = {
+    logInfo(s"$blockId stored mem\t$size\t$blockManagerId")
   }
 
-  def logCacheDisk(blockId: BlockId, size: Long): Unit = {
-    logInfo(s"$blockId stored disk $size")
+  def logCacheDisk(blockId: BlockId, size: Long, blockManagerId: BlockManagerId): Unit = {
+    logInfo(s"$blockId stored disk\t$size\t$blockManagerId")
   }
 
   def logLocalMemHit(blockId: BlockId, blockManagerId: BlockManagerId): Unit = {

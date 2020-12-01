@@ -28,8 +28,8 @@ import scala.collection.mutable.ListBuffer
 
 import com.google.common.io.Closeables
 import io.netty.channel.DefaultFileRegion
-import org.apache.spark.{SecurityManager, SparkConf, SparkLogger}
 
+import org.apache.spark.{SecurityManager, SparkConf, SparkLogger}
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
@@ -47,7 +47,6 @@ private[spark] class DiskStore(
     diskManager: DiskBlockManager,
     securityManager: SecurityManager,
     blockManager: BlockManager) extends Logging {
-
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
@@ -115,7 +114,9 @@ private[spark] class DiskStore(
       file.getName,
       Utils.bytesToString(file.length()),
       finishTime - startTime))
-    SparkLogger.logCacheDisk(blockId, file.length())
+    if (blockId.isRDD) {
+      SparkLogger.logCacheDisk(blockId, file.length(), blockManager.blockManagerId)
+    }
   }
 
   def putBytes(blockId: BlockId, bytes: ChunkedByteBuffer): Unit = {

@@ -83,7 +83,8 @@ private[spark] class MemoryStore(
     blockInfoManager: BlockInfoManager,
     serializerManager: SerializerManager,
     memoryManager: MemoryManager,
-    blockEvictionHandler: BlockEvictionHandler)
+    blockEvictionHandler: BlockEvictionHandler,
+    blockManager: BlockManager)
   extends Logging {
 
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
@@ -272,7 +273,7 @@ private[spark] class MemoryStore(
           logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
             Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
           if (blockId.isRDD) {
-            SparkLogger.logCacheMemory(blockId, entry.size)
+            SparkLogger.logCacheMemory(blockId, entry.size, blockManager.blockManagerId)
           }
           Right(entry.size)
         } else {

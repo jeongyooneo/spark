@@ -152,7 +152,8 @@ private[spark] class BlockManager(
 
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
-    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this)
+    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager,
+      this, this)
   private[spark] val diskStore = new DiskStore(conf, diskBlockManager, securityManager, this)
   memoryManager.setMemoryStore(memoryStore)
 

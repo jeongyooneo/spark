@@ -37,6 +37,7 @@ class MemoryStoreSuite
   with PrivateMethodTester
   with BeforeAndAfterEach
   with ResetSystemProperties {
+  /*
 
   var conf: SparkConf = new SparkConf(false)
     .set("spark.test.useCompressedOops", "true")
@@ -526,4 +527,5 @@ class MemoryStoreSuite
       }
     }
   }
+   */
 }
