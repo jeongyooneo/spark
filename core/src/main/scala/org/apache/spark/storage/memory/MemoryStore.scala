@@ -603,7 +603,7 @@ private[spark] class MemoryStore(
               } else {
                 if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
                   selectedBlocks += evictBlock
-                  freedMemory += sizeEstimationMap.get(evictBlock)
+                  freedMemory += entry.size
                 } else {
                   logInfo(s"LocalDecision]  eviction fail $evictBlock " +
                     s"from executor $executorId, entry: $entry")

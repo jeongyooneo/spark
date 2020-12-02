@@ -722,8 +722,12 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
 
         if (level.useMemory && memoryStore.contains(blockId)) {
+          var immediateRelease = false
           val iter: Iterator[Any] = if (level.deserialized) {
-            memoryStore.getValues(blockId).get
+            val v = memoryStore.getValues(blockId).get
+            immediateRelease = true
+            releaseLock(blockId, taskAttemptId)
+            v
           } else {
             serializerManager.dataDeserializeStream(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
@@ -734,8 +738,11 @@ private[spark] class BlockManager(
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
           // discussion.
           val ci = CompletionIterator[Any, Iterator[Any]](iter, {
-            releaseLock(blockId, taskAttemptId)
+            if (!immediateRelease) {
+              releaseLock(blockId, taskAttemptId)
+            }
           })
+
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
         } else if (USE_DISK && diskStore.contains(blockId)) {
           val st = System.currentTimeMillis()
