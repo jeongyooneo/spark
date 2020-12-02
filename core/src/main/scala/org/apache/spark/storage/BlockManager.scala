@@ -725,8 +725,10 @@ private[spark] class BlockManager(
           var immediateRelease = false
           val iter: Iterator[Any] = if (level.deserialized) {
             val v = memoryStore.getValues(blockId).get
-            immediateRelease = true
-            releaseLock(blockId, taskAttemptId)
+            if (blockId.isRDD) {
+              immediateRelease = true
+              releaseLock(blockId, taskAttemptId)
+            }
             v
           } else {
             serializerManager.dataDeserializeStream(
