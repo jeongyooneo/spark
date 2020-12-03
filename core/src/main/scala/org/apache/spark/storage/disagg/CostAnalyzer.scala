@@ -253,9 +253,15 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         l.foreach {
           cost =>
             if (cost.reduction <= 0) {
-              zeros.add(cost.blockId.asRDDId.get.rddId)
+              if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                zeros.add(cost.blockId.asRDDId.get.rddId)
+                logInfo(s"Zero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
+              }
             } else {
-              nonzeros.add(cost.blockId.asRDDId.get.rddId)
+              if (!nonzeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                nonzeros.add(cost.blockId.asRDDId.get.rddId)
+                logInfo(s"Nonzero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
+              }
             }
         }
     }
@@ -267,9 +273,15 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           l.foreach {
             cost =>
               if (cost.reduction <= 0) {
-                zeros.add(cost.blockId.asRDDId.get.rddId)
+                if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                  zeros.add(cost.blockId.asRDDId.get.rddId)
+                  logInfo(s"Zero RDD in LocalMem: ${cost.blockId.asRDDId.get.rddId}")
+                }
               } else {
-                nonzeros.add(cost.blockId.asRDDId.get.rddId)
+                if (!nonzeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                  nonzeros.add(cost.blockId.asRDDId.get.rddId)
+                  logInfo(s"Nonzero RDD in LocalMem: ${cost.blockId.asRDDId.get.rddId}")
+                }
               }
           }
       }
@@ -282,9 +294,15 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           l.foreach {
             cost =>
               if (cost.reduction <= 0) {
-                zeros.add(cost.blockId.asRDDId.get.rddId)
+                if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                  zeros.add(cost.blockId.asRDDId.get.rddId)
+                  logInfo(s"Zero RDD in Disk: ${cost.blockId.asRDDId.get.rddId}")
+                }
               } else {
-                nonzeros.add(cost.blockId.asRDDId.get.rddId)
+                if (!nonzeros.contains(cost.blockId.asRDDId.get.rddId)) {
+                  nonzeros.add(cost.blockId.asRDDId.get.rddId)
+                  logInfo(s"Nonzero RDD in Disk: ${cost.blockId.asRDDId.get.rddId}")
+                }
               }
           }
       }
