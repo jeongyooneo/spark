@@ -722,13 +722,8 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
 
         if (level.useMemory && memoryStore.contains(blockId)) {
-          var immediateRelease = false
           val iter: Iterator[Any] = if (level.deserialized) {
             val v = memoryStore.getValues(blockId).get
-            if (blockId.isRDD) {
-              immediateRelease = true
-              releaseLock(blockId, taskAttemptId)
-            }
             v
           } else {
             serializerManager.dataDeserializeStream(
@@ -740,9 +735,7 @@ private[spark] class BlockManager(
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
           // discussion.
           val ci = CompletionIterator[Any, Iterator[Any]](iter, {
-            if (!immediateRelease) {
-              releaseLock(blockId, taskAttemptId)
-            }
+            releaseLock(blockId, taskAttemptId)
           })
 
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
