@@ -32,6 +32,7 @@ import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
 import scala.collection.{mutable, _}
 import scala.concurrent.ExecutionContext
+import scala.util.Random
 
 /**
  */
@@ -60,6 +61,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   val executor: ExecutorService = Executors.newCachedThreadPool()
   val disableLocalCaching = conf.get(BlazeParameters.DISABLE_LOCAL_CACHING)
+  private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
 
   val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
   val localExecutorLockMap = new ConcurrentHashMap[String, Object]().asScala
@@ -273,6 +275,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     removeFromLocal(blockId, executorId, onDisk)
   }
 
+  val discardRdds = new mutable.HashSet[Int]()
+
+  discardRdds.add(31)
+  discardRdds.add(43)
+  discardRdds.add(55)
+  discardRdds.add(67)
+  discardRdds.add(79)
+  discardRdds.add(91)
+
+  val PARTITIONS = 144
+  var prevRemovedPartitionNumbers = new mutable.HashSet[Int]()
+  var currReemovedPartitionNumbers = new mutable.HashSet[Int]()
+  val prevDiscardRDDs = new mutable.HashSet[Int]()
+
+  val prevDiscardBlocks = new ConcurrentHashMap[BlockId, Boolean]()
 
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
@@ -342,6 +359,43 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           // local caching
           // put until threshold
           if (onDisk) {
+
+            val rddId = blockId.asRDDId.get.rddId
+            val s = blockId.toString.split("_")
+            val blockIndex = s(2).toInt
+
+            if (prevDiscardBlocks.containsKey(blockId)) {
+              logInfo(s"Discard by random selection22: ${blockId}, size: ${estimateSize}")
+              BlazeLogger.discardLocal(blockId, executorId,
+                storingCost.reduction, storingCost.disaggCost,
+                estimateSize, s"$estimateSize", onDisk)
+              return false
+            }
+
+            if (discardRdds.contains(rddId)
+              && estimateSize > 400 * 1024 * 1024
+              && Random.nextDouble() <= 0.3) {
+
+              prevDiscardRDDs.synchronized {
+                if (!prevDiscardRDDs.contains(rddId)) {
+                  prevRemovedPartitionNumbers.clear()
+                  prevRemovedPartitionNumbers = currReemovedPartitionNumbers
+                  currReemovedPartitionNumbers = new mutable.HashSet[Int]()
+                }
+                prevDiscardRDDs.add(rddId)
+              }
+
+              if (!prevRemovedPartitionNumbers.contains(blockIndex)) {
+                currReemovedPartitionNumbers.add(blockIndex)
+                prevDiscardBlocks.put(blockId, true)
+                logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}")
+                BlazeLogger.discardLocal(blockId, executorId,
+                  storingCost.reduction, storingCost.disaggCost,
+                  estimateSize, s"$estimateSize", onDisk)
+                return false
+              }
+            }
+
             if (storingCost.reduction <= 0) {
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost,
@@ -388,6 +442,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
     val blockManagerInfo = blockManagerMaster.blockManagerInfo(blockManagerId)
+
     val currTime = System.currentTimeMillis()
     var sizeSum = 0L
 
@@ -581,7 +636,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val removalSize = Math.max(estimateBlockSize, metricTracker.disaggTotalSize.get()
       + estimateBlockSize - disaggThreshold + 2 * (1024 * 1024))
 
-    if (cost.reduction <= 0) {
+    if (cost.reduction <= 0 || USE_DISK) {
       BlazeLogger.discardDisagg(
         blockId, cost.reduction, cost.disaggCost, estimateSize, "by master0")
       return false

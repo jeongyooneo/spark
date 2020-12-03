@@ -59,6 +59,10 @@ private[spark] object BlazeParameters extends Logging {
     .booleanConf
     .createWithDefault(false)
 
+  private[spark] val D_BANDWIDTH = ConfigBuilder("spark.disagg.diskBandwidth")
+    .bytesConf(ByteUnit.MiB)
+    .createWithDefaultString("500g")
+
   private[spark] val DISABLE_LOCAL_CACHING = ConfigBuilder("spark.disagg.disableLocalCaching")
     .booleanConf
     .createWithDefault(false)
