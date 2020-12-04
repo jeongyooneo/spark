@@ -204,20 +204,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     (b, l)
   }
 
-  private def getBlockCreatedTime(rddId: Int, childBlockId: BlockId): Option[Long] = {
-    val index = childBlockId.name.split("_")(2).toInt
-    RDDBlockId(rddId, index)
-
-    for (i <- 9 to index) {
-      val bid = RDDBlockId(rddId, i)
-      if (metricTracker.blockCreatedTimeMap.containsKey(bid)) {
-        return Some(metricTracker.blockCreatedTimeMap.get(bid))
-      }
-    }
-
-    return None
-  }
-
   private def dfsGetBlockElapsedTime(myRDD: Int,
                                      childBlockId: BlockId,
                                      nodeCreatedTime: Long,
@@ -239,6 +225,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
+      b.append(getBlockId(rddNode.rddId, childBlockId))
       l.append(timeSum)
     } else {
       for (parent <- reverseDag(rddNode)) {
@@ -270,9 +257,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     val t = times.max
 
-    // logInfo(s"BlockComptTime of ${blockId}: ${t}, " +
-    //  s"${times}")
-
+    logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}")
     t
   }
 
