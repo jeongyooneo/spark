@@ -133,8 +133,12 @@ private[spark] class MetricTracker extends Logging {
 
   def removeExecutorBlock(blockId: BlockId, executorId: String,
                           onDisk: Boolean): Unit = {
-    if (blockStoredMap.get(blockId).decrementAndGet() == 0) {
-      blockStoredMap.remove(blockId)
+
+    blockStoredMap.synchronized {
+      if (blockStoredMap.containsKey(blockId) &&
+        blockStoredMap.get(blockId).decrementAndGet() == 0) {
+        blockStoredMap.remove(blockId)
+      }
     }
 
     if (onDisk) {
@@ -183,8 +187,11 @@ private[spark] class MetricTracker extends Logging {
       val size = disaggBlockSizeMap.remove(blockId)
       disaggTotalSize.addAndGet(-size)
       disaggStoredBlocks.remove(blockId)
-      if (blockStoredMap.get(blockId).decrementAndGet() == 0) {
-        blockStoredMap.remove(blockId)
+      blockStoredMap.synchronized {
+        if (blockStoredMap.containsKey(blockId) &&
+          blockStoredMap.get(blockId).decrementAndGet() == 0) {
+          blockStoredMap.remove(blockId)
+        }
       }
     }
   }
