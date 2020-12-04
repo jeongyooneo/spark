@@ -138,7 +138,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         logInfo(s"Find zero disagg len: ${l.size}")
         l.foreach {
           cost =>
-            if (cost.cost <= 0) {
+            if (cost.futureUse <= 0) {
               if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                 zeros.add(cost.blockId.asRDDId.get.rddId)
                 logInfo(s"Zero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
@@ -159,7 +159,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           logInfo(s"Find zero local len: ${l.size}")
           l.foreach {
             cost =>
-              if (cost.cost <= 0) {
+              if (cost.futureUse <= 0) {
                 if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                   zeros.add(cost.blockId.asRDDId.get.rddId)
                   logInfo(s"Zero RDD in LocalMem: ${cost.blockId.asRDDId.get.rddId}")
@@ -181,7 +181,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           logInfo(s"Find zero disk len: ${l.size}")
           l.foreach {
             cost =>
-              if (cost.cost <= 0) {
+              if (cost.futureUse <= 0) {
                 if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                   zeros.add(cost.blockId.asRDDId.get.rddId)
                   logInfo(s"Zero RDD in Disk: ${cost.blockId.asRDDId.get.rddId}")
