@@ -367,8 +367,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
-            logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compCost}, "
-              + s"${storingCost.disaggCost}")
+            // logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compCost}, "
+            // + s"${storingCost.disaggCost}")
 
             if (storingCost.compCost < storingCost.disaggCost) {
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
