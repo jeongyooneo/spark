@@ -20,28 +20,12 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] class BlazeDiskCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
-                                               metricTracker: MetricTracker)
+private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
+                                           metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
   // 10Gib per sec to byte per sec
   private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
-
-  private def disaggCostCalc(blockId: BlockId, size: Long, refCnt: Int): Long = {
-    val serCost = if (metricTracker.blockSerCostMap.contains(blockId)) {
-      metricTracker.blockSerCostMap.get(blockId)
-    } else {
-      size  / BANDWIDTH
-    }
-
-    val deserCost = if (metricTracker.blockDeserCostMap.contains(blockId)) {
-      metricTracker.blockDeserCostMap.get(blockId)
-    } else {
-      size / BANDWIDTH
-    }
-
-    (serCost + deserCost * refCnt).toLong
-  }
 
   val writeThp = 15000.0 / (600 * 1024 * 1024)
   val readThp = 10000.0 / (600 * 1024 * 1024)
@@ -60,9 +44,9 @@ private[spark] class BlazeDiskCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
     val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
     val c = new CompDisaggCost(blockId,
-      Math.min(recompTime * futureUse, writeTime + readTime * futureUse),
+      writeTime + readTime * futureUse,
       (writeTime + readTime * futureUse).toLong,
-      (recompTime * futureUse).toLong,
+      Long.MaxValue,
       futureUse)
 
       // realStages.size * recompTime)

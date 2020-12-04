@@ -41,7 +41,7 @@ private[spark] class BlazeRecompCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
     val c = new CompDisaggCost(blockId,
       recompTime * futureUse,
       Long.MaxValue,
-      Long.MaxValue,
+      recompTime * futureUse,
       futureUse)
 
       // realStages.size * recompTime)
