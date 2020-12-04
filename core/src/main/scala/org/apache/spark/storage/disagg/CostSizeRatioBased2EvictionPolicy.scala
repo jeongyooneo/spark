@@ -43,7 +43,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
       if (l.isEmpty) {
         false
       } else {
-        if (l.head.reduction > storingCost.reduction) {
+        if (l.head.cost > storingCost.cost) {
           false
         } else {
           true
@@ -64,7 +64,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
         false
       } else {
         val index = ((l.size - 1) * promoteRatio).toInt
-        if (l(index).reduction > storingCost.reduction) {
+        if (l(index).cost > storingCost.cost) {
           false
         } else {
           true
@@ -92,10 +92,10 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
       val l =
         blocks.get()(executorId)
           .filter(p => {
-            if (p.reduction <= 0) {
+            if (p.cost <= 0) {
               true
             } else {
-              val costRatio = storingCost.reduction / p.reduction
+              val costRatio = storingCost.cost / p.cost
               val sizeRatio =
                 metricTracker.getBlockSize(blockId) / metricTracker.getBlockSize(p.blockId)
               costRatio > sizeRatio
@@ -114,10 +114,10 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
       case None =>
       case Some(l) =>
         val zero = l.filter(p => {
-            if (p.reduction <= 0) {
+            if (p.cost <= 0) {
               true
             } else {
-              val costRatio = storingCost.reduction / p.reduction
+              val costRatio = storingCost.cost / p.cost
               val sizeRatio =
                 metricTracker.getBlockSize(blockId) / metricTracker.getBlockSize(p.blockId)
               costRatio > sizeRatio

@@ -304,9 +304,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
     val storingCost = costAnalyzer.compDisaggCost(blockId)
 
-    val alpha = 20000.0 / (600 * 1024 * 1024)
-    val disaggCost = alpha * estimateSize
-
     if (estimateSize == 0) {
       logInfo(s"RDD estimation size zero $blockId")
     }
@@ -318,7 +315,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         // (if it is LRC or MRD)
         addToLocal(blockId, executorId, estimateSize, onDisk)
         BlazeLogger.logLocalCaching(blockId, executorId,
-          estimateSize, storingCost.reduction, storingCost.disaggCost,
+          estimateSize, storingCost.cost, 0,
           "1", onDisk)
         return true
       }
@@ -328,12 +325,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         // just return false
         if (!onDisk) {
           BlazeLogger.discardLocal(blockId, executorId,
-            storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
+            storingCost.cost, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
           recentlyRecachedBlocks.remove(blockId)
           false
         } else {
           BlazeLogger.logLocalCaching(blockId, executorId,
-            estimateSize, storingCost.reduction, storingCost.disaggCost,
+            estimateSize, storingCost.cost, storingCost.disaggCost,
             "2", onDisk)
 
           if (recentlyRecachedBlocks.remove(blockId).isDefined) {
@@ -347,7 +344,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             .decisionLocalEviction(storingCost, executorId, blockId, estimateSize, onDisk)) {
             addToLocal(blockId, executorId, estimateSize, onDisk)
             BlazeLogger.logLocalCaching(blockId, executorId,
-              estimateSize, storingCost.reduction, storingCost.disaggCost,
+              estimateSize, storingCost.compCost, storingCost.disaggCost,
               "2", onDisk)
 
             if (recentlyRecachedBlocks.remove(blockId).isDefined) {
@@ -356,7 +353,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             true
           } else {
             BlazeLogger.discardLocal(blockId, executorId,
-              storingCost.reduction, storingCost.disaggCost,
+              storingCost.compCost, storingCost.disaggCost,
               estimateSize, s"$estimateSize", onDisk)
             recentlyRecachedBlocks.remove(blockId)
             false
@@ -370,24 +367,24 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
-            logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compTime}, " +
-              s"${disaggCost}")
+            logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compCost}, "
+              + s"${storingCost.disaggCost}")
 
-            if (storingCost.compTime < disaggCost) {
+            if (storingCost.compCost < storingCost.disaggCost) {
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
               // if (!prevDiscardIndexes.contains(blockIndex)) {
               logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
-                s"compTime: ${storingCost.compTime}, disaggCost: ${storingCost.disaggCost}")
+                s"compTime: ${storingCost.compCost}, disaggCost: ${storingCost.disaggCost}")
               BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.reduction, storingCost.disaggCost,
+                storingCost.compCost, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
               return false
               // }
             }
 
-            if (storingCost.reduction <= 0) {
+            if (storingCost.cost <= 0) {
               BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.reduction, storingCost.disaggCost,
+                storingCost.compCost, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
               false
             } else {
@@ -395,7 +392,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               addToLocal(blockId, executorId, estimateSize, onDisk)
               BlazeLogger.logLocalCaching(blockId, executorId,
-                estimateSize, storingCost.reduction, storingCost.disaggCost, "3", onDisk)
+                estimateSize, storingCost.compCost, storingCost.disaggCost, "3", onDisk)
 
               if (recentlyRecachedBlocks.remove(blockId).isDefined) {
                 BlazeLogger.recacheDisaggToLocal(blockId, executorId)
@@ -408,7 +405,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
             addToLocal(blockId, executorId, estimateSize, onDisk)
             BlazeLogger.logLocalCaching(blockId, executorId,
-              estimateSize, storingCost.reduction, storingCost.disaggCost, "3", onDisk)
+              estimateSize, storingCost.compCost, storingCost.disaggCost, "3", onDisk)
 
             if (recentlyRecachedBlocks.remove(blockId).isDefined) {
               BlazeLogger.recacheDisaggToLocal(blockId, executorId)
@@ -505,15 +502,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.blockId != bid
-                && discardingBlock.reduction <= storingCost.reduction) {
+                && discardingBlock.cost <= storingCost.cost) {
                 val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
                   .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                 if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                   map.remove(discardingBlock.blockId)
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
-                    sum <= storingCost.reduction) {
-                    sum += discardingBlock.reduction
+                    sum <= storingCost.cost) {
+                    sum += discardingBlock.cost
                     sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
                     evictionList.append(discardingBlock.blockId)
                   }
@@ -552,7 +549,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private def localEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
     val cost = costAnalyzer.compDisaggCost(blockId)
     BlazeLogger.evictLocal(
-      blockId, executorId, cost.reduction, cost.disaggCost,
+      blockId, executorId, cost.compCost, cost.disaggCost,
       metricTracker.getBlockSize(blockId), onDisk)
     removeFromLocal(blockId, executorId, onDisk)
   }
@@ -625,16 +622,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val removalSize = Math.max(estimateBlockSize, metricTracker.disaggTotalSize.get()
       + estimateBlockSize - disaggThreshold + 2 * (1024 * 1024))
 
-    if (cost.reduction <= 0 || USE_DISK) {
+    if (cost.cost <= 0 || USE_DISK) {
       BlazeLogger.discardDisagg(
-        blockId, cost.reduction, cost.disaggCost, estimateSize, "by master0")
+        blockId, cost.cost, cost.disaggCost, estimateSize, "by master0")
       return false
     }
 
     disaggBlockLockMap.synchronized {
       if (disaggBlockInfo.contains(blockId)) {
         BlazeLogger.discardDisagg(
-          blockId, cost.reduction, cost.disaggCost, estimateSize, "by master1")
+          blockId, cost.compCost, cost.disaggCost, estimateSize, "by master1")
         return false
       }
 
@@ -642,7 +639,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       // If we have enough space in disagg memory, cache it
       if (metricTracker.disaggTotalSize.get() + estimateBlockSize < disaggThreshold) {
         BlazeLogger.logDisaggCaching(blockId, executorId, estimateBlockSize,
-          cost.reduction, cost.disaggCost)
+          cost.compCost, cost.disaggCost)
         addToDisagg(blockId, estimateBlockSize, cost)
 
         // We create info here and lock here
@@ -663,7 +660,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           if (discardSizeSum < removalSize) {
             // just discard this block
             // because there is not enough space although we discard all of the blocks
-            BlazeLogger.discardDisagg(blockId, cost.reduction,
+            BlazeLogger.discardDisagg(blockId, cost.compCost,
               cost.disaggCost, estimateSize, "by master2")
             return false
           }
@@ -683,15 +680,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   releaseWriteLockForDisagg(bid)
                 case Some(blockInfo) =>
                   if (blockInfo.writeDone) {
-                    if (discardBlock.reduction <= 0) {
+                    if (discardBlock.cost <= 0) {
                       totalDiscardSize += blockInfo.getActualBlockSize
                       removeBlocks.append((bid, blockInfo))
                       rmBlocks.append(discardBlock)
                     } else if (timeToRemove(blockInfo.createdTime, currTime)
                       && !recentlyRemoved.contains(bid) && totalDiscardSize < removalSize
-                      && discardBlock.reduction <= cost.reduction
-                      && costSum <= cost.reduction) {
-                      costSum += discardBlock.reduction
+                      && discardBlock.cost <= cost.cost
+                      && costSum <= cost.cost) {
+                      costSum += discardBlock.cost
                       totalDiscardSize += blockInfo.getActualBlockSize
                       removeBlocks.append((bid, blockInfo))
                       rmBlocks.append(discardBlock)
@@ -713,16 +710,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       removeBlocks.foreach {
         pair => releaseWriteLockForDisagg(pair._1)
       }
-      BlazeLogger.discardDisagg(blockId, cost.reduction, cost.disaggCost,
+      BlazeLogger.discardDisagg(blockId, cost.compCost, cost.disaggCost,
         estimateSize, "by master3")
       false
     } else {
       evictBlocks(removeBlocks.toList)
       rmBlocks.foreach { t =>
-        BlazeLogger.evictDisagg(t.blockId, t.reduction, t.disaggCost,
+        BlazeLogger.evictDisagg(t.blockId, t.compCost, t.disaggCost,
           metricTracker.getBlockSize(t.blockId)) }
       BlazeLogger.logDisaggCaching(blockId, executorId,
-        estimateBlockSize, cost.reduction, cost.disaggCost)
+        estimateBlockSize, cost.compCost, cost.disaggCost)
       addToDisagg(blockId, estimateBlockSize, cost)
 
       // We create info here and lock here

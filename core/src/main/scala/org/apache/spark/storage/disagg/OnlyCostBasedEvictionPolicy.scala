@@ -42,7 +42,7 @@ private[spark] class OnlyCostBasedEvictionPolicy(
       if (l.isEmpty) {
         false
       } else {
-        if (l.head.reduction > storingCost.reduction) {
+        if (l.head.cost > storingCost.cost) {
           false
         } else {
           true
@@ -63,7 +63,7 @@ private[spark] class OnlyCostBasedEvictionPolicy(
         false
       } else {
         val index = ((l.size - 1) * promoteRatio).toInt
-        if (l(index).reduction > storingCost.reduction) {
+        if (l(index).cost > storingCost.cost) {
           false
         } else {
           true

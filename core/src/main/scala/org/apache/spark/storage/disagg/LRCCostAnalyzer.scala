@@ -27,6 +27,6 @@ private[spark] class LRCCostAnalyzer(val rddJobDag: RDDJobDag,
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
     val refCnt = rddJobDag.getLRCRefCnt(blockId)
     // we do not consider disagg overhead here
-    new CompDisaggCost(blockId, 0, refCnt)
+    new CompDisaggCost(blockId, refCnt)
   }
 }

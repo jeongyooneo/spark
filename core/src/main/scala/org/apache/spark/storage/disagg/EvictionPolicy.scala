@@ -55,16 +55,11 @@ private[spark] object EvictionPolicy {
 
     val policy = sparkConf.get(BlazeParameters.EVICTION_POLICY)
 
-    if (policy.equals("Default")) {
-      new DefaultEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
-    } else if (policy.equals("Cost-based")) {
+    if (policy.equals("Cost-based")) {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("RDD-Ordering")) {
       // new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
       throw new RuntimeException(s"Unsupported evictionPolicy $policy")
-    }
-    else if (policy.equals("Cost-size-ratio")) {
-      new CostSizeRatioBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("Cost-size-ratio2")) {
       new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     }

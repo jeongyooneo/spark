@@ -32,10 +32,8 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
     if (mrdStage == 0) {
       new CompDisaggCost(blockId, 0, 0)
     } else {
-      new CompDisaggCost(blockId, 0,
-        1/Math.max(1.0, mrdStage.toDouble))
+      new CompDisaggCost(blockId, 1/Math.max(1.0, mrdStage.toDouble))
     }
-
   }
 
 }

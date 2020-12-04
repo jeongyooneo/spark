@@ -37,106 +37,10 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     new AtomicReference[Map[String, List[CompDisaggCost]]](null)
 
   @volatile
-  var sortedBlockByCompSizeRatioInLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
-    new AtomicReference[Map[String, List[CompDisaggCost]]](null)
-
-  @volatile
   var sortedBlockByCompCostInDisagg: Option[List[CompDisaggCost]] = None
-
-  @volatile
-  var sortedBlockByCompSizeRatioInDisagg: Option[List[CompDisaggCost]] = None
 
   // For cost analysis
   def compDisaggCost(blockId: BlockId): CompDisaggCost
-
-  // this is for local decision
-  def findLowCompDisaggCostBlocks(compDisaggCost: CompDisaggCost,
-                                  executorId: String,
-                                  blockId: BlockId,
-                                  retrieveAll: Boolean): List[CompDisaggCost] = {
-    val lowDisaggLowCost = new mutable.ListBuffer[CompDisaggCost]
-    val highDisaggLowCost = new mutable.ListBuffer[CompDisaggCost]
-    val lowDisaggHighCost = new mutable.ListBuffer[CompDisaggCost]
-    val higDisaggHighCost = new mutable.ListBuffer[CompDisaggCost]
-
-    if (sortedBlockByCompCostInLocal.get() != null) {
-      val map = sortedBlockByCompCostInLocal.get()
-      map(executorId).foreach {
-        elem =>
-          if (elem.disaggCost > compDisaggCost.disaggCost
-            && elem.reduction < compDisaggCost.reduction) {
-            if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-              highDisaggLowCost.append(elem)
-            }
-          } else if (elem.disaggCost <= compDisaggCost.disaggCost
-            && elem.reduction >= compDisaggCost.reduction) {
-            if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-              lowDisaggHighCost.append(elem)
-            }
-          } else if (elem.disaggCost > compDisaggCost.disaggCost
-            && elem.reduction >= compDisaggCost.reduction) {
-            if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-              higDisaggHighCost.append(elem)
-            }
-          } else if (elem.disaggCost <= compDisaggCost.disaggCost
-            && elem.reduction < compDisaggCost.reduction) {
-            if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-              lowDisaggLowCost.append(elem)
-            }
-          }
-      }
-    }
-
-    if (retrieveAll) {
-      lowDisaggLowCost.appendAll(highDisaggLowCost)
-    }
-
-    lowDisaggLowCost.toList
-  }
-
-  // This is for disagg decision
-  def findLowCompHighDisaggCostBlocksInDisagg(compDisaggCost: CompDisaggCost,
-                                              blockId: BlockId):
-    List[CompDisaggCost] = {
-    val highDisaggLowCost = new mutable.ListBuffer[CompDisaggCost]
-    val lowDisaggLowCost = new mutable.ListBuffer[CompDisaggCost]
-    val higDisaggHighCost = new mutable.ListBuffer[CompDisaggCost]
-    val lowDisaggHighCost = new mutable.ListBuffer[CompDisaggCost]
-
-    sortedBlockByCompCostInDisagg match {
-      case None =>
-      case Some(l) =>
-        l.foreach {
-          elem =>
-            if (elem.disaggCost > compDisaggCost.disaggCost
-              && elem.reduction < compDisaggCost.reduction) {
-              if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-                highDisaggLowCost.append(elem)
-              }
-            } else if (elem.disaggCost <= compDisaggCost.disaggCost
-            && elem.reduction >= compDisaggCost.reduction) {
-              if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-                lowDisaggHighCost.append(elem)
-              }
-            } else if (elem.disaggCost > compDisaggCost.disaggCost
-            && elem.reduction >= compDisaggCost.reduction) {
-              if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-                higDisaggHighCost.append(elem)
-              }
-            } else if (elem.disaggCost <= compDisaggCost.disaggCost
-            && elem.reduction < compDisaggCost.reduction) {
-              if (blockId.asRDDId.get.rddId != elem.blockId.asRDDId.get.rddId) {
-                lowDisaggLowCost.append(elem)
-              }
-            }
-        }
-    }
-
-    highDisaggLowCost.appendAll(lowDisaggHighCost)
-    highDisaggLowCost.appendAll(higDisaggHighCost)
-    highDisaggLowCost.appendAll(lowDisaggHighCost)
-    highDisaggLowCost.toList
-  }
 
   def update: Unit = {
 
@@ -177,27 +81,17 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     var start = System.currentTimeMillis()
 
     sortedBlockByCompCostInDisagg =
-      Some(disaggL.sortWith(_.reduction < _.reduction))
+      Some(disaggL.sortWith(_.cost < _.cost))
 
     elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")
 
-    start = System.currentTimeMillis()
-    sortedBlockByCompSizeRatioInDisagg =
-      Some(disaggL.sortWith((x, y) => {
-        val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
-        val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
-        b1 < b2
-      }))
-
-    elapsed = System.currentTimeMillis() - start
-    // logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInDisagg took $elapsed ms")
 
     start = System.currentTimeMillis()
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
-        (entry._1, l.sortWith(_.reduction < _.reduction))
+        (entry._1, l.sortWith(_.cost < _.cost))
       }))
 
     elapsed = System.currentTimeMillis() - start
@@ -207,22 +101,11 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInDiskLocal.set(
       localDiskMap.map(entry => {
         val l = entry._2
-        (entry._1, l.sortWith(_.reduction < _.reduction))
+        (entry._1, l.sortWith(_.cost < _.cost))
       }))
 
     elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDiskLocal took $elapsed ms")
-
-    start = System.currentTimeMillis()
-    sortedBlockByCompSizeRatioInLocal.set(
-      localLMap.map(entry => {
-        val l = entry._2
-        (entry._1, l.sortWith((x, y) => {
-          val b1 = x.reduction / Math.max(1, metricTracker.getBlockSize(x.blockId).toDouble)
-          val b2 = y.reduction / Math.max(1, metricTracker.getBlockSize(y.blockId).toDouble)
-          b1 < b2
-        }))
-      }))
 
     elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInLocal took $elapsed ms")
@@ -255,7 +138,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         logInfo(s"Find zero disagg len: ${l.size}")
         l.foreach {
           cost =>
-            if (cost.reduction <= 0) {
+            if (cost.futureUse <= 0) {
               if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                 zeros.add(cost.blockId.asRDDId.get.rddId)
                 logInfo(s"Zero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
@@ -276,7 +159,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           logInfo(s"Find zero local len: ${l.size}")
           l.foreach {
             cost =>
-              if (cost.reduction <= 0) {
+              if (cost.futureUse <= 0) {
                 if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                   zeros.add(cost.blockId.asRDDId.get.rddId)
                   logInfo(s"Zero RDD in LocalMem: ${cost.blockId.asRDDId.get.rddId}")
@@ -298,7 +181,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
           logInfo(s"Find zero disk len: ${l.size}")
           l.foreach {
             cost =>
-              if (cost.reduction <= 0) {
+              if (cost.futureUse <= 0) {
                 if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
                   zeros.add(cost.blockId.asRDDId.get.rddId)
                   logInfo(s"Zero RDD in Disk: ${cost.blockId.asRDDId.get.rddId}")
@@ -326,18 +209,15 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 }
 
 class CompDisaggCost(val blockId: BlockId,
-                     val disaggCost: Long,
-                     val reduction: Double) {
-  override def toString: String = {
-    s"($blockId,$reduction,$disaggCost)"
-  }
+                     val cost: Double,
+                     val disaggCost: Long = 0,
+                     val compCost: Long = 0,
+                     val futureUse: Double = 0) {
 
   var stages: Option[List[StageDistance]] = None
-  var compTime = 0L
 
   def setStageInfo(s: List[StageDistance], time: Long): Unit = {
     stages = Some(s)
-    compTime = time
   }
 }
 
@@ -348,28 +228,8 @@ object CostAnalyzer {
             metricTracker: MetricTracker): CostAnalyzer = {
     val costType = sparkConf.get(BlazeParameters.COST_FUNCTION)
 
-      if (costType.equals("Blaze")) {
-        new BlazeCostAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-No-Disagg")) {
-        new BlazeCostNoDisaggAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-MRD")) {
-        new BlazeCostMRDAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-Time-Only")) {
-        new BlazeCostOnlyRecompTimeAnalyzer(rDDJobDag.get, metricTracker)
-      }
-      else if (costType.equals("Blaze-Stage-Ref")) {
+      if (costType.equals("Blaze-Stage-Ref")) {
         new BlazeCostStageRefCntAnalyzer(rDDJobDag.get, metricTracker)
-      }
-      else if (costType.equals("Blaze-Ref-Only")) {
-        new BlazeCostOnlyRefCntAnalyzer(rDDJobDag.get, metricTracker)
-      }
-      else if (costType.equals("Blaze-Leaf-Cnt")) {
-        new BlazeCostLeafCntAnalyzer(rDDJobDag.get, metricTracker)
-      }
-      else if (costType.equals("Blaze-Linear-Dist")) {
-        new BlazeCostLinearDistAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-Ref-Cnt")) {
-        new BlazeCostRefCntAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("MRD")) {
         new MRDBasedAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("No")) {
