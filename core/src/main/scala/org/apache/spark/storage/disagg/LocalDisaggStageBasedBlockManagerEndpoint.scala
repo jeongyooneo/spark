@@ -48,9 +48,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val evictionPolicy: EvictionPolicy,
                           val rddJobDag: Option[RDDJobDag])
   extends DisaggBlockManagerEndpoint(!conf.get(BlazeParameters.USE_DISK)
-  && conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")) {
+  && conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")) {
 
-  private val BLAZE_COST_FUNC = conf.get(BlazeParameters.COST_FUNCTION).contains("Stage")
+  private val BLAZE_COST_FUNC =
+    conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
 
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
@@ -367,8 +368,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
-            // logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compCost}, "
-            // + s"${storingCost.disaggCost}")
+            logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compCost}, "
+             + s"${storingCost.disaggCost}")
 
             if (storingCost.compCost < storingCost.disaggCost) {
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
