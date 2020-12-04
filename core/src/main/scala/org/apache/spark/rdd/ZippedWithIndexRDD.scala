@@ -18,8 +18,7 @@
 package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
-
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Partition, SparkEnv, TaskContext}
 import org.apache.spark.util.Utils
 
 private[spark]
@@ -65,6 +64,20 @@ class ZippedWithIndexRDD[T: ClassTag](prev: RDD[T]) extends RDD[(T, Long)](prev)
   override def compute(splitIn: Partition, context: TaskContext): Iterator[(T, Long)] = {
     val split = splitIn.asInstanceOf[ZippedWithIndexRDDPartition]
     val parentIter = firstParent[T].iterator(split.prev, context)
-    Utils.getIteratorZipWithIndex(parentIter, split.startIndex)
+
+    val rddId = firstParent[T].id
+    val index = splitIn.index
+
+    val st = System.currentTimeMillis()
+
+    val result = Utils.getIteratorZipWithIndex(parentIter, split.startIndex)
+
+    val et = System.currentTimeMillis()
+
+    val elapsed = (et - st)
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index", elapsed)
+
+    result
   }
 }

@@ -284,6 +284,7 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    context.partitionId()
     if (autocaching) {
       if (SparkEnv.get.blockManager.isRDDCache(this.id)) {
         this.storageLevel = StorageLevel.DISAGG

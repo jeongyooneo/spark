@@ -260,6 +260,9 @@ private[spark] class DAGScheduler(
       taskInfo: TaskInfo): Unit = {
     eventProcessLoop.post(
       CompletionEvent(task, reason, result, accumUpdates, taskInfo))
+    val taskId = s"${task.stageId}-" +
+      s"${task.partitionId}-${taskInfo.attemptNumber}"
+    disaggBlockManagerEndpoint.taskFinished(taskId)
   }
 
   /**

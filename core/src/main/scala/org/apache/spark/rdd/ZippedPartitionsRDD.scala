@@ -20,8 +20,7 @@ package org.apache.spark.rdd
 import java.io.{IOException, ObjectOutputStream}
 
 import scala.reflect.ClassTag
-
-import org.apache.spark.{OneToOneDependency, Partition, SparkContext, TaskContext}
+import org.apache.spark._
 import org.apache.spark.util.Utils
 
 private[spark] class ZippedPartitionsPartition(
@@ -86,23 +85,21 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
   override def compute(s: Partition, context: TaskContext): Iterator[V] = {
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
-    val blockCompStartTime = System.currentTimeMillis()
-    val rdd1IterStart = System.currentTimeMillis()
     val rdd1Iter = rdd1.iterator(partitions(0), context)
-    val rdd1IterElapsed = System.currentTimeMillis() - rdd1IterStart
-
-    val rdd2IterStart = System.currentTimeMillis()
     val rdd2Iter = rdd2.iterator(partitions(1), context)
-    val rdd2IterElapsed = System.currentTimeMillis() - rdd2IterStart
 
+    val st = System.currentTimeMillis()
     val res = f(rdd1Iter, rdd2Iter)
+    val et = System.currentTimeMillis()
 
-    val elapsed = System.currentTimeMillis() - blockCompStartTime
+    val elapsed = (et - st)
 
-    logInfo(s"ZipPartitionsRDD2 rdd_${id}_${s.index}: " +
-      s"${rdd1.id}.iterator() time: $rdd1IterElapsed ms, " +
-      s"${rdd2.id}.iterator() time: $rdd2IterElapsed ms, " +
-      s"compute() time: $elapsed ms")
+    val index = s.index
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rdd1.id}_$index", s"rdd_${id}_$index", elapsed)
+
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rdd2.id}_$index", s"rdd_${id}_$index", elapsed)
 
     res
   }

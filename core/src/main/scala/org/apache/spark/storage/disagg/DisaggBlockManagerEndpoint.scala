@@ -34,6 +34,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolea
   def isRddCache(rddId: Int): Boolean
 
   def taskStarted(taskId: String): Unit
+  def taskFinished(taskId: String): Unit
 
   def stageCompleted(stageId: Int): Unit
   def stageSubmitted(stageId: Int, jobId: Int): Unit

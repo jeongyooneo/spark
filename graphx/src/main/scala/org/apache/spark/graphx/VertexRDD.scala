@@ -66,7 +66,21 @@ abstract class VertexRDD[VD](
    * Provides the `RDD[(VertexId, VD)]` equivalent output.
    */
   override def compute(part: Partition, context: TaskContext): Iterator[(VertexId, VD)] = {
-    firstParent[ShippableVertexPartition[VD]].iterator(part, context).next().iterator
+    val it = firstParent[ShippableVertexPartition[VD]].iterator(part, context)
+
+    val rddId = firstParent[ShippableVertexPartition[VD]].id
+    val index = part.index
+    val st = System.currentTimeMillis()
+
+    val res = it.next().iterator
+
+    val et = System.currentTimeMillis()
+
+    val elapsed = (et - st)
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index", elapsed)
+
+    res
   }
 
   /**

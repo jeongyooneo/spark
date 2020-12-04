@@ -19,11 +19,7 @@ package org.apache.spark.graphx
 
 import scala.language.existentials
 import scala.reflect.ClassTag
-
-import org.apache.spark.Dependency
-import org.apache.spark.Partition
-import org.apache.spark.SparkContext
-import org.apache.spark.TaskContext
+import org.apache.spark._
 import org.apache.spark.graphx.impl.EdgePartition
 import org.apache.spark.graphx.impl.EdgePartitionBuilder
 import org.apache.spark.graphx.impl.EdgeRDDImpl
@@ -48,11 +44,25 @@ abstract class EdgeRDD[ED](
 
   override def compute(part: Partition, context: TaskContext): Iterator[Edge[ED]] = {
     val p = firstParent[(PartitionID, EdgePartition[ED, _])].iterator(part, context)
-    if (p.hasNext) {
+
+    val rddId = firstParent[(PartitionID, EdgePartition[ED, _])].id
+    val index = part.index
+
+    val st = System.currentTimeMillis()
+
+    val result = if (p.hasNext) {
       p.next()._2.iterator.map(_.copy())
     } else {
       Iterator.empty
     }
+
+    val et = System.currentTimeMillis()
+
+    val elapsed = (et - st)
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index", elapsed)
+
+    result
   }
 
   /**
@@ -70,6 +80,7 @@ abstract class EdgeRDD[ED](
    * @return a new EdgeRDD containing all the edges reversed
    */
   def reverse: EdgeRDD[ED]
+
 
   /**
    * Inner joins this EdgeRDD with another EdgeRDD, assuming both are partitioned using the same

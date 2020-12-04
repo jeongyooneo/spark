@@ -18,8 +18,7 @@
 package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
-
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Partition, SparkEnv, TaskContext}
 
 /**
  * An RDD that applies the provided function to every partition of the parent RDD.
@@ -49,20 +48,18 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
   override def compute(split: Partition, context: TaskContext): Iterator[U] = {
-    val blockCompStartTime = System.currentTimeMillis()
-    logInfo(s"MapPartitionsRDD rdd_${id}_${split.index} " +
-      s"will call ${firstParent[T].id}.iterator()")
-    val parentIterStart = System.currentTimeMillis()
+
     val parentIter = firstParent[T].iterator(split, context)
-    val parentIterElapsed = System.currentTimeMillis() - parentIterStart
+
+    val blockCompStartTime = System.currentTimeMillis()
 
     val res = f(context, split.index, parentIter)
 
+    val rddId = firstParent[T].id
+    val index = split.index
     val elapsed = System.currentTimeMillis() - blockCompStartTime
-
-    logInfo(s"MapPartitionsRDD rdd_${id}_${split.index} " +
-      s"${firstParent[T].id}.iterator() time: $parentIterElapsed ms " +
-      s"compute() time: $elapsed ms")
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index", elapsed)
 
     res
   }

@@ -178,6 +178,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+  def taskFinished(taskId: String): Unit = {
+    logInfo(s"Handling task ${taskId} finished")
+    metricTracker.taskFinished(taskId)
+  }
+
   def taskStarted(taskId: String): Unit = {
     logInfo(s"Handling task ${taskId} started")
     metricTracker.taskStarted(taskId)
@@ -1193,6 +1198,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       } else {
         context.reply(-1L)
       }
+
+    case SendRDDElapsedTime(srcBlock, dstBlock, time) =>
+      val key = s"${srcBlock}-${dstBlock}"
+      logInfo(s"Block elapsed time ${key}: ${time}")
+      metricTracker.blockElapsedTimeMap.putIfAbsent(key, time)
   }
 }
 

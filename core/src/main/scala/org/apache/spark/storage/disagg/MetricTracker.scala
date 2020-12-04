@@ -40,6 +40,8 @@ private[spark] class MetricTracker extends Logging {
   private val localMemBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
+  val blockElapsedTimeMap = new ConcurrentHashMap[String, Long]()
+
   // Public values
   // disagg total size
   val disaggTotalSize: AtomicLong = new AtomicLong(0)
@@ -54,13 +56,16 @@ private[spark] class MetricTracker extends Logging {
   // TODO set
   val missInDisagg = new AtomicInteger()
 
+  // cached block created time map
   val blockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
+
   val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
 
   // TODO set
   val stageStartTime = new ConcurrentHashMap[Int, Long]().asScala
   // TODO set
   val taskStartTime = new ConcurrentHashMap[String, Long]().asScala
+  val taskFinishTime = new ConcurrentHashMap[String, Long]().asScala
   // TODO set
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
 
@@ -112,7 +117,7 @@ private[spark] class MetricTracker extends Logging {
     false
   }
 
-  def removeExecutorBlocks(executorId: String): Unit = synchronized {
+  def removeExecutorBlocks(executorId: String): Unit = {
     localMemStoredBlocksMap.remove(executorId).foreach {
       blockId => {
         val size = localMemBlockSizeMap.remove(blockId)
@@ -187,9 +192,16 @@ private[spark] class MetricTracker extends Logging {
     None
   }
 
-  def taskStarted(taskId: String): Unit = synchronized {
+  def taskStarted(taskId: String): Unit = {
     logInfo(s"Handling task ${taskId} started")
-    taskStartTime.putIfAbsent(taskId, System.currentTimeMillis())
+    taskStartTime.synchronized {
+      taskStartTime.putIfAbsent(taskId, System.currentTimeMillis())
+    }
+  }
+
+  def taskFinished(taskId: String): Unit = synchronized {
+    logInfo(s"Handling task ${taskId} finished")
+    taskFinishTime.putIfAbsent(taskId, System.currentTimeMillis())
   }
 
   // TODO: call
