@@ -284,34 +284,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     removeFromLocal(blockId, executorId, onDisk)
   }
 
-  val discardRdds = new mutable.HashSet[Int]()
-
-  discardRdds.add(31)
-  discardRdds.add(43)
-  discardRdds.add(55)
-  discardRdds.add(67)
-  discardRdds.add(79)
-  discardRdds.add(91)
-
-  val discardRddMap = new mutable.HashMap[Int, mutable.HashSet[Int]]()
-  discardRddMap(2) = new mutable.HashSet[Int]()
-  discardRdds.foreach { rdd => discardRddMap.put(rdd, new mutable.HashSet[Int]())}
-
-  val rddRelation = new mutable.HashMap[Int, Int]()
-  rddRelation.put(31, 2)
-  rddRelation.put(43, 31)
-  rddRelation.put(55, 43)
-  rddRelation.put(67, 55)
-  rddRelation.put(79, 67)
-  rddRelation.put(91, 79)
-
-  val PARTITIONS = 144
-  var prevRemovedPartitionNumbers = new mutable.HashSet[Int]()
-  var currReemovedPartitionNumbers = new mutable.HashSet[Int]()
-  val prevDiscardRDDs = new mutable.HashSet[Int]()
-
-  val prevDiscardBlocks = new ConcurrentHashMap[BlockId, Boolean]()
-
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean,
@@ -404,13 +376,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (storingCost.compTime < disaggCost) {
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
               // if (!prevDiscardIndexes.contains(blockIndex)) {
-              discardRddMap(rddId).add(blockIndex)
               logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
                 s"compTime: ${storingCost.compTime}, disaggCost: ${storingCost.disaggCost}")
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
-              prevDiscardBlocks.put(blockId, true)
               return false
               // }
             }
@@ -419,10 +389,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
-              if (discardRdds.contains(rddId)) {
-                discardRddMap(rddId).add(blockIndex)
-                prevDiscardBlocks.put(blockId, true)
-              }
               false
             } else {
               val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
