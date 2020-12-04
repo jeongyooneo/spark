@@ -225,7 +225,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
 
-
     if (visited.contains(rddNode)) {
       return (b, l)
     }
@@ -253,7 +252,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         } else {
           getBlockCreatedTime(parent.rddId, childBlockId) match {
             case None =>
-              dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
+              val bb, ll = dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
+              b.appendAll(bb)
+              l.appendAll(ll)
             // throw new RuntimeException(s"Parent of ${childBlockId} " +
             //  s"block ($parentBlockId) is not stored.. ")
             case Some(t) =>
