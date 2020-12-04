@@ -374,8 +374,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (storingCost.compCost < storingCost.disaggCost) {
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
               // if (!prevDiscardIndexes.contains(blockIndex)) {
-              logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
-                s"compTime: ${storingCost.compCost}, disaggCost: ${storingCost.disaggCost}")
+              // logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
+              //  s"compTime: ${storingCost.compCost}, disaggCost: ${storingCost.disaggCost}")
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.compCost, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
