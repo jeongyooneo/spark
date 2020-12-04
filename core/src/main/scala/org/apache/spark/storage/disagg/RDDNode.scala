@@ -21,7 +21,8 @@ import org.apache.spark.internal.Logging
 import scala.collection.mutable
 
 class RDDNode(val rddId: Int,
-              stageId: Int) extends Logging {
+              stageId: Int,
+              val shuffled: Boolean) extends Logging {
 
   private val stageIds = new mutable.HashSet[Int]()
 

@@ -422,7 +422,7 @@ abstract class RDD[T: ClassTag](
     def visit(rdd: RDD[_]) {
       if (!visited(rdd)) {
         visited += rdd
-        val node = new RDDNode(rdd.id, stageId)
+        val node = new RDDNode(rdd.id, stageId, rdd.name.equals("ShuffledRDD"))
 
         // update stage id
         if (!dag.contains(node)) {
@@ -435,7 +435,7 @@ abstract class RDD[T: ClassTag](
         for (dep <- rdd.dependencies) {
           // add edges
           val parent = dep.rdd
-          val parentNode = new RDDNode(parent.id, -1)
+          val parentNode = new RDDNode(parent.id, -1, parent.name.equals("ShuffledRDD"))
           if (!dag.contains(parentNode)) {
             dag.put(parentNode, new HashSet[RDDNode])
           }

@@ -546,7 +546,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         var newDist = distance
         var prevc = prevcached
         var absolute = absoluteDistance
-        if (!metricTracker.blockStored(childBlockId)) {
+        if (!metricTracker.blockStored(childBlockId) && !childnode.shuffled) {
 
           absolute += 1
 
@@ -648,12 +648,14 @@ object RDDJobDag extends Logging {
           for (rdd_ <- rdds) {
             val rdd = rdd_.asInstanceOf[java.util.Map[Any, Any]].asScala
             val rdd_id = rdd("RDD ID").asInstanceOf[Long].toInt
+            val name = rdd("Name").asInstanceOf[String]
+
             val numCachedPartitions = rdd("Number of Cached Partitions")
               .asInstanceOf[Long].toInt
             val cached = numCachedPartitions > 0
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
-            val rdd_object = new RDDNode(rdd_id, stageId)
+            val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
             logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId")
 
             if (!dag.contains(rdd_object)) {
