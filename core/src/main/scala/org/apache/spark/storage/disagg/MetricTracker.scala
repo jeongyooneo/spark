@@ -40,6 +40,8 @@ private[spark] class MetricTracker extends Logging {
   private val localMemBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
+  val blockStoredMap = new ConcurrentHashMap[BlockId, AtomicInteger]()
+
   val blockElapsedTimeMap = new ConcurrentHashMap[String, Long]()
 
   // Public values
@@ -70,6 +72,8 @@ private[spark] class MetricTracker extends Logging {
   val completedStages: mutable.Set[Int] = new mutable.HashSet[Int]()
 
   def blockStored(blockId: BlockId): Boolean = {
+    blockStoredMap.containsKey(blockId)
+    /*
     localMemStoredBlocksMap.entrySet().iterator().asScala
       .foreach {
         entry => if (entry.getValue.contains(blockId)) {
@@ -83,6 +87,7 @@ private[spark] class MetricTracker extends Logging {
         }
       }
     disaggStoredBlocks.contains(blockId)
+    */
   }
 
   def getBlockSize(blockId: BlockId): Long = synchronized {
@@ -128,6 +133,10 @@ private[spark] class MetricTracker extends Logging {
 
   def removeExecutorBlock(blockId: BlockId, executorId: String,
                           onDisk: Boolean): Unit = {
+    if (blockStoredMap.get(blockId).decrementAndGet() == 0) {
+      blockStoredMap.remove(blockId)
+    }
+
     if (onDisk) {
       localDiskStoredBlocksSizeMap.remove(blockId)
       localDiskStoredBlocksMap.get(executorId).remove(blockId)
@@ -139,6 +148,9 @@ private[spark] class MetricTracker extends Logging {
 
   def addExecutorBlock(blockId: BlockId, executorId: String, size: Long,
                        onDisk: Boolean): Unit = {
+
+    blockStoredMap.putIfAbsent(blockId, new AtomicInteger())
+    blockStoredMap.get(blockId).incrementAndGet()
     if (onDisk) {
       localDiskStoredBlocksSizeMap.put(blockId, size)
       localDiskStoredBlocksMap.putIfAbsent(executorId,
@@ -155,6 +167,8 @@ private[spark] class MetricTracker extends Logging {
     disaggBlockSizeMap.put(blockId, size)
     disaggTotalSize.addAndGet(size)
     disaggStoredBlocks.add(blockId)
+    blockStoredMap.putIfAbsent(blockId, new AtomicInteger())
+    blockStoredMap.get(blockId).incrementAndGet()
   }
 
   def adjustDisaggBlockSize(blockId: BlockId, size: Long): Unit = {
@@ -169,6 +183,9 @@ private[spark] class MetricTracker extends Logging {
       val size = disaggBlockSizeMap.remove(blockId)
       disaggTotalSize.addAndGet(-size)
       disaggStoredBlocks.remove(blockId)
+      if (blockStoredMap.get(blockId).decrementAndGet() == 0) {
+        blockStoredMap.remove(blockId)
+      }
     }
   }
 
