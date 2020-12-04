@@ -268,10 +268,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       dfsGetBlockElapsedTime(rddId, blockId,
         nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
 
-    logInfo(s"BlockComptTime of ${blockId}: ${nodeCreatedTime - times.min}, " +
-      s"${times}, ${parentBlocks}")
+    val t = times.max
 
-    nodeCreatedTime - times.min
+    logInfo(s"BlockComptTime of ${blockId}: ${t}, " +
+      s"${times}")
+
+    t
   }
 
   def getRefCntRDD(rddId: Int): Int = {
