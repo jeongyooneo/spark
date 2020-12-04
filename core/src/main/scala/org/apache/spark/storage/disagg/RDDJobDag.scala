@@ -562,22 +562,24 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             }
           }
 
-          if (dag(childnode).size >= 2) {
-            prevc += 1
-          }
 
           if (!stageSet.contains(childnode.rootStage) &&
             !metricTracker.completedStages.contains(childnode.rootStage)) {
             stageSet.add(childnode.rootStage)
-            newDist += 1
             map.put(childnode.rootStage,
-              new StageDistance(childnode.rootStage, newDist, absolute, prevc))
+              new StageDistance(childnode.rootStage, distance, absolute, prevc))
+            newDist += 1
           }
 
-          // if (getRefCntRDD(childnode.rddId) < 2) {
-          collectUncachedChildBlocks(childnode, blockId,
-            stageSet, visitedRdds, newDist, absolute, prevc).foreach {
-            entry => map.put(entry._1, entry._2)
+          if (!metricTracker.completedStages.contains(childnode.rootStage)
+            && dag(childnode).size >= 2) {
+            // finish
+          } else {
+            // if (getRefCntRDD(childnode.rddId) < 2) {
+            collectUncachedChildBlocks(childnode, blockId,
+              stageSet, visitedRdds, newDist, absolute, prevc).foreach {
+              entry => map.put(entry._1, entry._2)
+            }
           }
           // }
         }

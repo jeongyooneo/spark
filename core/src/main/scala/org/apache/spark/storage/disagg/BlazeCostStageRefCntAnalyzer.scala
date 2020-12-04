@@ -54,7 +54,8 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
 
     val realStages = stages.filter(p => node.getStages.contains(p.stageId))
 
-    val futureUse = realStages.map(x => Math.pow(0.5, x.prevCached)).sum
+    // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
+    val futureUse = realStages.size
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
@@ -65,7 +66,7 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
       futureUse)
 
       // realStages.size * recompTime)
-    // logInfo(s"Block id: $blockId, refStages: ${stages}, time: $recompTime")
+    logInfo(s"CompDisaggCost $blockId, refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
     c.setStageInfo(realStages, recompTime)
     c
   }
