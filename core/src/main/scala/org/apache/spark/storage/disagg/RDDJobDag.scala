@@ -252,7 +252,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         } else {
           getBlockCreatedTime(parent.rddId, childBlockId) match {
             case None =>
-              val bb, ll = dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
+              val (bb, ll) = dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
               b.appendAll(bb)
               l.appendAll(ll)
             // throw new RuntimeException(s"Parent of ${childBlockId} " +
