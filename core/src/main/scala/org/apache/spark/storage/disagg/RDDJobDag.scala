@@ -270,8 +270,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     val t = times.max
 
-    logInfo(s"BlockComptTime of ${blockId}: ${t}, " +
-      s"${times}")
+    // logInfo(s"BlockComptTime of ${blockId}: ${t}, " +
+    //  s"${times}")
 
     t
   }

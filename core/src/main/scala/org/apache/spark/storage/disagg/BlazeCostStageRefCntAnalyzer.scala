@@ -43,7 +43,7 @@ private[spark] class BlazeCostStageRefCntAnalyzer(val rddJobDag: RDDJobDag,
     (serCost + deserCost * refCnt).toLong
   }
 
-  val alpha = 20000.0 / (600 * 1024 * 1024)
+  val alpha = 15000.0 / (600 * 1024 * 1024)
 
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)

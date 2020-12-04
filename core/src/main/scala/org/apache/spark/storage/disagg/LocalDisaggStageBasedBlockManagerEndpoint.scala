@@ -398,31 +398,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
-            if (prevDiscardBlocks.containsKey(blockId)) {
-              logInfo(s"Discard by random selection22: ${blockId}, size: ${estimateSize}")
-              BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.reduction, storingCost.disaggCost,
-                estimateSize, s"$estimateSize", onDisk)
-              return false
-            }
-
             logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compTime}, " +
               s"${disaggCost}")
 
-            if (discardRdds.contains(rddId)) {
-              if (storingCost.compTime < disaggCost) {
-                val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
-                if (!prevDiscardIndexes.contains(blockIndex)) {
-                  discardRddMap(rddId).add(blockIndex)
-                  logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
-                    s"compTime: ${storingCost.compTime}, disaggCost: ${storingCost.disaggCost}")
-                  BlazeLogger.discardLocal(blockId, executorId,
-                    storingCost.reduction, storingCost.disaggCost,
-                    estimateSize, s"$estimateSize", onDisk)
-                  prevDiscardBlocks.put(blockId, true)
-                  return false
-                }
-              }
+            if (storingCost.compTime < disaggCost) {
+              // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
+              // if (!prevDiscardIndexes.contains(blockIndex)) {
+              discardRddMap(rddId).add(blockIndex)
+              logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
+                s"compTime: ${storingCost.compTime}, disaggCost: ${storingCost.disaggCost}")
+              BlazeLogger.discardLocal(blockId, executorId,
+                storingCost.reduction, storingCost.disaggCost,
+                estimateSize, s"$estimateSize", onDisk)
+              prevDiscardBlocks.put(blockId, true)
+              return false
+              // }
             }
 
             if (storingCost.reduction <= 0) {
@@ -1202,7 +1192,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     case SendRDDElapsedTime(srcBlock, dstBlock, time) =>
       val key = s"${srcBlock}-${dstBlock}"
       logInfo(s"Block elapsed time ${key}: ${time}")
-      metricTracker.blockElapsedTimeMap.putIfAbsent(key, time)
+      metricTracker.blockElapsedTimeMap.put(key, time)
   }
 }
 
