@@ -173,6 +173,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       val rootTaskId = getTaskId(rddNode.rootStage, blockId)
       metricTracker.taskStartTime.get(rootTaskId) match {
         case None =>
+          throw new RuntimeException(s"Task start time is none" +
+            s" for ${blockId}, taskid: ${rootTaskId}")
+          /*
           metricTracker.getTaskStartTimeFromBlockId(rddNode.rootStage, blockId) match {
             case None =>
               b.append(blockId)
@@ -181,6 +184,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
               b.append(blockId)
               l.append(startTime)
           }
+         */
         case Some(startTime) =>
           b.append(blockId)
           l.append(startTime)
@@ -214,7 +218,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     return None
   }
 
-  private def dfsGetCachedParentCreatedTime(childBlockId: BlockId,
+  private def dfsGetCachedParentCreatedTime(myRDD: Int,
+                                            childBlockId: BlockId,
                                             nodeCreatedTime: Long,
                                             visited: mutable.Set[RDDNode]):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
@@ -233,14 +238,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
-      if (rddRootStartTimes.contains(rddId)) {
-        l.append(rddRootStartTimes(rddId))
-      } else {
-        rddNode.synchronized {
-          rddRootStartTimes.putIfAbsent(rddId,
-            findRootStageStartTimes(rddNode, childBlockId)._2.min)
-          l.append(rddRootStartTimes(rddId))
-        }
+      rddNode.synchronized {
+        val t = findRootStageStartTimes(rddNode, childBlockId)._2.min
+        logInfo(s"Root stage start time for ${myRDD} is ${rddId} ${t}")
+        l.append(t)
       }
     } else {
       for (parent <- reverseDag(rddNode)) {
@@ -249,17 +250,27 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         if (metricTracker.blockCreatedTimeMap.containsKey(parentBlockId)) {
           b.append(parentBlockId)
           l.append(metricTracker.blockCreatedTimeMap.get(parentBlockId))
+          logInfo(s"Cached parent start time 11 for ${myRDD} is ${parentBlockId}, " +
+            s"${metricTracker.blockCreatedTimeMap.get(parentBlockId)}")
         } else {
           getBlockCreatedTime(parent.rddId, childBlockId) match {
             case None =>
-              val (bb, ll) = dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
+              val (bb, ll) =
+                dfsGetCachedParentCreatedTime(myRDD, parentBlockId, nodeCreatedTime, visited)
               b.appendAll(bb)
               l.appendAll(ll)
+
+              logInfo(s"Cached parent start time 22 for ${myRDD} is ${bb}, " +
+            s"${ll}")
+
             // throw new RuntimeException(s"Parent of ${childBlockId} " +
             //  s"block ($parentBlockId) is not stored.. ")
             case Some(t) =>
               b.append(parentBlockId)
               l.append(t)
+
+              logInfo(s"Cached parent start time 33 for ${myRDD} is ${parentBlockId}, " +
+                s"${metricTracker.blockCreatedTimeMap.get(parentBlockId)}")
           }
         }
       }
@@ -272,7 +283,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
     val (parentBlocks, times) =
-      dfsGetCachedParentCreatedTime(blockId, nodeCreatedTime, new mutable.HashSet[RDDNode]())
+      dfsGetCachedParentCreatedTime(rddId, blockId,
+        nodeCreatedTime, new mutable.HashSet[RDDNode]())
+
+    logInfo(s"BlockComptTime of ${blockId}: ${nodeCreatedTime - times.min}, " +
+      s"${times}, ${parentBlocks}")
 
     nodeCreatedTime - times.min
   }
