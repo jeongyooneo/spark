@@ -73,7 +73,7 @@ private[spark] object BlazeParameters extends Logging {
 
   private[spark] val COST_FUNCTION = ConfigBuilder("spark.disagg.costfunction")
     .stringConf
-    .createWithDefault("Blaze")
+    .createWithDefault("No")
 
   private[spark] val EVICTION_POLICY = ConfigBuilder("spark.disagg.evictionpolicy")
     .stringConf

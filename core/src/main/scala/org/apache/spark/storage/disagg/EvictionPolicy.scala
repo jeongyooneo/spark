@@ -55,7 +55,7 @@ private[spark] object EvictionPolicy {
 
     val policy = sparkConf.get(BlazeParameters.EVICTION_POLICY)
 
-    if (policy.equals("Cost-based")) {
+    if (policy.equals("Default") || policy.equals("Cost-based")) {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     } else if (policy.equals("RDD-Ordering")) {
       // new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
