@@ -228,7 +228,7 @@ object CostAnalyzer {
             metricTracker: MetricTracker): CostAnalyzer = {
     val costType = sparkConf.get(BlazeParameters.COST_FUNCTION)
 
-      if (costType.equals("Blaze-Stage-Ref")) {
+      if (costType.equals("Blaze-Disk-Recomp")) {
         new BlazeRecompAndDiskCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Disk-Only")) {
         new BlazeDiskCostOnlyAnalyzer(rDDJobDag.get, metricTracker)
