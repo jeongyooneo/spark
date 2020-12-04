@@ -168,9 +168,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     visited.add(rddNode)
 
-    val start = System.currentTimeMillis()
-
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
+      // This is root, so we get the task start time of the root stage
       val rootTaskId = getTaskId(rddNode.rootStage, blockId)
       metricTracker.taskStartTime.get(rootTaskId) match {
         case None =>
@@ -196,7 +195,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     }
 
-    val elapsed = System.currentTimeMillis() - start
     // logInfo(s"findRootStageStartTimes for $blockId took $elapsed ms")
 
     (b, l)
@@ -216,7 +214,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     return None
   }
 
-  private def dfsGetCachedParentCreatedTime(childBlockId: BlockId):
+  private def dfsGetCachedParentCreatedTime(childBlockId: BlockId,
+                                            nodeCreatedTime: Long):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
 
     val rddId = blockIdToRDDId(childBlockId)
@@ -224,6 +223,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
+      getRecompTime(childBlockId, nodeCreatedTime)
       findRootStageStartTimes(rddNode, childBlockId)
     } else {
       val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
@@ -238,7 +238,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         } else {
           getBlockCreatedTime(parent.rddId, childBlockId) match {
             case None =>
-              dfsGetCachedParentCreatedTime(parentBlockId)
+              dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime)
             // throw new RuntimeException(s"Parent of ${childBlockId} " +
             //  s"block ($parentBlockId) is not stored.. ")
             case Some(t) =>
@@ -254,19 +254,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
-    val rddNode = vertices(rddId)
+    val (parentBlocks, times) = dfsGetCachedParentCreatedTime(blockId, nodeCreatedTime)
 
-    var cost = 0L
-
-    val (parentBlocks, times) = dfsGetCachedParentCreatedTime(blockId)
-    val parentCachedBlockTime = if (times.isEmpty) {
-      findRootStageStartTimes(rddNode, blockId)._2.min
-    } else {
-      times.min
-    }
-
-    cost += (nodeCreatedTime - parentCachedBlockTime)
-    cost
+    nodeCreatedTime - times.min
   }
 
   def getRefCntRDD(rddId: Int): Int = {
@@ -444,7 +434,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def getRecompTime(blockId: BlockId, nodeCreatedTime: Long)
   : Long = {
-    val start = System.currentTimeMillis()
     val rddId = blockIdToRDDId(blockId)
     val rddNode = vertices(rddId)
 
@@ -461,7 +450,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     }
 
-    val elapsed = System.currentTimeMillis() - start
     if (blockId.asRDDId.get.rddId > 100) {
       // logInfo(s"getRecompTime for $blockId took $elapsed ms")
     }

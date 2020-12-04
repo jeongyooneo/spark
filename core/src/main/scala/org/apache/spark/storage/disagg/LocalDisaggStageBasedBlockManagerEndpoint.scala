@@ -32,7 +32,6 @@ import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
 import scala.collection.{mutable, _}
 import scala.concurrent.ExecutionContext
-import scala.util.Random
 
 /**
  */
@@ -188,6 +187,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
   private val currJob = new AtomicInteger(-1)
 
+  private val removedZeroRdds = new mutable.HashSet[Int]()
+
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
     metricTracker.stageCompleted(stageId)
@@ -233,6 +234,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             rdd =>
               logInfo(s"Remove zero cost rdd $rdd from memory")
               // remove from local executors
+              removedZeroRdds.synchronized {
+                removedZeroRdds.add(rdd)
+              }
               blockManagerMaster.removeRdd(rdd)
             // remove local info
           }
@@ -284,6 +288,18 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   discardRdds.add(79)
   discardRdds.add(91)
 
+  val discardRddMap = new mutable.HashMap[Int, mutable.HashSet[Int]]()
+  discardRddMap(2) = new mutable.HashSet[Int]()
+  discardRdds.foreach { rdd => discardRddMap.put(rdd, new mutable.HashSet[Int]())}
+
+  val rddRelation = new mutable.HashMap[Int, Int]()
+  rddRelation.put(31, 2)
+  rddRelation.put(43, 31)
+  rddRelation.put(55, 43)
+  rddRelation.put(67, 55)
+  rddRelation.put(79, 67)
+  rddRelation.put(91, 79)
+
   val PARTITIONS = 144
   var prevRemovedPartitionNumbers = new mutable.HashSet[Int]()
   var currReemovedPartitionNumbers = new mutable.HashSet[Int]()
@@ -311,6 +327,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
     val storingCost = costAnalyzer.compDisaggCost(blockId)
 
+    val alpha = 20000.0 / (600 * 1024 * 1024)
+    val disaggCost = alpha * estimateSize
+
     if (estimateSize == 0) {
       logInfo(s"RDD estimation size zero $blockId")
     }
@@ -327,13 +346,24 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         return true
       }
 
-      if (disableLocalCaching && !onDisk) {
+      if (disableLocalCaching) {
         // Do not cache blocks in local
         // just return false
-        BlazeLogger.discardLocal(blockId, executorId,
-          storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
-        recentlyRecachedBlocks.remove(blockId)
-        false
+        if (!onDisk) {
+          BlazeLogger.discardLocal(blockId, executorId,
+            storingCost.reduction, storingCost.disaggCost, estimateSize, "onlyDisagg", onDisk)
+          recentlyRecachedBlocks.remove(blockId)
+          false
+        } else {
+          BlazeLogger.logLocalCaching(blockId, executorId,
+            estimateSize, storingCost.reduction, storingCost.disaggCost,
+            "2", onDisk)
+
+          if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+            BlazeLogger.recacheDisaggToLocal(blockId, executorId)
+          }
+          true
+        }
       } else {
         if (localFull) {
           if (evictionPolicy
@@ -346,7 +376,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (recentlyRecachedBlocks.remove(blockId).isDefined) {
               BlazeLogger.recacheDisaggToLocal(blockId, executorId)
             }
-
             true
           } else {
             BlazeLogger.discardLocal(blockId, executorId,
@@ -372,27 +401,22 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               return false
             }
 
-            if (discardRdds.contains(rddId)
-              && estimateSize > 400 * 1024 * 1024
-              && Random.nextDouble() <= 0.3) {
+            logInfo(s"RDD cost and disagg cost: ${blockId}, ${storingCost.compTime}, " +
+              s"${disaggCost}")
 
-              prevDiscardRDDs.synchronized {
-                if (!prevDiscardRDDs.contains(rddId)) {
-                  prevRemovedPartitionNumbers.clear()
-                  prevRemovedPartitionNumbers = currReemovedPartitionNumbers
-                  currReemovedPartitionNumbers = new mutable.HashSet[Int]()
+            if (discardRdds.contains(rddId)) {
+              if (storingCost.compTime < disaggCost) {
+                val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
+                if (!prevDiscardIndexes.contains(blockIndex)) {
+                  discardRddMap(rddId).add(blockIndex)
+                  logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
+                    s"compTime: ${storingCost.compTime}, disaggCost: ${storingCost.disaggCost}")
+                  BlazeLogger.discardLocal(blockId, executorId,
+                    storingCost.reduction, storingCost.disaggCost,
+                    estimateSize, s"$estimateSize", onDisk)
+                  prevDiscardBlocks.put(blockId, true)
+                  return false
                 }
-                prevDiscardRDDs.add(rddId)
-              }
-
-              if (!prevRemovedPartitionNumbers.contains(blockIndex)) {
-                currReemovedPartitionNumbers.add(blockIndex)
-                prevDiscardBlocks.put(blockId, true)
-                logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}")
-                BlazeLogger.discardLocal(blockId, executorId,
-                  storingCost.reduction, storingCost.disaggCost,
-                  estimateSize, s"$estimateSize", onDisk)
-                return false
               }
             }
 
@@ -400,6 +424,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.reduction, storingCost.disaggCost,
                 estimateSize, s"$estimateSize", onDisk)
+              if (discardRdds.contains(rddId)) {
+                discardRddMap(rddId).add(blockIndex)
+                prevDiscardBlocks.put(blockId, true)
+              }
               false
             } else {
               val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
