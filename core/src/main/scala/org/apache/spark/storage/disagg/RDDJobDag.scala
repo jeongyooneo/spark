@@ -215,20 +215,35 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   }
 
   private def dfsGetCachedParentCreatedTime(childBlockId: BlockId,
-                                            nodeCreatedTime: Long):
+                                            nodeCreatedTime: Long,
+                                            visited: mutable.Set[RDDNode]):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
+
+    val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
+    val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
 
     val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
 
+
+    if (visited.contains(rddNode)) {
+      return (b, l)
+    }
+
+    visited.add(rddNode)
+
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
-      getRecompTime(childBlockId, nodeCreatedTime)
-      findRootStageStartTimes(rddNode, childBlockId)
+      if (rddRootStartTimes.contains(rddId)) {
+        l.append(rddRootStartTimes(rddId))
+      } else {
+        rddNode.synchronized {
+          rddRootStartTimes.putIfAbsent(rddId,
+            findRootStageStartTimes(rddNode, childBlockId)._2.min)
+          l.append(rddRootStartTimes(rddId))
+        }
+      }
     } else {
-      val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
-      val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
-
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
 
@@ -238,7 +253,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         } else {
           getBlockCreatedTime(parent.rddId, childBlockId) match {
             case None =>
-              dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime)
+              dfsGetCachedParentCreatedTime(parentBlockId, nodeCreatedTime, visited)
             // throw new RuntimeException(s"Parent of ${childBlockId} " +
             //  s"block ($parentBlockId) is not stored.. ")
             case Some(t) =>
@@ -248,13 +263,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         }
       }
 
-      (b, l)
     }
+
+    (b, l)
   }
 
   def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
-    val (parentBlocks, times) = dfsGetCachedParentCreatedTime(blockId, nodeCreatedTime)
+    val (parentBlocks, times) =
+      dfsGetCachedParentCreatedTime(blockId, nodeCreatedTime, new mutable.HashSet[RDDNode]())
 
     nodeCreatedTime - times.min
   }
