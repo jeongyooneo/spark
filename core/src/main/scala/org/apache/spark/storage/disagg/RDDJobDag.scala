@@ -275,7 +275,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     try {
       for (childnode <- dag(rddNode)) {
-        val childBlockId = getBlockId(childnode.rddId, blockId)
         if (!metricTracker.completedStages.contains(childnode.rootStage)) {
           cnt += 1
         }
