@@ -206,11 +206,20 @@ class HadoopRDD[K, V](
       } else {
         allInputSplits
       }
-      val array = new Array[Partition](inputSplits.size)
-      for (i <- 0 until inputSplits.size) {
-        array(i) = new HadoopPartition(id, i, inputSplits(i))
+
+      if (sampledRun) {
+        val array = new Array[Partition](3)
+        for (i <- 0 until 3) {
+          array(i) = new HadoopPartition(id, i, inputSplits(i))
+        }
+        array
+      } else {
+        val array = new Array[Partition](inputSplits.size)
+        for (i <- 0 until inputSplits.size) {
+          array(i) = new HadoopPartition(id, i, inputSplits(i))
+        }
+        array
       }
-      array
     } catch {
       case e: InvalidInputException if ignoreMissingFiles =>
         logWarning(s"${jobConf.get(FileInputFormat.INPUT_DIR)} doesn't exist and no" +
@@ -219,10 +228,11 @@ class HadoopRDD[K, V](
     }
   }
 
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
 
-      private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
 
       logInfo(s"Sampled run $sampledRun")
 

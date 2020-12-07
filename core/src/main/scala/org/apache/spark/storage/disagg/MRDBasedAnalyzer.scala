@@ -28,7 +28,6 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
     // val refStages = rddJobDag.getReferenceStages(blockId)
     val mrdStage = rddJobDag.getMRDStage(blockId)
 
-
     if (mrdStage == 0) {
       new CompDisaggCost(blockId, 0, 0)
     } else {
