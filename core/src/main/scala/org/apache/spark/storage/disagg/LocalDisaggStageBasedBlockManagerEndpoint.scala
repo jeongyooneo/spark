@@ -436,7 +436,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     var evictSize = evictionSize
 
-    val storingCost = if (blockId.isDefined) {
+    val storingCost = if (blockId.isDefined && blockId.get.isRDD) {
       evictSize = metricTracker.getBlockSize(blockId.get)
       costAnalyzer.compDisaggCost(blockId.get)
     } else {
@@ -447,7 +447,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       iter =>
         if (iter.isEmpty) {
           logWarning(s"Low comp disagg block is empty " +
-            s"for evicting $blockId, size $evictionSize")
+            s"for evicting $blockId, size $evictSize")
           List.empty
         } else {
           var sum = 0.0
@@ -461,34 +461,37 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           iter.foreach {
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
-                && (blockId.isDefined && discardingBlock.blockId != blockId.get)
                 && discardingBlock.cost <= storingCost.cost) {
-                val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
-                val createdTime = metricTracker
-                  .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
-                  map.remove(discardingBlock.blockId)
-                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
-                    sum <= storingCost.cost) {
-                    sum += discardingBlock.cost
-                    sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
-                    evictionList.append(discardingBlock.blockId)
+
+                if (blockId.isDefined && discardingBlock.blockId != blockId.get
+                  || blockId.isEmpty) {
+                  val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
+                  val createdTime = metricTracker
+                    .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
+                  if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+                    map.remove(discardingBlock.blockId)
+                    if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
+                      sum <= storingCost.cost) {
+                      sum += discardingBlock.cost
+                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                      evictionList.append(discardingBlock.blockId)
+                    }
                   }
                 }
               }
             }
 
-              if (sizeSum >= evictionSize + 5 * 1024 * 1024) {
+              if (sizeSum >= evictSize + 50 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
                 return evictionList.toList
               }
           }
 
-          if (sizeSum >= evictionSize) {
+          if (sizeSum >= evictSize) {
             logInfo(s"CostSum: $sum, block: $blockId")
             return evictionList.toList
           } else {
-            logWarning(s"Size sum $sizeSum < eviction Size $evictionSize, " +
+            logWarning(s"Size sum $sizeSum < eviction Size $evictSize, " +
               s"for caching ${blockId} selected list: $evictionList")
             List.empty
           }
@@ -1078,9 +1081,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        // 500 mb select
         context.reply(localEviction(blockId, executorId,
-          size + 500 * 1024 * 1024, prevEvicted, onDisk))
+          size, prevEvicted, onDisk))
       }
     case EvictionFail(blockId, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
