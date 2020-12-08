@@ -451,7 +451,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           List.empty
         } else if (blockId.isEmpty) {
           // Spilling
-          return iter.map(m => m.blockId)
+          return iter.map(m => m.blockId).take(Math.min(10, iter.size))
         } else {
 
           var sum = 0.0

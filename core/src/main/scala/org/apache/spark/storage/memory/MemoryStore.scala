@@ -559,9 +559,9 @@ private[spark] class MemoryStore(
    */
   private[spark] def evictBlocksToFreeSpace(
       blockId: Option[BlockId],
-      space: Long,
+      spaceToEvict: Long,
       memoryMode: MemoryMode): Long = {
-    assert(space > 0)
+    assert(spaceToEvict > 0)
     memoryManager.synchronized {
       var freedMemory = 0L
       val rddToAdd = blockId.flatMap(getRddId)
@@ -570,6 +570,9 @@ private[spark] class MemoryStore(
           entry.memoryMode == memoryMode && (rddToAdd.isEmpty || rddToAdd != getRddId(blockId))
       }
 
+      // Evict for spilling
+      val space = if (blockId.isEmpty) spaceToEvict + 200 * 1024 * 1024 else spaceToEvict
+
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
@@ -577,7 +580,7 @@ private[spark] class MemoryStore(
         if (decisionByMaster) {
           var cnt = 0
           val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 3) {
+          while (freedMemory < space && cnt < 2) {
 
             cnt += 1
 
@@ -594,7 +597,7 @@ private[spark] class MemoryStore(
             logInfo(s"LocalDecision] Trying to evict blocks for ${blockId} $evictBlockList " +
               s"from executor $executorId, freeMemory: $freedMemory, space: $space, cnt: $cnt")
 
-            while (iterator.hasNext) {
+            while (iterator.hasNext && freedMemory < space) {
               val evictBlock = iterator.next()
               val entry = entries.get(evictBlock)
 
