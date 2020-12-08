@@ -367,10 +367,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
+            logInfo(s"RDD cost: ${blockId}, ${storingCost.compCost}, "
+              + s"${storingCost.disaggCost}, " +
+              s"${storingCost.compCost/storingCost.futureUse}, $estimateSize")
 
             if (storingCost.compCost < storingCost.disaggCost) {
               logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
-                + s"${storingCost.disaggCost}, ${storingCost.compCost/storingCost.futureUse}")
+                + s"${storingCost.disaggCost}, " +
+                s"${storingCost.compCost/storingCost.futureUse}, $estimateSize")
 
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
               // if (!prevDiscardIndexes.contains(blockIndex)) {
@@ -451,7 +455,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           List.empty
         } else if (blockId.isEmpty) {
           // Spilling
-          return iter.map(m => m.blockId).take(Math.min(10, iter.size))
+          return iter.map(m => m.blockId)
         } else {
 
           var sum = 0.0
