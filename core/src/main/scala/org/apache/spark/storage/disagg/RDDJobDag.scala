@@ -246,7 +246,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
         val key = s"${parentBlockId.name}-${childBlockId.name}"
         val elapsedTimeFromParent = metricTracker.blockElapsedTimeMap.get(key)
-        val added = timeSum + elapsedTimeFromParent
+
+        val parentSideEffectKey = s"${parentBlockId.name}-${parentBlockId.name}"
+        val added = if (metricTracker.blockElapsedTimeMap.containsKey(parentSideEffectKey)) {
+          timeSum +
+            metricTracker.blockElapsedTimeMap.get(parentSideEffectKey) + elapsedTimeFromParent
+        } else {
+          timeSum + elapsedTimeFromParent
+        }
 
         if (metricTracker.blockStored(parentBlockId)) {
           b.append(parentBlockId)
