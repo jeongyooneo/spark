@@ -476,9 +476,18 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     map.remove(discardingBlock.blockId)
                     if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
                       sum <= storingCost.cost) {
-                      sum += discardingBlock.cost
-                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
-                      evictionList.append(discardingBlock.blockId)
+
+                      if (onDisk &&
+                        blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0) {
+                        sum += discardingBlock.cost
+                        sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).diskSize
+                        evictionList.append(discardingBlock.blockId)
+                      } else if (!onDisk &&
+                        blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0) {
+                        sum += discardingBlock.cost
+                        sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                        evictionList.append(discardingBlock.blockId)
+                      }
                     }
                   }
                 }
