@@ -225,8 +225,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
-      b.append(getBlockId(rddNode.rddId, childBlockId))
-      l.append(timeSum)
+      if (rddNode.shuffled) {
+        b.append(getBlockId(rddNode.rddId, childBlockId))
+        l.append(timeSum)
+      } else {
+        // This is root RDD that reads input!
+        // We increase the time because it causes memory pressure.
+        b.append(getBlockId(rddNode.rddId, childBlockId))
+        l.append(timeSum + 100000)
+      }
     } else {
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
