@@ -946,27 +946,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
 
-  private def blockReadLock(blockId: BlockId, executorId: String): Boolean = {
-    disaggBlockLockMap.putIfAbsent(blockId, new StampedLock().asReadWriteLock())
-    if (disaggBlockLockMap(blockId).readLock().tryLock()) {
-      logInfo(s"Hold readlock $blockId, $executorId")
-      executorReadLockCount.putIfAbsent(executorId,
-        new ConcurrentHashMap[BlockId, AtomicInteger]())
-      executorReadLockCount(executorId).putIfAbsent(blockId, new AtomicInteger(0))
-      executorReadLockCount(executorId).get(blockId).incrementAndGet()
-      true
-    } else {
-      false
-    }
-  }
-
-  private def blockReadUnlock(blockId: BlockId, executorId: String): Boolean = {
-    logInfo(s"Release readlock $blockId, $executorId")
-    val result = executorReadLockCount(executorId).get(blockId).decrementAndGet()
-    disaggBlockLockMap(blockId).readLock().unlock()
-    result >= 0
-  }
-
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     // FOR DISAGG
     // FOR DISAGG
@@ -1004,6 +983,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     case FileRead(blockId, executorId) =>
       // lock
       // logInfo(s"File read $blockId")
+      throw new RuntimeException("Disagg read disabled")
+          /*
       if (blockReadLock(blockId, executorId)) {
 
         val result = fileRead(blockId, executorId)
@@ -1018,8 +999,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         // try again
         context.reply(2)
       }
+      */
 
     case FileReadUnlock(blockId, executorId) =>
+      throw new RuntimeException("Disagg read unlock disabled")
+
+      /*
+
       // logInfo(s"File read unlock $blockId from $executorId")
       // unlock
       // We unlock here because the lock is already hold by FileRead
@@ -1032,11 +1018,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         throw new RuntimeException(s"FileReadUnlock 22 end should be called " +
           s"after holding lock $blockId, $executorId")
       }
+      */
 
     case DiscardBlocksIfNecessary(estimateSize) =>
       throw new RuntimeException("not supported")
 
     case Contains(blockId, executorId) =>
+      throw new RuntimeException("Disagg contain disabled")
+
+      /*
       if (blockReadLock(blockId, executorId)) {
         try {
           val result = contains(blockId)
@@ -1048,6 +1038,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         // try again
         context.reply(2)
       }
+      */
 
     case ReadDisaggBlock(blockId, size, time) =>
       BlazeLogger.deserTime(blockId, size, time)
@@ -1064,6 +1055,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       BlazeLogger.rddCompTime(rddId, time)
 
     case GetSize(blockId, executorId) =>
+      throw new RuntimeException("Disagg getStream disabled")
+
+      /*
       if (blockReadLock(blockId, executorId)) {
         try {
           val size = if (disaggBlockInfo.get(blockId).isEmpty) {
@@ -1079,6 +1073,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       } else {
         context.reply(-1)
       }
+      */
 
     // FOR LOCAL
     // FOR LOCAL

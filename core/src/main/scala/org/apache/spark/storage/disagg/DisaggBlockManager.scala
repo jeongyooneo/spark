@@ -158,6 +158,8 @@ class DisaggBlockManager(
   }
 
   def read(blockId: BlockId, executorId: String) : Boolean = {
+    return false
+        /*
     val result = driverEndpoint.askSync[Int](FileRead(blockId, executorId))
 
     logInfo(s"Read logging ... $blockId, result: $result")
@@ -174,6 +176,7 @@ class DisaggBlockManager(
     } else {
       throw new RuntimeException(s"Invalid read value $result for reading $blockId")
     }
+    */
   }
 
   def readUnlock(blockId: BlockId, executorId: String) : Unit = {

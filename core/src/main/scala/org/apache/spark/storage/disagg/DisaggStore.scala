@@ -190,7 +190,8 @@ private[spark] class DisaggStore(
   }
 
   def contains(blockId: BlockId): Boolean = {
-    disaggManager.blockExists(blockId, executorId)
+    false
+    // disaggManager.blockExists(blockId, executorId)
   }
 
   def readLock(blockId: BlockId): Boolean = {
