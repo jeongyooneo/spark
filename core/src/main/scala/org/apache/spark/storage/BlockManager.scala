@@ -1437,7 +1437,9 @@ private[spark] class BlockManager(
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         if (level.deserialized) {
-          memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
+          val it = iterator()
+          val sideEffectStart = System.currentTimeMillis()
+          val resultValue = memoryStore.putIteratorAsValues(blockId, it, classTag) match {
             case Right(s) =>
               size = s
             case Left(iter) =>
@@ -1459,6 +1461,13 @@ private[spark] class BlockManager(
                 iteratorFromFailedMemoryStorePut = Some(iter)
               }
           }
+
+          val sideEffectEnd = System.currentTimeMillis()
+          SparkEnv.get.blockManager.disaggManager
+            .sendRDDElapsedTime(s"${blockId.name}", s"${blockId.name}",
+              sideEffectEnd - sideEffectStart)
+
+          resultValue
         } else { // !level.deserialized
           memoryStore.putIteratorAsBytes(blockId, iterator(), classTag, level.memoryMode) match {
             case Right(s) =>

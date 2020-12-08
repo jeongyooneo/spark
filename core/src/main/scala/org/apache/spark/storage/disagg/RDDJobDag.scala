@@ -208,7 +208,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                                      childBlockId: BlockId,
                                      nodeCreatedTime: Long,
                                      visited: mutable.Set[RDDNode],
-                                     timeSum: Long):
+                                     tSum: Long):
   (ListBuffer[BlockId], ListBuffer[Long]) = {
 
     val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
@@ -222,6 +222,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     visited.add(rddNode)
+
+    val myKey = s"${childBlockId.name}-${childBlockId.name}"
+    val timeSum = if (metricTracker.blockElapsedTimeMap.containsKey(myKey)) {
+      tSum + metricTracker.blockElapsedTimeMap.get(myKey)
+    } else {
+      tSum
+    }
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
