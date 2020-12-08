@@ -17,7 +17,6 @@
 
 package org.apache.spark.storage.disagg
 
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
 
@@ -59,6 +58,9 @@ private[spark] class DisaggStore(
     //   throw new IllegalStateException(s"Block $blockId is already present in the disagg store")
     // }
 
+    return false
+
+    /*
     // first discard blocks from disagg memory
     // if the memory is full
     logInfo(s"discard block for storing $blockId if necessary in worker $estimateSize")
@@ -126,6 +128,7 @@ private[spark] class DisaggStore(
         logWarning("Exception thrown when putting block " + blockId + ", " + e)
         throw e
     }
+    */
   }
 
   def putBytes[T: ClassTag](

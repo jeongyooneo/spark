@@ -31,8 +31,7 @@ import scala.collection.convert.decorateAsScala._
 class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends CrailManager(false,
-  conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
-    && !conf.get(BlazeParameters.USE_DISK)) with Logging {
+  false) with Logging {
 
   def discardBlocksIfNecessary(estimateSize: Long) : Unit = {
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
@@ -148,8 +147,14 @@ class DisaggBlockManager(
     // val taskContext = TaskContext.get()
     // val taskId = s"${taskContext.stageId()}-" +
     //  s"${taskContext.partitionId()}-${taskContext.attemptNumber()}"
-    driverEndpoint.askSync[Boolean](
-      StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk))
+
+    if (putDisagg) {
+      // Diable disagg
+      false
+    } else {
+      driverEndpoint.askSync[Boolean](
+        StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk))
+    }
   }
 
   def read(blockId: BlockId, executorId: String) : Boolean = {

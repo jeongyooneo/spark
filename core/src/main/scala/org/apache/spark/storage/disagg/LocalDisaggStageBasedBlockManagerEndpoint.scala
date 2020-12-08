@@ -47,8 +47,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                           val cachingPolicy: CachingPolicy,
                           val evictionPolicy: EvictionPolicy,
                           val rddJobDag: Option[RDDJobDag])
-  extends DisaggBlockManagerEndpoint(!conf.get(BlazeParameters.USE_DISK)
-  && conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")) {
+  extends DisaggBlockManagerEndpoint(false) {
 
   private val BLAZE_COST_FUNC =
     conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
@@ -417,7 +416,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       }
     } else {
-      disaggDecision(blockId, estimateSize, executorId, true)
+      throw new RuntimeException("Disagg decision is disabled!")
+      // disaggDecision(blockId, estimateSize, executorId, true)
     }
   }
 
