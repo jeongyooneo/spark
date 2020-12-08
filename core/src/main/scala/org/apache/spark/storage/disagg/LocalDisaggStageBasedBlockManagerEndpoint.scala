@@ -1120,8 +1120,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
+        // 500 mb select
         context.reply(localEviction(blockId, executorId,
-          size + 1 * 1024 * 1024, prevEvicted, onDisk))
+          size + 500 * 1024 * 1024, prevEvicted, onDisk))
       }
     case EvictionFail(blockId, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
