@@ -223,6 +223,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     visited.add(rddNode)
 
+    // Side-effect !!
     val myKey = s"${childBlockId.name}-${childBlockId.name}"
     val timeSum = if (metricTracker.blockElapsedTimeMap.containsKey(myKey)) {
       tSum + metricTracker.blockElapsedTimeMap.get(myKey)
@@ -246,14 +247,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
         val key = s"${parentBlockId.name}-${childBlockId.name}"
         val elapsedTimeFromParent = metricTracker.blockElapsedTimeMap.get(key)
-
-        val parentSideEffectKey = s"${parentBlockId.name}-${parentBlockId.name}"
-        val added = if (metricTracker.blockElapsedTimeMap.containsKey(parentSideEffectKey)) {
-          timeSum +
-            metricTracker.blockElapsedTimeMap.get(parentSideEffectKey) + elapsedTimeFromParent
-        } else {
-          timeSum + elapsedTimeFromParent
-        }
+        val added = timeSum + elapsedTimeFromParent
 
         if (metricTracker.blockStored(parentBlockId)) {
           b.append(parentBlockId)
@@ -283,7 +277,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       dfsGetBlockElapsedTime(rddId, blockId,
         nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
 
-    val t = times.max
+    val t = times.sum
     // logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}")
     t
   }
