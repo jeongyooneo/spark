@@ -22,6 +22,13 @@ import org.apache.spark.internal.config.ConfigBuilder
 import org.apache.spark.network.util.ByteUnit
 
 private[spark] object BlazeParameters extends Logging {
+
+  val readThp = 3000.0 / (600 * 1024 * 1024)
+
+  private[spark] val READ_THP = ConfigBuilder("spark.disagg.readthp")
+    .doubleConf
+    .createWithDefault(readThp)
+
   private[spark] val DISAGG_THRESHOLD_MB = ConfigBuilder("spark.disagg.threshold")
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("0g")

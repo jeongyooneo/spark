@@ -243,7 +243,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
         if (metricTracker.blockStored(parentBlockId)) {
           b.append(parentBlockId)
-          l.append(added)
+          if (metricTracker.localDiskStoredBlocksMap.containsKey(parentBlockId)) {
+            // If it is cached, we should read it from mem or disk
+            // If it is stored in disk, we should add disk read overhead
+            val diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
+            l.append(added + diskoverhead.toLong)
+          } else {
+            l.append(added)
+          }
         } else {
           val (bb, ll) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
