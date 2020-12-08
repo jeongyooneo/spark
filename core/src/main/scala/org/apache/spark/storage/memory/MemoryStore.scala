@@ -591,8 +591,8 @@ private[spark] class MemoryStore(
 
             val iterator = evictBlockList.iterator
 
-            logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
-              s"from executor $executorId, freeMemory: $freedMemory, space: $space")
+            logInfo(s"LocalDecision] Trying to evict blocks for ${blockId} $evictBlockList " +
+              s"from executor $executorId, freeMemory: $freedMemory, space: $space, cnt: $cnt")
 
             while (iterator.hasNext) {
               val evictBlock = iterator.next()

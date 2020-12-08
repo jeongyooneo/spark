@@ -25,7 +25,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
-import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint}
+import org.apache.spark.storage.{BlockId, BlockManagerMasterEndpoint, RDDBlockId}
 import org.apache.spark.util.ThreadUtils
 
 import scala.collection.convert.decorateAsScala._
@@ -434,56 +434,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val currTime = System.currentTimeMillis()
     var sizeSum = 0L
 
-    if (!blockId.isDefined || (blockId.isDefined && !blockId.get.isRDD)) {
-      // we should evict blocks to free space for execution !!
-      logInfo(s"Evict to free space at executor " +
-        s"$executorId, blockId: $blockId, size: $evictionSize")
-      val l = if (onDisk) {
-        costAnalyzer.sortedBlockByCompCostInDiskLocal.get()(executorId)
-      } else {
-        costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
-      }
-
-      val m = if (onDisk) {
-        recentlyEvictFailBlocksFromLocalDisk
-      } else {
-        recentlyEvictFailBlocksFromLocal
-      }
-
-      l.foreach {
-        discardingBlock => {
-          if (!prevEvicted.contains(discardingBlock.blockId)) {
-            val elapsed = currTime -
-              m.getOrElse(discardingBlock.blockId, 0L)
-            val createdTime = metricTracker
-              .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-            if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
-              m.remove(discardingBlock.blockId)
-              if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                val s = if (onDisk) {
-                    blockManagerInfo.blocks(discardingBlock.blockId).diskSize
-                } else {
-                    blockManagerInfo.blocks(discardingBlock.blockId).memSize
-                }
-
-                if (s > 0) {
-                  sizeSum += s
-                  evictionList.append(discardingBlock.blockId)
-                }
-              }
-
-              if (sizeSum > evictionSize) {
-                return evictionList.toList
-              }
-            }
-          }
-        }
-      }
-      return evictionList.toList
+    val storingCost = if (blockId.isDefined) {
+      costAnalyzer.compDisaggCost(blockId.get)
+    } else {
+      new CompDisaggCost(RDDBlockId(0, -1), Double.MaxValue)
     }
-
-    val bid = blockId.get
-    val storingCost = costAnalyzer.compDisaggCost(bid)
 
     evictionPolicy.selectEvictFromLocal(storingCost, executorId, blockId.get, onDisk) {
       iter =>
@@ -503,7 +458,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           iter.foreach {
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
-                && discardingBlock.blockId != bid
+                && (blockId.isDefined && discardingBlock.blockId != blockId.get)
                 && discardingBlock.cost <= storingCost.cost) {
                 val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
                 val createdTime = metricTracker
