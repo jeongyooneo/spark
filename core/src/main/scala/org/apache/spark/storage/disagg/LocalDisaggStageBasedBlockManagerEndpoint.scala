@@ -449,7 +449,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           logWarning(s"Low comp disagg block is empty " +
             s"for evicting $blockId, size $evictSize")
           List.empty
+        } else if (blockId.isEmpty) {
+          // Spilling
+          return iter.map(m => m.blockId)
         } else {
+
           var sum = 0.0
 
           val map = if (onDisk) {
