@@ -77,7 +77,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId,
+                           blockSize: Long,
                            onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
     val blocks = if (onDisk) {
@@ -97,7 +97,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
             } else {
               val costRatio = storingCost.cost / p.cost
               val sizeRatio =
-                metricTracker.getBlockSize(blockId) / metricTracker.getBlockSize(p.blockId)
+                blockSize / metricTracker.getBlockSize(p.blockId)
               costRatio > sizeRatio
             }
           })

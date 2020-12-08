@@ -38,7 +38,7 @@ private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId,
+                           evictSize: Long,
                            onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
 

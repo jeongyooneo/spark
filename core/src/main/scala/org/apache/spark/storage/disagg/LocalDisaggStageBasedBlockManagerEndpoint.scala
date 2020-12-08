@@ -434,13 +434,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     val currTime = System.currentTimeMillis()
     var sizeSum = 0L
 
+    var evictSize = evictionSize
+
     val storingCost = if (blockId.isDefined) {
+      evictSize = metricTracker.getBlockSize(blockId.get)
       costAnalyzer.compDisaggCost(blockId.get)
     } else {
       new CompDisaggCost(RDDBlockId(0, -1), Double.MaxValue)
     }
 
-    evictionPolicy.selectEvictFromLocal(storingCost, executorId, blockId.get, onDisk) {
+    evictionPolicy.selectEvictFromLocal(storingCost, executorId, evictSize, onDisk) {
       iter =>
         if (iter.isEmpty) {
           logWarning(s"Low comp disagg block is empty " +

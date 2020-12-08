@@ -76,7 +76,7 @@ private[spark] class OnlyCostBasedEvictionPolicy(
 
   def selectEvictFromLocal(storingCost: CompDisaggCost,
                            executorId: String,
-                           blockId: BlockId,
+                           blockSize: Long,
                            onDisk: Boolean)
                           (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
     val blocks = if (onDisk) {
