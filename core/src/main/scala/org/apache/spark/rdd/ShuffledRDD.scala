@@ -100,11 +100,18 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+    val st = System.currentTimeMillis()
+
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     val res = SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle,
       split.index, split.index + 1, context)
       .read()
       .asInstanceOf[Iterator[(K, C)]]
+
+    val et = System.currentTimeMillis()
+
+    SparkEnv.get.blockManager.disaggManager
+      .sendRDDElapsedTime(s"rdd_${id}_${split.index}", s"rdd_${id}_${split.index}", et - st)
 
     res
   }
