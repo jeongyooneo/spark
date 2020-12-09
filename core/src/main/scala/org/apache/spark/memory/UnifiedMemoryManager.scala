@@ -19,7 +19,6 @@ package org.apache.spark.memory
 
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.BlockId
-import org.apache.spark.storage.disagg.BlazeParameters
 
 /**
  * A [[MemoryManager]] that enforces a soft boundary between execution and storage such that
@@ -150,7 +149,8 @@ private[spark] class UnifiedMemoryManager private[memory] (
   }
 
   // MB
-  val SLACK = conf.get(BlazeParameters.MEMORY_SLACK) * 1024 * 1024
+  // val SLACK = conf.get(BlazeParameters.MEMORY_SLACK) * 1024 * 1024
+  val SLACK = 0
 
   override def canStoreBytesWithoutEviction(numBytes: Long,
                                             memoryMode: MemoryMode): Boolean = {

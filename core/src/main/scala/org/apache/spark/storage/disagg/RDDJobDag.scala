@@ -223,12 +223,18 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     visited.add(rddNode)
 
-    // Side-effect !!
-    val myKey = s"${childBlockId.name}-${childBlockId.name}"
-    val timeSum = if (metricTracker.blockElapsedTimeMap.containsKey(myKey)) {
-      tSum + metricTracker.blockElapsedTimeMap.get(myKey)
+    // Materialized time
+    val unrollingKey = s"unroll-${childBlockId.name}"
+    var timeSum = if (metricTracker.blockElapsedTimeMap.containsKey(unrollingKey)) {
+      tSum + metricTracker.blockElapsedTimeMap.get(unrollingKey)
     } else {
       tSum
+    }
+
+    // Eviction effect
+    val evictionKey = s"eviction-${childBlockId.name}"
+    if (metricTracker.blockElapsedTimeMap.containsKey(evictionKey)) {
+      timeSum +=  metricTracker.blockElapsedTimeMap.get(evictionKey)
     }
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {

@@ -440,14 +440,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     var evictSize = evictionSize
 
-    val storingCost = if (blockId.isDefined && blockId.get.isRDD) {
-      evictSize = metricTracker.getBlockSize(blockId.get)
-      costAnalyzer.compDisaggCost(blockId.get)
-    } else {
-      new CompDisaggCost(RDDBlockId(0, -1), Double.MaxValue)
-    }
-
-    evictionPolicy.selectEvictFromLocal(storingCost, executorId, evictSize, onDisk) {
+    evictionPolicy.selectEvictFromLocal(
+      new CompDisaggCost(RDDBlockId(0, -1), Double.MaxValue), executorId, evictSize, onDisk) {
       iter =>
         if (iter.isEmpty) {
           logWarning(s"Low comp disagg block is empty " +
@@ -468,8 +462,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           iter.foreach {
             discardingBlock => {
-              if (!prevEvicted.contains(discardingBlock.blockId)
-                && discardingBlock.cost <= storingCost.cost) {
+              if (!prevEvicted.contains(discardingBlock.blockId)) {
 
                 if (blockId.isDefined && discardingBlock.blockId != blockId.get
                   || blockId.isEmpty) {
@@ -478,9 +471,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
                   if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
                     map.remove(discardingBlock.blockId)
-                    if (blockManagerInfo.blocks.contains(discardingBlock.blockId) &&
-                      sum <= storingCost.cost) {
-
+                    if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
                       if (onDisk &&
                         blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0) {
                         sum += discardingBlock.cost
@@ -498,7 +489,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               }
             }
 
-              if (sizeSum >= evictSize + 50 * 1024 * 1024) {
+              if (sizeSum >= evictSize + 250 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
                 return evictionList.toList
               }

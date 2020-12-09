@@ -600,7 +600,8 @@ abstract class RDD[T: ClassTag](
         }
       case Right(iter) =>
         val et = System.currentTimeMillis()
-        TODO: logging elapsed time
+        SparkEnv.get.blockManager.disaggManager
+          .sendRDDElapsedTime("Elapsed", blockId.name, "InRDD", et - st)
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
   }
