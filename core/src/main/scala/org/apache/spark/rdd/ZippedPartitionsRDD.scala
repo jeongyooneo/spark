@@ -96,10 +96,12 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
     val index = s.index
     SparkEnv.get.blockManager.disaggManager
-      .sendRDDElapsedTime(s"rdd_${rdd1.id}_$index", s"rdd_${id}_$index", elapsed)
+      .sendRDDElapsedTime(s"rdd_${rdd1.id}_$index", s"rdd_${id}_$index",
+        this.getClass.getSimpleName, elapsed)
 
     SparkEnv.get.blockManager.disaggManager
-      .sendRDDElapsedTime(s"rdd_${rdd2.id}_$index", s"rdd_${id}_$index", elapsed)
+      .sendRDDElapsedTime(s"rdd_${rdd2.id}_$index", s"rdd_${id}_$index",
+        this.getClass.getSimpleName, elapsed)
 
     res
   }

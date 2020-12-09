@@ -82,7 +82,8 @@ private[spark] object DisaggBlockManagerMessages {
   case class SendRecompTime(blockId: BlockId, time: Long) extends ToBlockManagerMaster
   case class SendNoCachedRDDCompTime(rddId: Int, time: Long) extends ToBlockManagerMaster
   case class SendRDDElapsedTime(srcBlock: String,
-                                dstBlock: String, time: Long) extends ToBlockManagerMaster
+                                dstBlock: String,
+                                clazz: String, time: Long) extends ToBlockManagerMaster
 
   case class PromoteToMemory(blockId: BlockId, size: Long,
                              executorId: String,

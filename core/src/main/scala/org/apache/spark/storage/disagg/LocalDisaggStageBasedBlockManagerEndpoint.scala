@@ -1127,9 +1127,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         context.reply(-1L)
       }
 
-    case SendRDDElapsedTime(srcBlock, dstBlock, time) =>
+    case SendRDDElapsedTime(srcBlock, dstBlock, clazz, time) =>
       val key = s"${srcBlock}-${dstBlock}"
-      logInfo(s"Block elapsed time ${key}: ${time}")
+      logInfo(s"Block elapsed time ${key}: ${time}, class: ${clazz}")
       metricTracker.blockElapsedTimeMap.put(key, time)
   }
 }

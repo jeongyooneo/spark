@@ -1464,7 +1464,7 @@ private[spark] class BlockManager(
 
           val sideEffectEnd = System.currentTimeMillis()
           SparkEnv.get.blockManager.disaggManager
-            .sendRDDElapsedTime(s"${blockId.name}", s"${blockId.name}",
+            .sendRDDElapsedTime(s"${blockId.name}", s"${blockId.name}", "SideEffect",
               sideEffectEnd - sideEffectStart)
 
           resultValue

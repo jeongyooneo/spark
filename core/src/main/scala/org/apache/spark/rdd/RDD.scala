@@ -564,6 +564,8 @@ abstract class RDD[T: ClassTag](
   private[spark] def getOrCompute(partition: Partition, context: TaskContext): Iterator[T] = {
     val blockId = RDDBlockId(id, partition.index)
     var readCachedBlock = true
+    val st = System.currentTimeMillis()
+
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
     SparkEnv.get.blockManager.getOrElseUpdate(context,
       blockId, storageLevel, elementClassTag, () => {
@@ -597,6 +599,8 @@ abstract class RDD[T: ClassTag](
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
       case Right(iter) =>
+        val et = System.currentTimeMillis()
+        TODO: logging elapsed time
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
   }
