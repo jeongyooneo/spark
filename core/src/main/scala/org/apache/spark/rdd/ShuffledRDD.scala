@@ -110,7 +110,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
 
     val elapsed = System.currentTimeMillis() - blockCompStartTime
 
-    logInfo(s"ShuffledRDD $id: " +
+    logInfo(s"ShuffledRDD rdd_${id}_${split.index}: " +
       s"compute() time: $elapsed ms")
 
     res
