@@ -231,6 +231,7 @@ private[spark] class MemoryStore(
 
   private def unrolling[T](values: Iterator[T],
                            blockId: BlockId,
+                           size: Long,
                            memoryMode: MemoryMode,
                            vHolder: ValuesHolder[T]): Either[Long, MemoryEntry[T]] = {
     // Request enough memory to begin unrolling
@@ -243,7 +244,7 @@ private[spark] class MemoryStore(
     // How often to check whether we need to request more memory
     val memoryCheckPeriod = conf.get(UNROLL_MEMORY_CHECK_PERIOD)
     // Memory currently reserved by this task for this particular unrolling operation
-    var memoryThreshold = initialMemoryThreshold
+    var memoryThreshold = initialMemoryThreshold + size
     // Memory to request as a multiple of current vector size
     val memoryGrowthFactor = conf.get(UNROLL_MEMORY_GROWTH_FACTOR)
     // Keep track of unroll memory used by this particular block / putIterator() operation
@@ -252,15 +253,15 @@ private[spark] class MemoryStore(
 
     val evictStart = System.currentTimeMillis()
     keepUnrolling =
-      reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, memoryMode)
+      reserveUnrollMemoryForThisTask(blockId, memoryThreshold, memoryMode)
     val evictEnd = System.currentTimeMillis()
     val evictInit = evictEnd - evictStart
 
     if (!keepUnrolling) {
       logWarning(s"Failed to reserve initial memory threshold of " +
-        s"${Utils.bytesToString(initialMemoryThreshold)} for computing block $blockId in memory.")
+        s"${Utils.bytesToString(memoryThreshold)} for computing block $blockId in memory.")
     } else {
-      unrollMemoryUsedByThisBlock += (initialMemoryThreshold)
+      unrollMemoryUsedByThisBlock += (memoryThreshold)
     }
 
     val unrollSt = System.currentTimeMillis()
@@ -422,7 +423,7 @@ private[spark] class MemoryStore(
             return Left(unrollMemoryUsedByThisBlock)
           } else {
             // Otherwise, cache this block !
-            return unrolling(values, blockId, memoryMode, valuesHolder) match {
+            return unrolling(values, blockId, estimateSize, memoryMode, valuesHolder) match {
               case Right(entry) =>
                 // Put the unrolled data
                 entries.synchronized {
@@ -453,7 +454,7 @@ private[spark] class MemoryStore(
           }
         } else {
           // Unrolling this block before caching decision
-          return unrolling(values, blockId, memoryMode, valuesHolder) match {
+          return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
             case Right(entry) =>
               sizeEstimationMap.put(blockId, entry.size)
               val estimateSize = entry.size

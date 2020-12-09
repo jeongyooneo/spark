@@ -43,7 +43,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     (serCost + deserCost * refCnt).toLong
   }
 
-  val writeThp = 12000.0 / (600 * 1024 * 1024)
+  val writeThp = 10000.0 / (600 * 1024 * 1024)
   private val readThp = BlazeParameters.readThp
 
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
@@ -57,7 +57,15 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     val futureUse = realStages.size
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
-    val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
+    var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
+
+    if (metricTracker.blockElapsedTimeMap.contains(s"unroll-${blockId.name}")) {
+      readTime +=  metricTracker.blockElapsedTimeMap.get(s"unroll-${blockId.name}")
+    }
+
+    if (metricTracker.blockElapsedTimeMap.contains(s"eviction-${blockId.name}")) {
+      readTime +=  metricTracker.blockElapsedTimeMap.get(s"eviction-${blockId.name}")
+    }
 
     val c = new CompDisaggCost(blockId,
       Math.min(recompTime * futureUse, writeTime + readTime * futureUse),

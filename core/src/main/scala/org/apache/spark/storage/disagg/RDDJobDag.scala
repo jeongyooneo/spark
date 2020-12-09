@@ -261,8 +261,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           if (metricTracker.localDiskStoredBlocksMap.containsKey(parentBlockId)) {
             // If it is cached, we should read it from mem or disk
             // If it is stored in disk, we should add disk read overhead
-            val diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
+            val parentUnrollKey = s"unroll-${parentBlockId.name}"
+            val parentEvictionKey = s"eviction-${parentBlockId.name}"
+            var diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
+
+            if (metricTracker.blockElapsedTimeMap.contains(parentUnrollKey)) {
+              diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentUnrollKey)
+            }
+
+            if (metricTracker.blockElapsedTimeMap.contains(parentEvictionKey)) {
+              diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentEvictionKey)
+            }
+
             l.append(added + diskoverhead.toLong)
+
           } else {
             l.append(added)
           }
