@@ -17,7 +17,7 @@
 
 package org.apache.spark.storage
 
-import alluxio.exception.status.UnavailableException
+import alluxio.exception.status.{InvalidArgumentException, ResourceExhaustedException, UnavailableException}
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
@@ -1302,10 +1302,16 @@ private[spark] class BlockManager(
             channel.close()
             out.close()
           } catch {
+            case e1: InvalidArgumentException =>
+              logInfo(s"putAlluxio1: Block has a block size smaller than the file block size")
+            // do nothing
+            case e2: ResourceExhaustedException =>
+              logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
+            // do nothing
             case e: IOException => e.printStackTrace()
               logInfo(s"Exception in createFileOutputStream $blockId " +
                 s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                s"task ${TaskContext.get().taskAttemptId()}")
+                s"task ${TaskContext.get().partitionId()}")
               throw e
           } finally {
             disaggManager.writeUnlock(blockId, executorId, size)
@@ -1315,6 +1321,12 @@ private[spark] class BlockManager(
       result.get()
       // Future.successful(true)
     } catch {
+      case e1: InvalidArgumentException =>
+          logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
+          // do nothing
+      case e2: ResourceExhaustedException =>
+        logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
+      // do nothing
       case e: Exception =>
         logInfo(s"Exception in putAlluxio for $blockId " +
           s"executor $executorId, stage ${TaskContext.get().stageId()} " +
@@ -1331,11 +1343,13 @@ private[spark] class BlockManager(
     logInfo(s"putIteratorToAlluxio for $blockId " +
       s"executor $executorId, stage ${TaskContext.get().stageId()} " +
       s"task ${TaskContext.get().taskAttemptId()}")
+    var size = 0L
 
-    val size = putAlluxio(blockId) { channel =>
+    size = putAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
+
     size
   }
 
@@ -1990,6 +2004,7 @@ private[spark] object BlockManager {
     }
   }
 }
+
 
 
 
