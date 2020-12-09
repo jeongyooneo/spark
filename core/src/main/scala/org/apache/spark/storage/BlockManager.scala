@@ -753,13 +753,11 @@ private[spark] class BlockManager(
               disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
               diskValues
 
-              /*
               if (readAfterCache) {
                 diskValues
               } else {
                 maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
               }
-              */
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
                 .map { _.toInputStream(dispose = false) }
