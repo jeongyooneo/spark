@@ -59,6 +59,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
+    /*
     if (metricTracker.blockElapsedTimeMap.contains(s"unroll-${blockId.name}")) {
       readTime +=  metricTracker.blockElapsedTimeMap.get(s"unroll-${blockId.name}")
     }
@@ -66,6 +67,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     if (metricTracker.blockElapsedTimeMap.contains(s"eviction-${blockId.name}")) {
       readTime +=  metricTracker.blockElapsedTimeMap.get(s"eviction-${blockId.name}")
     }
+    */
 
     val c = new CompDisaggCost(blockId,
       Math.min(recompTime * futureUse, writeTime + readTime * futureUse),
