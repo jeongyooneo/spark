@@ -919,39 +919,25 @@ private[spark] class BlockManager(
   }
 
   def removeFromAlluxio[T: ClassTag](blockId: BlockId): Boolean = {
-    blockInfoManager.lockForReading(blockId) match {
-      case None =>
-        logInfo(s"removeFromAlluxio: info for $blockId was not found")
-        false
-      case Some(_) =>
-        try {
-          if (disaggManager.readLock(blockId, executorId)) {
-            // metadata for the block to read exists
-            disaggManager.removeFile(blockId)
-            disaggManager.removeFileInfo(blockId, executorId)
-            logInfo(s"Successfully removed $blockId from alluxio " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().partitionId()}")
-          } else {
-            // the block and its metadata do not exist
-            logInfo(s"$blockId not in alluxio and neither its metadata: " +
-              s"nothing to remove !! " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().partitionId()}")
-          }
-          true
-        } catch {
-          case e: Exception => e.printStackTrace()
-            logInfo(s"Exception in removeFromAlluxio $blockId " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().partitionId()}")
-            throw e
-        } finally {
-          logInfo(s"finally in removeFromAlluxio $blockId " +
-            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-            s"task ${TaskContext.get().partitionId()}")
-          disaggManager.readUnlock(blockId, executorId)
-        }
+    try {
+      if (disaggManager.readLock(blockId, executorId)) {
+        // metadata for the block to read exists
+        disaggManager.removeFile(blockId)
+        disaggManager.removeFileInfo(blockId, executorId)
+        logInfo(s"Successfully removed $blockId from alluxio")
+      } else {
+        // the block and its metadata do not exist
+        logInfo(s"$blockId not in alluxio and neither its metadata: " +
+          s"nothing to remove !!")
+      }
+      true
+    } catch {
+      case e: Exception => e.printStackTrace()
+        logInfo(s"Exception in removeFromAlluxio $blockId")
+        throw e
+    } finally {
+      logInfo(s"finally in removeFromAlluxio $blockId")
+      disaggManager.readUnlock(blockId, executorId)
     }
   }
 
@@ -1080,7 +1066,7 @@ private[spark] class BlockManager(
 
         Left(blockResult)
       case Some(iter) => Right(iter)
-     }
+    }
   }
 
   /**
@@ -1359,8 +1345,8 @@ private[spark] class BlockManager(
       // Future.successful(true)
     } catch {
       case e1: InvalidArgumentException =>
-          logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
-          // do nothing
+        logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
+      // do nothing
       case e2: ResourceExhaustedException =>
         logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
       // do nothing
@@ -1408,7 +1394,7 @@ private[spark] class BlockManager(
                                classTag: ClassTag[T],
                                tellMaster: Boolean = true,
                                keepReadLock: Boolean = false):
-                              Option[PartiallyUnrolledIterator[T]] = {
+  Option[PartiallyUnrolledIterator[T]] = {
     doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
       var size = 0L
@@ -2043,6 +2029,7 @@ private[spark] object BlockManager {
     }
   }
 }
+
 
 
 
