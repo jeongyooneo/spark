@@ -751,7 +751,6 @@ private[spark] class BlockManager(
 
               val et = System.currentTimeMillis()
               disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
-              diskValues
 
               if (readAfterCache) {
                 diskValues
