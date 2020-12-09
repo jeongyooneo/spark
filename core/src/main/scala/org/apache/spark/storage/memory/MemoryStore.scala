@@ -423,7 +423,7 @@ private[spark] class MemoryStore(
             return Left(unrollMemoryUsedByThisBlock)
           } else {
             // Otherwise, cache this block !
-            return unrolling(values, blockId, estimateSize, memoryMode, valuesHolder) match {
+            return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
               case Right(entry) =>
                 // Put the unrolled data
                 entries.synchronized {
