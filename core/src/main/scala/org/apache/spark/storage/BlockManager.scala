@@ -918,6 +918,43 @@ private[spark] class BlockManager(
     }
   }
 
+  def removeFromAlluxio[T: ClassTag](blockId: BlockId): Boolean = {
+    blockInfoManager.lockForReading(blockId) match {
+      case None =>
+        logInfo(s"removeFromAlluxio: info for $blockId was not found")
+        false
+      case Some(_) =>
+        try {
+          if (disaggManager.readLock(blockId, executorId)) {
+            // metadata for the block to read exists
+            disaggManager.removeFile(blockId)
+            disaggManager.removeFileInfo(blockId, executorId)
+            logInfo(s"Successfully removed $blockId from alluxio " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().partitionId()}")
+          } else {
+            // the block and its metadata do not exist
+            logInfo(s"$blockId not in alluxio and neither its metadata: " +
+              s"nothing to remove !! " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().partitionId()}")
+          }
+          true
+        } catch {
+          case e: Exception => e.printStackTrace()
+            logInfo(s"Exception in removeFromAlluxio $blockId " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().partitionId()}")
+            throw e
+        } finally {
+          logInfo(s"finally in removeFromAlluxio $blockId " +
+            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+            s"task ${TaskContext.get().partitionId()}")
+          disaggManager.readUnlock(blockId, executorId)
+        }
+    }
+  }
+
   /**
    * Get a block from the block manager (either local or remote).
    *
@@ -1816,8 +1853,10 @@ private[spark] class BlockManager(
     // Removals are idempotent in disk store and memory store. At worst, we get a warning.
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
+    // Check whether the block exists in Alluxio, remove if exists
+    val removedFromAlluxio = removeFromAlluxio(blockId)
 
-    if (!removedFromMemory && !removedFromDisk && !blockId.isRDD) {
+    if (!removedFromMemory && !removedFromDisk && !removedFromAlluxio && !blockId.isRDD) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
 
