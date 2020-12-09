@@ -250,8 +250,12 @@ private[spark] class MemoryStore(
     // Keep track of unroll memory used by this particular block / putIterator() operation
     var unrollMemoryUsedByThisBlock = 0L
 
+
+    val evictStart = System.currentTimeMillis()
     keepUnrolling =
       reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold + size, memoryMode)
+    val evictEnd = System.currentTimeMillis()
+    val evictInit = evictEnd - evictStart
 
     if (!keepUnrolling) {
       logWarning(s"Failed to reserve initial memory threshold of " +
@@ -260,8 +264,8 @@ private[spark] class MemoryStore(
       unrollMemoryUsedByThisBlock += (initialMemoryThreshold + size)
     }
 
-    var evictSum = 0L
     val unrollSt = System.currentTimeMillis()
+    var evictSum = 0L
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (values.hasNext && keepUnrolling) {
@@ -293,6 +297,8 @@ private[spark] class MemoryStore(
 
     disaggManager.sendRDDElapsedTime("unroll", blockId.name, "MemStore",
       (unrollEnd - unrollSt) - evictSum)
+
+    evictSum += evictInit
 
     // Make sure that we have enough memory to store the block. By this point, it is possible that
     // the block's actual memory usage has exceeded the unroll memory by a small amount, so we

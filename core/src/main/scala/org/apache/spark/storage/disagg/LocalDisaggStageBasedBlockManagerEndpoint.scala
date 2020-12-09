@@ -340,6 +340,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       } else {
         if (localFull) {
+          if (storingCost.cost <= 0) {
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.compCost, storingCost.disaggCost,
+              estimateSize, s"$estimateSize", onDisk)
+            return false
+          }
+
           if (evictionPolicy
             .decisionLocalEviction(storingCost, executorId, blockId, estimateSize, onDisk)) {
             addToLocal(blockId, executorId, estimateSize, onDisk)
@@ -361,6 +368,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else {
           // local caching
           // put until threshold
+          if (storingCost.cost <= 0) {
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.compCost, storingCost.disaggCost,
+              estimateSize, s"$estimateSize", onDisk)
+            return false
+          }
+
           if (onDisk) {
 
             val rddId = blockId.asRDDId.get.rddId
@@ -370,6 +384,17 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             logInfo(s"RDD cost: ${blockId}, ${storingCost.compCost}, "
               + s"${storingCost.disaggCost}, " +
               s"${storingCost.compCost/storingCost.futureUse}, $estimateSize")
+
+            if (estimateSize == 0) {
+              addToLocal(blockId, executorId, estimateSize, onDisk)
+              BlazeLogger.logLocalCaching(blockId, executorId,
+                estimateSize, storingCost.compCost, storingCost.disaggCost, "3", onDisk)
+
+              if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+                BlazeLogger.recacheDisaggToLocal(blockId, executorId)
+              }
+              return true
+            }
 
             if (storingCost.compCost < storingCost.disaggCost) {
               logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
@@ -387,24 +412,17 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               // }
             }
 
-            if (storingCost.cost <= 0) {
-              BlazeLogger.discardLocal(blockId, executorId,
-                storingCost.compCost, storingCost.disaggCost,
-                estimateSize, s"$estimateSize", onDisk)
-              false
-            } else {
-              val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
+            val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
 
-              addToLocal(blockId, executorId, estimateSize, onDisk)
-              BlazeLogger.logLocalCaching(blockId, executorId,
-                estimateSize, storingCost.compCost, storingCost.disaggCost, "3", onDisk)
+            addToLocal(blockId, executorId, estimateSize, onDisk)
+            BlazeLogger.logLocalCaching(blockId, executorId,
+              estimateSize, storingCost.compCost, storingCost.disaggCost, "3", onDisk)
 
-              if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-                BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-              }
-
-              true
+            if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+              BlazeLogger.recacheDisaggToLocal(blockId, executorId)
             }
+
+            true
           } else {
             val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
 
@@ -417,6 +435,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             }
 
             true
+
           }
         }
       }
