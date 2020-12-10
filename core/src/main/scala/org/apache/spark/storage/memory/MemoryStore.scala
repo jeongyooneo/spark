@@ -234,7 +234,7 @@ private[spark] class MemoryStore(
                            size: Long,
                            memoryMode: MemoryMode,
                            vHolder: ValuesHolder[T]):
-  Either[(Long, Long), (MemoryEntry[T], Long)] = {
+  Either[(Long, Long), (MemoryEntry[T], Long, Long)] = {
     // Request enough memory to begin unrolling
     // Number of elements unrolled so far
     var elementsUnrolled = 0
@@ -321,7 +321,7 @@ private[spark] class MemoryStore(
       if (keepUnrolling) {
         val entry = entryBuilder.build()
         // Synchronize so that transfer is atomic
-        Right((entry, evictSum))
+        Right((entry, evictSum, unrollMemoryUsedByThisBlock))
       } else {
         Left((unrollMemoryUsedByThisBlock, evictSum))
       }
@@ -405,11 +405,11 @@ private[spark] class MemoryStore(
           } else {
             // Otherwise, cache this block !
             return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
-              case Right((entry, evictSum)) =>
+              case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
                 // Put the unrolled data
                 val evictStart = System.currentTimeMillis()
                 memoryManager.synchronized {
-                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
+                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemUsedByThisBlock)
                   val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
                   assert(success, "transferring unroll memory to storage memory failed")
                 }
@@ -450,7 +450,7 @@ private[spark] class MemoryStore(
         } else {
           // Unrolling this block before caching decision
           return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
-            case Right((entry, evictSum)) =>
+            case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
               sizeEstimationMap.put(blockId, entry.size)
               val estimateSize = entry.size
 
@@ -462,7 +462,7 @@ private[spark] class MemoryStore(
               } else {
                 val evictStart = System.currentTimeMillis()
                 memoryManager.synchronized {
-                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
+                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemUsedByThisBlock)
                   val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
                   assert(success, "transferring unroll memory to storage memory failed")
                 }
