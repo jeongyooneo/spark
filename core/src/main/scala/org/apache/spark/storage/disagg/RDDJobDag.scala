@@ -266,15 +266,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val parentUnrollKey = s"unroll-${parentBlockId.name}"
             val parentEvictionKey = s"eviction-${parentBlockId.name}"
             var diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
-
-            if (metricTracker.blockElapsedTimeMap.contains(parentUnrollKey)) {
-              diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentUnrollKey)
-            }
-
-            if (metricTracker.blockElapsedTimeMap.contains(parentEvictionKey)) {
-              diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentEvictionKey)
-            }
-
+            /*
+          if (metricTracker.blockElapsedTimeMap.contains(parentUnrollKey)) {
+            diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentUnrollKey)
+          }
+          if (metricTracker.blockElapsedTimeMap.contains(parentEvictionKey)) {
+            diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentEvictionKey)
+          }
+          */
             l.append(added + diskoverhead.toLong)
 
           } else {
