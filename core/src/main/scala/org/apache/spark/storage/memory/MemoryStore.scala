@@ -754,51 +754,43 @@ private[spark] class MemoryStore(
       }
 
       // Evict for spilling
-      val space = if (blockId.isEmpty) spaceToEvict + 200 * 1024 * 1024 else spaceToEvict
+      // val space = if (blockId.isEmpty) spaceToEvict + 200 * 1024 * 1024 else spaceToEvict
+      val space = spaceToEvict
 
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
       entries.synchronized {
         if (decisionByMaster) {
-          var cnt = 0
-          val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 2) {
 
-            cnt += 1
+          val evictBlockList: List[BlockId] =
+            disaggManager.localEviction(blockId, executorId,
+              space - freedMemory, Set.empty, false)
 
-            val evictBlockList: List[BlockId] =
-              disaggManager.localEviction(blockId, executorId,
-                space - freedMemory, prevEvictedSelection.toSet, false)
+          val iterator = evictBlockList.iterator
 
-            if (evictBlockList.isEmpty) {
-              cnt += 5
-            }
+          while (iterator.hasNext && freedMemory < space) {
+            val evictBlock = iterator.next()
+            val entry = entries.get(evictBlock)
 
-            evictBlockList.foreach {
-              eblock => prevEvictedSelection.add(eblock)
-            }
-
-            val iterator = evictBlockList.iterator
-
-            logInfo(s"LocalDecision] Trying to evict blocks for ${blockId} $evictBlockList " +
-              s"from executor $executorId, freeMemory: $freedMemory, space: $space, cnt: $cnt")
-
-            while (iterator.hasNext && freedMemory < space) {
-              val evictBlock = iterator.next()
-              val entry = entries.get(evictBlock)
-
-              if (entry == null) {
-                logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
-              } else {
+            if (entry == null) {
+              logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
+            } else {
+              if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock)) {
                 if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                  logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
+                    s"from executor $executorId, freeMemory: $freedMemory, space: $space")
                   selectedBlocks += evictBlock
                   freedMemory += entry.size
                 } else {
-                  logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                    s"from executor $executorId, entry: $entry")
+                  logInfo(s"LocalDecision]  cannot lock $evictBlock " +
+                    s"from executor $executorId")
                   disaggManager.evictionFail(evictBlock, executorId, false)
                 }
+              } else {
+                logInfo(s"LocalDecision]  eviction fail $evictBlock " +
+                  s"from executor $executorId")
+                disaggManager.evictionFail(evictBlock, executorId, false)
               }
             }
           }
