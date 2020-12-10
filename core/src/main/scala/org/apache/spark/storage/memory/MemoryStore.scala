@@ -769,12 +769,17 @@ private[spark] class MemoryStore(
             if (entry == null) {
               logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
             } else {
-              if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock) &&
-                blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
-                logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
-                  s"from executor $executorId, freeMemory: $freedMemory, space: $space")
-                selectedBlocks += evictBlock
-                freedMemory += entry.size
+              if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock)) {
+                if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                  logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
+                    s"from executor $executorId, freeMemory: $freedMemory, space: $space")
+                  selectedBlocks += evictBlock
+                  freedMemory += entry.size
+                } else {
+                  logInfo(s"LocalDecision]  cannot lock $evictBlock " +
+                    s"from executor $executorId")
+                  disaggManager.evictionFail(evictBlock, executorId, false)
+                }
               } else {
                 logInfo(s"LocalDecision]  eviction fail $evictBlock " +
                   s"from executor $executorId")
