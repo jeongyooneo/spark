@@ -233,7 +233,8 @@ private[spark] class MemoryStore(
                            blockId: BlockId,
                            size: Long,
                            memoryMode: MemoryMode,
-                           vHolder: ValuesHolder[T]): Either[Long, MemoryEntry[T]] = {
+                           vHolder: ValuesHolder[T]):
+  Either[(Long, Long), (MemoryEntry[T], Long)] = {
     // Request enough memory to begin unrolling
     // Number of elements unrolled so far
     var elementsUnrolled = 0
@@ -320,37 +321,17 @@ private[spark] class MemoryStore(
       if (keepUnrolling) {
         val entry = entryBuilder.build()
         // Synchronize so that transfer is atomic
-        val evictStart = System.currentTimeMillis()
-        memoryManager.synchronized {
-          releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
-          val success = memoryManager.acquireStorageMemory(blockId, size, memoryMode)
-          assert(success, "transferring unroll memory to storage memory failed")
-        }
-        val evictEnd = System.currentTimeMillis()
-        evictSum += (evictEnd - evictStart)
-
-        disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
-          evictSum)
-
-        Right(entry)
+        Right((entry, evictSum))
       } else {
-
-        disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
-          evictSum)
-
-        Left(unrollMemoryUsedByThisBlock)
+        Left((unrollMemoryUsedByThisBlock, evictSum))
       }
     } else {
-      disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
-        evictSum)
-
       if (blockId.isRDD && decisionByMaster) {
         disaggManager.cachingFail(blockId, unrollMemoryUsedByThisBlock,
           executorId, false, true, false)
       }
-
       // We ran out of space while unrolling the values for this block
-      Left(unrollMemoryUsedByThisBlock)
+      Left((unrollMemoryUsedByThisBlock, evictSum))
     }
   }
 
@@ -424,8 +405,19 @@ private[spark] class MemoryStore(
           } else {
             // Otherwise, cache this block !
             return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
-              case Right(entry) =>
+              case Right((entry, evictSum)) =>
                 // Put the unrolled data
+                val evictStart = System.currentTimeMillis()
+                memoryManager.synchronized {
+                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
+                  val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
+                  assert(success, "transferring unroll memory to storage memory failed")
+                }
+                val evictEnd = System.currentTimeMillis()
+
+                disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
+                  evictSum + (evictEnd - evictStart))
+
                 entries.synchronized {
                   entries.put(blockId, entry)
                 }
@@ -441,11 +433,14 @@ private[spark] class MemoryStore(
 
                 Right(entry.size)
 
-              case Left(unrolledsize) =>
+              case Left((unrolledsize, evictSum)) =>
                 if (blockId.isRDD && decisionByMaster) {
                   disaggManager.cachingFail(blockId, unrolledsize,
                     executorId, false, true, false)
                 }
+
+                disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
+                  evictSum)
 
                 // We ran out of space while unrolling the values for this block
                 logUnrollFailureMessage(blockId, unrolledsize)
@@ -455,7 +450,7 @@ private[spark] class MemoryStore(
         } else {
           // Unrolling this block before caching decision
           return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
-            case Right(entry) =>
+            case Right((entry, evictSum)) =>
               sizeEstimationMap.put(blockId, entry.size)
               val estimateSize = entry.size
 
@@ -465,6 +460,16 @@ private[spark] class MemoryStore(
                 logUnrollFailureMessage(blockId, estimateSize)
                 Left(entry.size)
               } else {
+                val evictStart = System.currentTimeMillis()
+                memoryManager.synchronized {
+                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemoryUsedByThisBlock)
+                  val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
+                  assert(success, "transferring unroll memory to storage memory failed")
+                }
+                val evictEnd = System.currentTimeMillis()
+
+                disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
+                  evictSum + (evictEnd - evictStart))
 
                 // Put the unrolled data
                 entries.synchronized {
@@ -483,7 +488,9 @@ private[spark] class MemoryStore(
                 Right(entry.size)
               }
 
-            case Left(unrolledsize) =>
+            case Left((unrolledsize, evictSum)) =>
+              disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
+                evictSum)
               // We ran out of space while unrolling the values for this block
               logUnrollFailureMessage(blockId, unrolledsize)
               Left(unrolledsize)
