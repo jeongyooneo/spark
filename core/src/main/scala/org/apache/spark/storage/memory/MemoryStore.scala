@@ -407,13 +407,22 @@ private[spark] class MemoryStore(
             return Left(0)
           } else {
             // Do not unrolling for the previously unrolled block
+            val unrollStart = System.currentTimeMillis()
             val entry = getEntryWithoutUnrolling(values, blockId, 0, memoryMode, valuesHolder)
+            val unrollEnd = System.currentTimeMillis()
+
+            disaggManager.sendRDDElapsedTime("unroll", blockId.name, "MemStore",
+              unrollEnd - unrollStart)
+
             val evictStart = System.currentTimeMillis()
             memoryManager.synchronized {
               val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
               assert(success, "transferring unroll memory to storage memory failed")
             }
             val evictEnd = System.currentTimeMillis()
+
+            disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
+              evictEnd - evictStart)
 
             entries.synchronized {
               entries.put(blockId, entry)
