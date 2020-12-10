@@ -747,7 +747,8 @@ private[spark] class MemoryStore(
       }
 
       // Evict for spilling
-      val space = if (blockId.isEmpty) spaceToEvict + 200 * 1024 * 1024 else spaceToEvict
+      // val space = if (blockId.isEmpty) spaceToEvict + 200 * 1024 * 1024 else spaceToEvict
+      val space = spaceToEvict
 
       // This is synchronized to ensure that the set of entries is not changed
       // (because of getValue or getBytes) while traversing the iterator, as that
@@ -769,7 +770,7 @@ private[spark] class MemoryStore(
               if (entry == null) {
                 logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
               } else {
-                if (blockIsEvictable(evictBlock, entry) &&
+                if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock) &&
                   blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
                   logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
                     s"from executor $executorId, freeMemory: $freedMemory, space: $space")
@@ -777,7 +778,7 @@ private[spark] class MemoryStore(
                   freedMemory += entry.size
                 } else {
                   logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                    s"from executor $executorId, entry: $entry")
+                    s"from executor $executorId")
                   disaggManager.evictionFail(evictBlock, executorId, false)
                 }
               }
