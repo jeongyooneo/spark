@@ -528,7 +528,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private def localEvictionFail(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
     logInfo(s"Local eviction failed from disk $onDisk: $blockId, $executorId")
-    if (onDisk) {
+    if (!onDisk) {
       recentlyEvictFailBlocksFromLocal.put(blockId, System.currentTimeMillis())
     } else {
       recentlyEvictFailBlocksFromLocalDisk.put(blockId, System.currentTimeMillis())
