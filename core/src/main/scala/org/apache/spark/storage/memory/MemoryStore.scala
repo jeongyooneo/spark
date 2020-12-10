@@ -430,7 +430,7 @@ private[spark] class MemoryStore(
                 Utils.bytesToString(entry.size),
                 Utils.bytesToString(maxMemory - blocksMemoryUsed)))
 
-            Right(entry.size)
+            return Right(entry.size)
           }
         } else {
           // Unrolling this block before caching decision
