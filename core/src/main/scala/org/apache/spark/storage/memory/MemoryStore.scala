@@ -754,28 +754,13 @@ private[spark] class MemoryStore(
       // can lead to exceptions.
       entries.synchronized {
         if (decisionByMaster) {
-          var cnt = 0
-          val prevEvictedSelection = new mutable.HashSet[BlockId]()
-          while (freedMemory < space && cnt < 2) {
-
-            cnt += 1
+          while (freedMemory < space) {
 
             val evictBlockList: List[BlockId] =
               disaggManager.localEviction(blockId, executorId,
-                space - freedMemory, prevEvictedSelection.toSet, false)
-
-            if (evictBlockList.isEmpty) {
-              cnt += 5
-            }
-
-            evictBlockList.foreach {
-              eblock => prevEvictedSelection.add(eblock)
-            }
+                space - freedMemory, Set.empty, false)
 
             val iterator = evictBlockList.iterator
-
-            logInfo(s"LocalDecision] Trying to evict blocks for ${blockId} $evictBlockList " +
-              s"from executor $executorId, freeMemory: $freedMemory, space: $space, cnt: $cnt")
 
             while (iterator.hasNext && freedMemory < space) {
               val evictBlock = iterator.next()
@@ -784,7 +769,10 @@ private[spark] class MemoryStore(
               if (entry == null) {
                 logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
               } else {
-                if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                if (blockIsEvictable(evictBlock, entry) &&
+                  blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                  logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
+                    s"from executor $executorId, freeMemory: $freedMemory, space: $space")
                   selectedBlocks += evictBlock
                   freedMemory += entry.size
                 } else {
