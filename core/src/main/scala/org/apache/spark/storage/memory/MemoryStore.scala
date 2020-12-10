@@ -366,23 +366,8 @@ private[spark] class MemoryStore(
       valuesHolder: ValuesHolder[T]): Either[Long, Long] = {
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
-    // Number of elements unrolled so far
-    var elementsUnrolled = 0
     // Whether there is still enough memory for us to continue unrolling this block
     var keepUnrolling = true
-    // Initial per-task memory to request for unrolling blocks (bytes).
-    val initialMemoryThreshold = unrollMemoryThreshold
-    // How often to check whether we need to request more memory
-    val memoryCheckPeriod = conf.get(UNROLL_MEMORY_CHECK_PERIOD)
-    // Memory currently reserved by this task for this particular unrolling operation
-    var memoryThreshold = initialMemoryThreshold
-    // Memory to request as a multiple of current vector size
-    val memoryGrowthFactor = conf.get(UNROLL_MEMORY_GROWTH_FACTOR)
-    // Keep track of unroll memory used by this particular block / putIterator() operation
-    var unrollMemoryUsedByThisBlock = 0L
-
-    var vHolder = valuesHolder
-    var newValues = values
 
     // check whether to cache it into memory or disagg
     if (blockId.isRDD && decisionByMaster) {
@@ -401,7 +386,7 @@ private[spark] class MemoryStore(
             executorId, false, !keepUnrolling, false)) {
             // We do not cache this block
             logUnrollFailureMessage(blockId, estimateSize)
-            return Left(unrollMemoryUsedByThisBlock)
+            return Left(0)
           } else {
             // Otherwise, cache this block !
             return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
@@ -454,6 +439,8 @@ private[spark] class MemoryStore(
               sizeEstimationMap.put(blockId, entry.size)
               val estimateSize = entry.size
 
+              keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
+
               if (!disaggManager.cachingDecision(blockId, estimateSize,
                 executorId, false, !keepUnrolling, false)) {
                 // We do not cache this block
@@ -498,6 +485,28 @@ private[spark] class MemoryStore(
         }
       }
     }
+
+    if (blockId.isRDD && decisionByMaster && IS_BLAZE) {
+      throw new RuntimeException("Invalid call")
+    }
+
+
+    // Number of elements unrolled so far
+    var elementsUnrolled = 0
+
+    // Initial per-task memory to request for unrolling blocks (bytes).
+    val initialMemoryThreshold = unrollMemoryThreshold
+    // How often to check whether we need to request more memory
+    val memoryCheckPeriod = conf.get(UNROLL_MEMORY_CHECK_PERIOD)
+    // Memory currently reserved by this task for this particular unrolling operation
+    var memoryThreshold = initialMemoryThreshold
+    // Memory to request as a multiple of current vector size
+    val memoryGrowthFactor = conf.get(UNROLL_MEMORY_GROWTH_FACTOR)
+    // Keep track of unroll memory used by this particular block / putIterator() operation
+    var unrollMemoryUsedByThisBlock = 0L
+
+    var vHolder = valuesHolder
+    var newValues = values
 
     // Request enough memory to begin unrolling
     keepUnrolling =
