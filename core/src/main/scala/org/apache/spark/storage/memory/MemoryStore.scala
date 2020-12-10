@@ -424,6 +424,10 @@ private[spark] class MemoryStore(
                     executorId, false, true, false)
                 }
 
+                memoryManager.synchronized {
+                  releaseUnrollMemoryForThisTask(memoryMode, unrolledsize)
+                }
+
                 disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
                   evictSum)
 
@@ -444,6 +448,9 @@ private[spark] class MemoryStore(
               if (!disaggManager.cachingDecision(blockId, estimateSize,
                 executorId, false, !keepUnrolling, false)) {
                 // We do not cache this block
+                memoryManager.synchronized {
+                  releaseUnrollMemoryForThisTask(memoryMode, entry.size)
+                }
                 logUnrollFailureMessage(blockId, estimateSize)
                 Left(entry.size)
               } else {
@@ -476,6 +483,9 @@ private[spark] class MemoryStore(
               }
 
             case Left((unrolledsize, evictSum)) =>
+              memoryManager.synchronized {
+                releaseUnrollMemoryForThisTask(memoryMode, unrolledsize)
+              }
               disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
                 evictSum)
               // We ran out of space while unrolling the values for this block
