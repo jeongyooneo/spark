@@ -389,6 +389,7 @@ private[spark] class MemoryStore(
             return Left(0)
           } else {
             // Otherwise, cache this block !
+            logInfo(s"Unrolling from executor ${executorId} for ${blockId} 111")
             return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
               case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
                 // Put the unrolled data
@@ -438,6 +439,8 @@ private[spark] class MemoryStore(
           }
         } else {
           // Unrolling this block before caching decision
+          logInfo(s"Unrolling from executor ${executorId} " +
+            s"for ${blockId} before caching decision 22")
           return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
             case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
               sizeEstimationMap.put(blockId, entry.size)
@@ -449,7 +452,7 @@ private[spark] class MemoryStore(
                 executorId, false, !keepUnrolling, false)) {
                 // We do not cache this block
                 memoryManager.synchronized {
-                  releaseUnrollMemoryForThisTask(memoryMode, entry.size)
+                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemUsedByThisBlock)
                 }
                 logUnrollFailureMessage(blockId, estimateSize)
                 Left(entry.size)
