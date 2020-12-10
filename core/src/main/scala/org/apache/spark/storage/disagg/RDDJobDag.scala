@@ -291,7 +291,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     }
 
-    (b, l, s)
+    (b, l, numShuffle)
   }
 
   def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
