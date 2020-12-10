@@ -209,16 +209,17 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                                      nodeCreatedTime: Long,
                                      visited: mutable.Set[RDDNode],
                                      tSum: Long):
-  (ListBuffer[BlockId], ListBuffer[Long]) = {
+  (ListBuffer[BlockId], ListBuffer[Long], Int) = {
 
     val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
+    var numShuffle = 0
 
     val rddId = blockIdToRDDId(childBlockId)
     val rddNode = vertices(rddId)
 
     if (visited.contains(rddNode)) {
-      return (b, l)
+      return (b, l, numShuffle)
     }
 
     visited.add(rddNode)
@@ -245,6 +246,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         // shuffled RDD
         b.append(getBlockId(rddNode.rddId, childBlockId))
         l.append(timeSum)
+        numShuffle += 1
       } else {
         // This is root RDD that reads input!
         // We increase the time because it causes memory pressure.
@@ -280,26 +282,31 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             l.append(added)
           }
         } else {
-          val (bb, ll) =
+          val (bb, ll, s) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
           b.appendAll(bb)
           l.appendAll(ll)
+          numShuffle += s
         }
       }
     }
 
-    (b, l)
+    (b, l, s)
   }
 
   def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
     val rddId = blockIdToRDDId(blockId)
-    val (parentBlocks, times) =
+    val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
-        nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
+        nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L, 0)
 
     val t = times.sum
-    // logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}")
-    t
+    if (numShuffle > 3) {
+      t + 10000000
+    } else {
+      // logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}")
+      t
+    }
   }
 
   def getRefCntRDD(rddId: Int): Int = {
