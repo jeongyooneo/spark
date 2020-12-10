@@ -755,32 +755,30 @@ private[spark] class MemoryStore(
       // can lead to exceptions.
       entries.synchronized {
         if (decisionByMaster) {
-          while (freedMemory < space) {
 
-            val evictBlockList: List[BlockId] =
-              disaggManager.localEviction(blockId, executorId,
-                space - freedMemory, Set.empty, false)
+          val evictBlockList: List[BlockId] =
+            disaggManager.localEviction(blockId, executorId,
+              space - freedMemory, Set.empty, false)
 
-            val iterator = evictBlockList.iterator
+          val iterator = evictBlockList.iterator
 
-            while (iterator.hasNext && freedMemory < space) {
-              val evictBlock = iterator.next()
-              val entry = entries.get(evictBlock)
+          while (iterator.hasNext && freedMemory < space) {
+            val evictBlock = iterator.next()
+            val entry = entries.get(evictBlock)
 
-              if (entry == null) {
-                logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
+            if (entry == null) {
+              logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
+            } else {
+              if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock) &&
+                blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
+                  s"from executor $executorId, freeMemory: $freedMemory, space: $space")
+                selectedBlocks += evictBlock
+                freedMemory += entry.size
               } else {
-                if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock) &&
-                  blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
-                  logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
-                    s"from executor $executorId, freeMemory: $freedMemory, space: $space")
-                  selectedBlocks += evictBlock
-                  freedMemory += entry.size
-                } else {
-                  logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                    s"from executor $executorId")
-                  disaggManager.evictionFail(evictBlock, executorId, false)
-                }
+                logInfo(s"LocalDecision]  eviction fail $evictBlock " +
+                  s"from executor $executorId")
+                disaggManager.evictionFail(evictBlock, executorId, false)
               }
             }
           }
