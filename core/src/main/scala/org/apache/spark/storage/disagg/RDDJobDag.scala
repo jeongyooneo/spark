@@ -298,7 +298,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
-        nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L, 0)
+        nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
 
     val t = times.sum
     if (numShuffle > 3) {
