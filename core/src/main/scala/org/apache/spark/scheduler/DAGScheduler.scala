@@ -318,6 +318,7 @@ private[spark] class DAGScheduler(
 
   private val isProfiling = env.conf.get(BlazeParameters.SAMPLING)
   private val autocaching = env.conf.get(BlazeParameters.AUTOCACHING)
+  private val DISABLE_DISK_LOCALITY = env.conf.get(BlazeParameters.DISK_LOCALITY_UNAWARE)
 
   private[scheduler]
   def getCacheLocs(rdd: RDD[_]): IndexedSeq[Seq[TaskLocation]] = cacheLocs.synchronized {
@@ -327,15 +328,23 @@ private[spark] class DAGScheduler(
       cacheLocs(rdd.id)
     } else {
       if (!cacheLocs.contains(rdd.id)) {
-
         if (autocaching) {
           // Note: if the storage level is NONE, we don't need to get locations from block manager.
           val locs: IndexedSeq[Seq[TaskLocation]] =
             if (disaggBlockManagerEndpoint.isRddCache(rdd.id)) {
               val blockIds =
                 rdd.partitions.indices.map(index => RDDBlockId(rdd.id, index)).toArray[BlockId]
-              blockManagerMaster.getLocations(blockIds).map { bms =>
-                bms.map(bm => TaskLocation(bm.host, bm.executorId))
+
+              if (DISABLE_DISK_LOCALITY) {
+                blockIds.flatMap(bid => blockManagerMaster.getBlockStatus(bid, false))
+                  .filter(bi => bi._2.diskSize == 0 && bi._2.memSize > 0)
+                  .map(bi => TaskLocation(bi._1.host, bi._1.executorId))
+                  .flatten
+                  .toIndexedSeq
+              } else {
+                blockManagerMaster.getLocations(blockIds).map { bms =>
+                  bms.map(bm => TaskLocation(bm.host, bm.executorId))
+                }
               }
             } else {
               IndexedSeq.fill(rdd.partitions.length)(Nil)

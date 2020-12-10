@@ -232,10 +232,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     // Eviction effect
+    /*
     val evictionKey = s"eviction-${childBlockId.name}"
     if (metricTracker.blockElapsedTimeMap.containsKey(evictionKey)) {
       timeSum +=  metricTracker.blockElapsedTimeMap.get(evictionKey)
     }
+    */
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
