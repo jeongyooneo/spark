@@ -270,6 +270,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         val added = timeSum + elapsedTimeFromParent
 
         if (metricTracker.blockStored(parentBlockId)) {
+          logInfo(s"RDD ${myRDD} DFS from " +
+            s"${childBlockId} to ${parentBlockId}: stored")
           b.append(parentBlockId)
           if (metricTracker.localDiskStoredBlocksMap.containsKey(parentBlockId)) {
             // If it is cached, we should read it from mem or disk
@@ -293,6 +295,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         } else {
           val (bb, ll, s) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
+          logInfo(s"RDD ${myRDD} DFS from " +
+            s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
           b.appendAll(bb)
           l.appendAll(ll)
           numShuffle += s
@@ -706,23 +710,25 @@ object RDDJobDag extends Logging {
             val rdd_id = rdd("RDD ID").asInstanceOf[Long].toInt
             val name = rdd("Name").asInstanceOf[String]
 
-            val numCachedPartitions = rdd("Number of Cached Partitions")
-              .asInstanceOf[Long].toInt
-            val cached = numCachedPartitions > 0
-            val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
+            if (!name.contains("broadcast")) {
+              val numCachedPartitions = rdd("Number of Cached Partitions")
+                .asInstanceOf[Long].toInt
+              val cached = numCachedPartitions > 0
+              val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
-            val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
-            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
+              val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
+              logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
 
-            if (!dag.contains(rdd_object)) {
-              vertices(rdd_id) = rdd_object
-              dag(rdd_object) = new mutable.HashSet()
-              for (parent_id <- parents) {
-                edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
-              }
-            } else {
-              dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
-                p => p.addRefStage(stageId)
+              if (!dag.contains(rdd_object)) {
+                vertices(rdd_id) = rdd_object
+                dag(rdd_object) = new mutable.HashSet()
+                for (parent_id <- parents) {
+                  edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
+                }
+              } else {
+                dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
+                  p => p.addRefStage(stageId)
+                }
               }
             }
           }
@@ -754,7 +760,7 @@ object RDDJobDag extends Logging {
       val visited = new mutable.HashSet[RDDNode]()
       rddjobdag.reverseDag.keys.foreach {
         // node => logInfo(s"PRDD ${node.rddId}, Edges: ${}, STAGES: ${node.getStages}")
-        node => logInfo(s"ReversePRDD ${node.rddId}, Edges: ${dag(node)}")
+        node => logInfo(s"ReversePRDD ${node.rddId}, Edges: ${rddjobdag.reverseDag(node)}")
           if (rddjobdag.reverseDag(node).map(n => n.rddId).contains(node.rddId)) {
             throw new RuntimeException(s"RDD ${node.rddId} " +
               s"has cycle ${rddjobdag.reverseDag(node)}")
