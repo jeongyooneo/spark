@@ -423,7 +423,7 @@ private[spark] class MemoryStore(
               disaggManager.cachingDone(blockId, entry.size, executorId, false)
             }
 
-            logInfo(s"Unrolling and store from executor ${executorId} for ${blockId} 111")
+            logInfo(s"No unrolling and store from executor ${executorId} for ${blockId} 111")
 
             logInfo("Block %s stored as values in memory (estimated size %s, free %s)"
               .format(blockId,
