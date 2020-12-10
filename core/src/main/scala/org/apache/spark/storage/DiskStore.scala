@@ -38,7 +38,6 @@ import org.apache.spark.util.Utils
 import org.apache.spark.util.io.ChunkedByteBuffer
 import org.apache.spark.{SecurityManager, SparkConf}
 
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -130,47 +129,6 @@ private[spark] class DiskStore(
     if (!disaggManager.cachingDecision(blockId, size,
       executorId, false, requiredEvictionSize > 0L, true)) {
       pendingSize.addAndGet(-size)
-      return
-    }
-
-    // We should evict if requiredEvictionSize > 0
-    val prevEvictedSelection = new mutable.HashSet[BlockId]()
-    var cnt = 0
-    while (totalSize.get() + pending > THRESHOLD && cnt < 2) {
-      val evictBlockList: List[BlockId] =
-        disaggManager.localEviction(
-          Option(blockId), executorId, size, prevEvictedSelection.toSet, true)
-
-      evictBlockList.foreach {
-        eblock => prevEvictedSelection.add(eblock)
-      }
-
-      val iterator = evictBlockList.iterator
-
-      logInfo(s"LocalDecision] Trying to evict blocks $evictBlockList " +
-        s"from executor disk $executorId, totalSize: ${totalSize.get()}")
-
-      while (iterator.hasNext) {
-        val bid = iterator.next()
-        val bsize = blockSizes.get(bid)
-        logInfo(s"Evicting block $bid from disk size $bsize")
-        if (blockManager.removeBlockFromDisk(bid, true)) {
-          logInfo(s"Evicting done $bid")
-          disaggManager.localEvictionDone(blockId, executorId, true)
-        } else {
-          disaggManager.evictionFail(bid, executorId, true)
-        }
-      }
-
-      if (evictBlockList.isEmpty) {
-        cnt = 100
-      }
-
-      cnt += 1
-    }
-
-    if (totalSize.get() + pending > THRESHOLD) {
-      disaggManager.cachingFail(blockId, size, executorId, false, true, true)
       return
     }
 
