@@ -229,6 +229,24 @@ private[spark] class MemoryStore(
       }
   }
 
+  private def getEntryWithoutUnrolling[T](values: Iterator[T],
+                           blockId: BlockId,
+                           size: Long,
+                           memoryMode: MemoryMode,
+                           vHolder: ValuesHolder[T]) : MemoryEntry[T] = {
+
+    // Unroll this block safely, checking whether we have exceeded our threshold periodically
+    while (values.hasNext) {
+      vHolder.storeValue(values.next())
+    }
+
+    val entryBuilder = vHolder.getBuilder()
+    val size = entryBuilder.preciseSize
+
+    val entry = entryBuilder.build()
+    entry
+  }
+
   private def unrolling[T](values: Iterator[T],
                            blockId: BlockId,
                            size: Long,
@@ -388,57 +406,31 @@ private[spark] class MemoryStore(
             logUnrollFailureMessage(blockId, estimateSize)
             return Left(0)
           } else {
-            // Otherwise, cache this block !
-            return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
-              case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
-                // Put the unrolled data
-                val evictStart = System.currentTimeMillis()
-                memoryManager.synchronized {
-                  releaseUnrollMemoryForThisTask(memoryMode, unrollMemUsedByThisBlock)
-                  val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
-                  assert(success, "transferring unroll memory to storage memory failed")
-                }
-                val evictEnd = System.currentTimeMillis()
-
-                disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
-                  evictSum + (evictEnd - evictStart))
-
-                entries.synchronized {
-                  entries.put(blockId, entry)
-                }
-
-                if (blockId.isRDD && decisionByMaster) {
-                  disaggManager.cachingDone(blockId, entry.size, executorId, false)
-                }
-
-                logInfo(s"Unrolling and store from executor ${executorId} for ${blockId} 111")
-
-                logInfo("Block %s stored as values in memory (estimated size %s, free %s)"
-                  .format(blockId,
-                  Utils.bytesToString(entry.size),
-                    Utils.bytesToString(maxMemory - blocksMemoryUsed)))
-
-                Right(entry.size)
-
-              case Left((unrolledsize, evictSum)) =>
-                if (blockId.isRDD && decisionByMaster) {
-                  disaggManager.cachingFail(blockId, unrolledsize,
-                    executorId, false, true, false)
-                }
-
-                logInfo(s"Partital unrolling from executor ${executorId} for ${blockId} 111")
-
-                memoryManager.synchronized {
-                  releaseUnrollMemoryForThisTask(memoryMode, unrolledsize)
-                }
-
-                disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
-                  evictSum)
-
-                // We ran out of space while unrolling the values for this block
-                logUnrollFailureMessage(blockId, unrolledsize)
-                Left(unrolledsize)
+            // Do not unrolling for the previously unrolled block
+            val entry = getEntryWithoutUnrolling(values, blockId, 0, memoryMode, valuesHolder)
+            val evictStart = System.currentTimeMillis()
+            memoryManager.synchronized {
+              val success = memoryManager.acquireStorageMemory(blockId, entry.size, memoryMode)
+              assert(success, "transferring unroll memory to storage memory failed")
             }
+            val evictEnd = System.currentTimeMillis()
+
+            entries.synchronized {
+              entries.put(blockId, entry)
+            }
+
+            if (blockId.isRDD && decisionByMaster) {
+              disaggManager.cachingDone(blockId, entry.size, executorId, false)
+            }
+
+            logInfo(s"Unrolling and store from executor ${executorId} for ${blockId} 111")
+
+            logInfo("Block %s stored as values in memory (estimated size %s, free %s)"
+              .format(blockId,
+                Utils.bytesToString(entry.size),
+                Utils.bytesToString(maxMemory - blocksMemoryUsed)))
+
+            Right(entry.size)
           }
         } else {
           // Unrolling this block before caching decision
