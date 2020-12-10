@@ -18,10 +18,10 @@
 package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
+import org.apache.spark.storage.RDDBlockId
 
 private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override val index: Int = idx
@@ -104,7 +104,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
 
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
     val res = SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle,
-      split.index, split.index + 1, context)
+      split.index, split.index + 1, Some(RDDBlockId(id, split.index)), context)
       .read()
       .asInstanceOf[Iterator[(K, C)]]
 

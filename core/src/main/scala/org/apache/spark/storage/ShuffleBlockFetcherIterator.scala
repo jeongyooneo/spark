@@ -63,6 +63,7 @@ import org.apache.spark.util.io.ChunkedByteBufferOutputStream
 private[spark]
 final class ShuffleBlockFetcherIterator(
     context: TaskContext,
+    val blockId: Option[BlockId],
     shuffleClient: ShuffleClient,
     blockManager: BlockManager,
     blocksByAddress: Iterator[(BlockManagerId, Seq[(BlockId, Long)])],
@@ -372,7 +373,16 @@ final class ShuffleBlockFetcherIterator(
     logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
   }
 
-  override def hasNext: Boolean = numBlocksProcessed < numBlocksToFetch
+  private var fetchTime = 0L
+
+  override def hasNext: Boolean = {
+    val result = numBlocksProcessed < numBlocksToFetch
+    if (blockId.isDefined && !result) {
+      blockManager.disaggManager.sendRDDElapsedTime("fetch",
+        blockId.get.name, "ShuffleFetch", fetchTime)
+    }
+    result
+  }
 
   /**
    * Fetches the next (BlockId, InputStream). If a task fails, the ManagedBuffers
@@ -400,6 +410,7 @@ final class ShuffleBlockFetcherIterator(
       result = results.take()
       val stopFetchWait = System.currentTimeMillis()
       shuffleMetrics.incFetchWaitTime(stopFetchWait - startFetchWait)
+      fetchTime += (stopFetchWait - startFetchWait)
 
       result match {
         case r @ SuccessFetchResult(blockId, address, size, buf, isNetworkReqDone) =>
@@ -438,6 +449,8 @@ final class ShuffleBlockFetcherIterator(
             throwFetchFailedException(blockId, address, new IOException(msg))
           }
 
+          val fs = System.currentTimeMillis()
+
           val in = try {
             buf.createInputStream()
           } catch {
@@ -461,6 +474,9 @@ final class ShuffleBlockFetcherIterator(
               // TODO: manage the memory used here, and spill it into disk in case of OOM.
               Utils.copyStream(input, out, closeStreams = true)
               input = out.toChunkedByteBuffer.toInputStream(dispose = true)
+              val fe = System.currentTimeMillis()
+              fetchTime += (fe - fs)
+              input
             }
           } catch {
             case e: IOException =>

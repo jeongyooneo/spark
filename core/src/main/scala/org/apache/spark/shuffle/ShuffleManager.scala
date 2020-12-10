@@ -17,6 +17,7 @@
 
 package org.apache.spark.shuffle
 
+import org.apache.spark.storage.BlockId
 import org.apache.spark.{ShuffleDependency, TaskContext}
 
 /**
@@ -48,6 +49,7 @@ private[spark] trait ShuffleManager {
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,
+      blockId: Option[BlockId],
       context: TaskContext): ShuffleReader[K, C]
 
   /**

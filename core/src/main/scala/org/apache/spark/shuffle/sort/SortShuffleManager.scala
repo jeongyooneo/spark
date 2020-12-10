@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.shuffle._
+import org.apache.spark.storage.BlockId
 
 /**
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
@@ -114,9 +115,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       handle: ShuffleHandle,
       startPartition: Int,
       endPartition: Int,
+      blockId: Option[BlockId],
       context: TaskContext): ShuffleReader[K, C] = {
     new BlockStoreShuffleReader(
-      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+      handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition,
+      blockId, context)
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */

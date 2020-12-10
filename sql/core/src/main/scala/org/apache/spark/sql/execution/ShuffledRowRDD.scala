@@ -164,6 +164,7 @@ class ShuffledRowRDD(
         dependency.shuffleHandle,
         shuffledRowPartition.startPreShufflePartitionIndex,
         shuffledRowPartition.endPreShufflePartitionIndex,
+        None,
         context)
     val ret = reader.read().asInstanceOf[Iterator[Product2[Int, InternalRow]]].map(_._2)
 

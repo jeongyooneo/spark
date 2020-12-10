@@ -487,6 +487,12 @@ private[spark] class MemoryStore(
     // Make sure that we have enough memory to store the block. By this point, it is possible that
     // the block's actual memory usage has exceeded the unroll memory by a small amount, so we
     // perform one final call to attempt to allocate additional memory if necessary.
+    val evictEnd = System.currentTimeMillis()
+
+    disaggManager.sendRDDElapsedTime("eviction", blockId.name,
+      "MemoryStore", evictEnd - evictStart)
+
+
     if (keepUnrolling) {
       val entryBuilder = vHolder.getBuilder()
       val size = entryBuilder.preciseSize
@@ -507,11 +513,6 @@ private[spark] class MemoryStore(
           assert(success, "transferring unroll memory to storage memory failed")
         }
 
-        val evictEnd = System.currentTimeMillis()
-
-        disaggManager.sendRDDElapsedTime("eviction", blockId.name,
-          "MemoryStore", evictEnd - evictStart)
-
         entries.synchronized {
           entries.put(blockId, entry)
         }
@@ -525,6 +526,7 @@ private[spark] class MemoryStore(
 
         Right(entry.size)
       } else {
+
 
         if (blockId.isRDD && decisionByMaster) {
           disaggManager.cachingFail(blockId, size, executorId, false, true, false)

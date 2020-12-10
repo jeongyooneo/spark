@@ -245,7 +245,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       if (rddNode.shuffled) {
         // shuffled RDD
         b.append(getBlockId(rddNode.rddId, childBlockId))
-        l.append(timeSum)
+
+        val fetchKey = s"fetch-${childBlockId.name}"
+        if (metricTracker.blockElapsedTimeMap.containsKey(fetchKey)) {
+          l.append(timeSum + metricTracker.blockElapsedTimeMap.get(fetchKey))
+        } else {
+          l.append(timeSum)
+        }
         numShuffle += 1
       } else {
         // This is root RDD that reads input!

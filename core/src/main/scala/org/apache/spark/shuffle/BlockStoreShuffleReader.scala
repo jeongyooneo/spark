@@ -18,9 +18,9 @@
 package org.apache.spark.shuffle
 
 import org.apache.spark._
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
+import org.apache.spark.storage.{BlockId, BlockManager, ShuffleBlockFetcherIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -32,6 +32,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
     startPartition: Int,
     endPartition: Int,
+    blockId: Option[BlockId],
     context: TaskContext,
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
@@ -43,6 +44,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   override def read(): Iterator[Product2[K, C]] = {
     val wrappedStreams = new ShuffleBlockFetcherIterator(
       context,
+      blockId,
       blockManager.shuffleClient,
       blockManager,
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
