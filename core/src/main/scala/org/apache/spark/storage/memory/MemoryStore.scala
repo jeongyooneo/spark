@@ -771,21 +771,33 @@ private[spark] class MemoryStore(
       // can lead to exceptions.
       entries.synchronized {
         if (decisionByMaster) {
+          var cnt = 0
+          val prevEvictedSelection = new mutable.HashSet[BlockId]()
 
-          val evictBlockList: List[BlockId] =
-            disaggManager.localEviction(blockId, executorId,
-              space - freedMemory, Set.empty, false)
+          while (freedMemory < space && cnt < 2) {
+            cnt += 1
 
-          val iterator = evictBlockList.iterator
+            val evictBlockList: List[BlockId] =
+              disaggManager.localEviction(blockId, executorId,
+                space - freedMemory, prevEvictedSelection.toSet, false)
 
-          while (iterator.hasNext && freedMemory < space) {
-            val evictBlock = iterator.next()
-            val entry = entries.get(evictBlock)
+            if (evictBlockList.isEmpty) {
+              cnt += 5
+            }
 
-            if (entry == null) {
-              logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
-            } else {
-              if (rddToAdd.isEmpty || rddToAdd != getRddId(evictBlock)) {
+            evictBlockList.foreach {
+              eblock => prevEvictedSelection.add(eblock)
+            }
+
+            val iterator = evictBlockList.iterator
+
+            while (iterator.hasNext && freedMemory < space) {
+              val evictBlock = iterator.next()
+              val entry = entries.get(evictBlock)
+
+              if (entry == null) {
+                logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
+              } else {
                 if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
                   logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
                     s"from executor $executorId, freeMemory: $freedMemory, space: $space")
@@ -796,10 +808,6 @@ private[spark] class MemoryStore(
                     s"from executor $executorId")
                   disaggManager.evictionFail(evictBlock, executorId, false)
                 }
-              } else {
-                logInfo(s"LocalDecision]  eviction fail $evictBlock " +
-                  s"from executor $executorId")
-                disaggManager.evictionFail(evictBlock, executorId, false)
               }
             }
           }

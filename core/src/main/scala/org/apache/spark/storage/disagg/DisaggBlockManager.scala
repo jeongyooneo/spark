@@ -64,15 +64,8 @@ class DisaggBlockManager(
   def localEviction(blockId: Option[BlockId], executorId: String, size: Long,
                     prevEvicted: Set[BlockId],
                     onDisk: Boolean): List[BlockId] = {
-    val curr = System.currentTimeMillis()
-    if (curr - localEvictionTime >= 1000) {
-      val l = driverEndpoint.askSync[List[BlockId]](
+      driverEndpoint.askSync[List[BlockId]](
         LocalEviction(blockId, executorId, size, prevEvicted, onDisk))
-      localEvictionCache = l
-      localEvictionTime = curr
-    }
-
-    localEvictionCache
   }
 
   def localEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {

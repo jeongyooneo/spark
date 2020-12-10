@@ -462,20 +462,20 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     evictionPolicy.selectEvictFromLocal(
       new CompDisaggCost(RDDBlockId(0, -1), Double.MaxValue), executorId, evictSize, onDisk) {
       iter =>
-        if (onDisk) {
-          iter
-            .filter(discardingBlock => blockManagerInfo.blocks.contains(discardingBlock.blockId)
-              && blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0)
-            .map(b => b.blockId)
-        } else {
-          iter
-            .filter(discardingBlock => blockManagerInfo.blocks.contains(discardingBlock.blockId)
-              && blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0)
-            .map(b => b.blockId)
-        }
-    }
+        /*
+          if (onDisk) {
+            iter
+              .filter(discardingBlock => blockManagerInfo.blocks.contains(discardingBlock.blockId)
+                && blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0)
+              .map(b => b.blockId)
+          } else {
+            iter
+              .filter(discardingBlock => blockManagerInfo.blocks.contains(discardingBlock.blockId)
+                && blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0)
+              .map(b => b.blockId)
+          }
+          */
 
-    /*
         if (iter.isEmpty) {
           logWarning(s"Low comp disagg block is empty " +
             s"for evicting $blockId, size $evictSize")
@@ -538,7 +538,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           }
         }
     }
-        */
   }
 
   private def localEvictionFail(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
