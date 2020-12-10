@@ -389,7 +389,6 @@ private[spark] class MemoryStore(
             return Left(0)
           } else {
             // Otherwise, cache this block !
-            logInfo(s"Unrolling from executor ${executorId} for ${blockId} 111")
             return unrolling(values, blockId, 0, memoryMode, valuesHolder) match {
               case Right((entry, evictSum, unrollMemUsedByThisBlock)) =>
                 // Put the unrolled data
@@ -412,6 +411,8 @@ private[spark] class MemoryStore(
                   disaggManager.cachingDone(blockId, entry.size, executorId, false)
                 }
 
+                logInfo(s"Unrolling and store from executor ${executorId} for ${blockId} 111")
+
                 logInfo("Block %s stored as values in memory (estimated size %s, free %s)"
                   .format(blockId,
                   Utils.bytesToString(entry.size),
@@ -424,6 +425,8 @@ private[spark] class MemoryStore(
                   disaggManager.cachingFail(blockId, unrolledsize,
                     executorId, false, true, false)
                 }
+
+                logInfo(s"Partital unrolling from executor ${executorId} for ${blockId} 111")
 
                 memoryManager.synchronized {
                   releaseUnrollMemoryForThisTask(memoryMode, unrolledsize)
@@ -451,6 +454,9 @@ private[spark] class MemoryStore(
               if (!disaggManager.cachingDecision(blockId, estimateSize,
                 executorId, false, !keepUnrolling, false)) {
                 // We do not cache this block
+
+                logInfo(s"Unrolling but not store from executor ${executorId} for ${blockId} 111")
+
                 memoryManager.synchronized {
                   releaseUnrollMemoryForThisTask(memoryMode, unrollMemUsedByThisBlock)
                 }
@@ -464,6 +470,8 @@ private[spark] class MemoryStore(
                   assert(success, "transferring unroll memory to storage memory failed")
                 }
                 val evictEnd = System.currentTimeMillis()
+
+                logInfo(s"Unrolling and store from executor ${executorId} for ${blockId} 222")
 
                 disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
                   evictSum + (evictEnd - evictStart))
@@ -489,6 +497,9 @@ private[spark] class MemoryStore(
               memoryManager.synchronized {
                 releaseUnrollMemoryForThisTask(memoryMode, unrolledsize)
               }
+
+              logInfo(s"Partial unrolling from executor ${executorId} for ${blockId} 222")
+
               disaggManager.sendRDDElapsedTime("eviction", blockId.name, "MemStore",
                 evictSum)
               // We ran out of space while unrolling the values for this block

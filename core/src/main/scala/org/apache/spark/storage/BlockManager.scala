@@ -1797,7 +1797,7 @@ private[spark] class BlockManager(
   private[storage] override def dropFromMemory[T: ClassTag](
       blockId: BlockId,
       data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
-    logInfo(s"Dropping block $blockId from memory")
+    logInfo(s"Dropping block $blockId from memory executor ${executorId}")
     val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
     var blockIsUpdated = false
     val level = info.level
