@@ -483,6 +483,50 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else if (blockId.isEmpty) {
           // Spilling
           return iter.map(m => m.blockId)
+        } else if (!BLAZE_COST_FUNC) {
+
+          val map = if (onDisk) {
+            recentlyEvictFailBlocksFromLocalDisk
+          } else {
+            recentlyEvictFailBlocksFromLocal
+          }
+
+          iter.foreach {
+            discardingBlock => {
+              if (!prevEvicted.contains(discardingBlock.blockId)
+                && discardingBlock.blockId != blockId.get) {
+                val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
+                val createdTime = metricTracker
+                  .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
+                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+                  map.remove(discardingBlock.blockId)
+                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
+                    if (onDisk &&
+                      blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0) {
+                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).diskSize
+                      evictionList.append(discardingBlock.blockId)
+                    } else if (!onDisk &&
+                      blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0) {
+                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                      evictionList.append(discardingBlock.blockId)
+                    }
+                  }
+                }
+              }
+            }
+
+              if (sizeSum >= evictSize + 5 * 1024 * 1024) {
+                return evictionList.toList
+              }
+          }
+
+          if (sizeSum >= evictSize) {
+            return evictionList.toList
+          } else {
+            logWarning(s"Size sum $sizeSum < eviction Size $evictSize, " +
+              s"for caching ${blockId} selected list: $evictionList")
+            List.empty
+          }
         } else {
 
           var sum = 0.0
@@ -493,36 +537,38 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             recentlyEvictFailBlocksFromLocal
           }
 
+          val storingCost = costAnalyzer.compDisaggCost(blockId.get)
+
           iter.foreach {
             discardingBlock => {
-              if (!prevEvicted.contains(discardingBlock.blockId)) {
-
-                if (blockId.isDefined && discardingBlock.blockId != blockId.get
-                  || blockId.isEmpty) {
-                  val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
-                  val createdTime = metricTracker
-                    .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-                  if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
-                    map.remove(discardingBlock.blockId)
-                    if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
-                      if (onDisk &&
-                        blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0) {
-                        sum += discardingBlock.cost
-                        sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).diskSize
-                        evictionList.append(discardingBlock.blockId)
-                      } else if (!onDisk &&
-                        blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0) {
-                        sum += discardingBlock.cost
-                        sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
-                        evictionList.append(discardingBlock.blockId)
-                      }
+              if (!prevEvicted.contains(discardingBlock.blockId)
+                && discardingBlock.cost <= storingCost.cost
+                && discardingBlock.blockId != blockId.get) {
+                val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
+                val createdTime = metricTracker
+                  .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
+                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+                  map.remove(discardingBlock.blockId)
+                  if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
+                    if (onDisk &&
+                      blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0 &&
+                      sum <= storingCost.cost) {
+                      sum += discardingBlock.cost
+                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).diskSize
+                      evictionList.append(discardingBlock.blockId)
+                    } else if (!onDisk &&
+                      blockManagerInfo.blocks(discardingBlock.blockId).memSize > 0 &&
+                      sum <= storingCost.cost) {
+                      sum += discardingBlock.cost
+                      sizeSum += blockManagerInfo.blocks(discardingBlock.blockId).memSize
+                      evictionList.append(discardingBlock.blockId)
                     }
                   }
                 }
               }
             }
 
-              if (sizeSum >= evictSize + 250 * 1024 * 1024) {
+              if (sizeSum >= evictSize + 5 * 1024 * 1024) {
                 logInfo(s"CostSum: $sum, block: $blockId")
                 return evictionList.toList
               }
