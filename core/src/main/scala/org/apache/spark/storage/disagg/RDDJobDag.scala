@@ -246,12 +246,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         // shuffled RDD
         b.append(getBlockId(rddNode.rddId, childBlockId))
 
+        l.append(timeSum)
+        /*
         val fetchKey = s"fetch-${childBlockId.name}"
         if (metricTracker.blockElapsedTimeMap.containsKey(fetchKey)) {
           l.append(timeSum + metricTracker.blockElapsedTimeMap.get(fetchKey))
         } else {
           l.append(timeSum)
         }
+        */
         numShuffle += 1
       } else {
         // This is root RDD that reads input!
@@ -306,6 +309,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       dfsGetBlockElapsedTime(rddId, blockId,
         nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
 
+    logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
     val t = times.sum
     if (numShuffle > 3) {
       t + 10000000
@@ -708,7 +712,7 @@ object RDDJobDag extends Logging {
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
             val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
-            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId")
+            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
