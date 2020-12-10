@@ -532,7 +532,10 @@ class BlockManagerMasterEndpoint(
       if (useDisk && diskLocalityUnaware) {
         val locations = blockLocations.get(blockId).toSeq
         // Disk locality unaware
-        locations.filter { bmId => blockManagerInfo(bmId).getStatus(blockId).get.diskSize == 0 }
+        locations.filter { bmId => {
+          blockManagerInfo(bmId).getStatus(blockId).get.diskSize == 0 &&
+          blockManagerInfo(bmId).getStatus(blockId).get.memSize > 0
+        } }
       } else {
         blockLocations.get(blockId).toSeq
       }
