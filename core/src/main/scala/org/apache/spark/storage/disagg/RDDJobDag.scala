@@ -433,6 +433,30 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     vertices(rddId)
   }
 
+  private val cachedNodesMap = new ConcurrentHashMap[RDDNode, Option[RDDNode]]()
+
+  def getParentCachedNodes(rddNode: RDDNode): Option[RDDNode] = {
+    if (cachedNodesMap.containsKey(rddNode)) {
+      cachedNodesMap.get(rddNode)
+    } else {
+      cachedNodesMap.putIfAbsent(rddNode, findCachedParentNodes(rddNode))
+      cachedNodesMap.get(rddNode)
+    }
+  }
+
+  private def findCachedParentNodes(rddNode: RDDNode): Option[RDDNode] = {
+    if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
+      return None
+    } else {
+      for (parent <- reverseDag(rddNode)) {
+        if (dag(parent).size >= 2) {
+          return Some(parent)
+        }
+      }
+    }
+    return None
+  }
+
   def getRDDNode(blockId: BlockId): RDDNode = {
     val start = System.currentTimeMillis()
     val rddId = blockIdToRDDId(blockId)

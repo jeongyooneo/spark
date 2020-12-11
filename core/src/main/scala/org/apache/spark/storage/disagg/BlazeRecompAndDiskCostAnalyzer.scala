@@ -44,7 +44,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
   }
 
   // val writeThp = 5000.0 / (600 * 1024 * 1024)
-  val writeThp = BlazeParameters.readThp
+  val writeThp = BlazeParameters.writeThp
   private val readThp = BlazeParameters.readThp
 
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
