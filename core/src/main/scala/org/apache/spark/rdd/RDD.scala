@@ -420,7 +420,7 @@ abstract class RDD[T: ClassTag](
     val waitingForVisit = new ArrayStack[RDD[_]]
     val dag = new mutable.HashMap[RDDNode, HashSet[RDDNode]]
     def visit(rdd: RDD[_]) {
-      if (!visited(rdd) && !rdd.name.contains("broadcast")) {
+      if (!visited(rdd)) {
         visited += rdd
         val node = new RDDNode(rdd.id, stageId, rdd.isInstanceOf[ShuffledRDD[_, _, _]])
 
