@@ -242,26 +242,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
       // find root stage!!
-      if (rddNode.shuffled) {
-        // shuffled RDD
-        b.append(getBlockId(rddNode.rddId, childBlockId))
-
-        l.append(timeSum)
-        /*
-        val fetchKey = s"fetch-${childBlockId.name}"
-        if (metricTracker.blockElapsedTimeMap.containsKey(fetchKey)) {
-          l.append(timeSum + metricTracker.blockElapsedTimeMap.get(fetchKey))
-        } else {
-          l.append(timeSum)
-        }
-        */
-        numShuffle += 1
-      } else {
-        // This is root RDD that reads input!
-        // We increase the time because it causes memory pressure.
-        b.append(getBlockId(rddNode.rddId, childBlockId))
-        l.append(timeSum)
-      }
+      // This is root RDD that reads input!
+      // We increase the time because it causes memory pressure.
+      b.append(getBlockId(rddNode.rddId, childBlockId))
+      l.append(timeSum)
     } else {
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
@@ -279,10 +263,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val parentUnrollKey = s"unroll-${parentBlockId.name}"
             val parentEvictionKey = s"eviction-${parentBlockId.name}"
             var diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
-            /*
+
           if (metricTracker.blockElapsedTimeMap.contains(parentUnrollKey)) {
             diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentUnrollKey)
           }
+            /*
           if (metricTracker.blockElapsedTimeMap.contains(parentEvictionKey)) {
             diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentEvictionKey)
           }
@@ -292,6 +277,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           } else {
             l.append(added)
           }
+        } else if (parent.shuffled) {
+          val parentUnrollKey = s"unroll-${parentBlockId.name}"
+          b.append(getBlockId(rddNode.rddId, childBlockId))
+          l.append(timeSum + metricTracker.blockElapsedTimeMap.getOrDefault(parentUnrollKey, 0L))
+          numShuffle += 1
         } else {
           val (bb, ll, s) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
@@ -315,12 +305,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
     val t = times.sum
+    t
+      /*
     if (numShuffle > 3) {
       t + 10000000
     } else {
       // logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}")
       t
     }
+    */
   }
 
   def getRefCntRDD(rddId: Int): Int = {
@@ -712,25 +705,23 @@ object RDDJobDag extends Logging {
 
             logInfo(s"RDD ${rdd_id} Name: ${name}")
 
-            if (!name.contains("broadcast")) {
-              val numCachedPartitions = rdd("Number of Cached Partitions")
-                .asInstanceOf[Long].toInt
-              val cached = numCachedPartitions > 0
-              val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
+            val numCachedPartitions = rdd("Number of Cached Partitions")
+              .asInstanceOf[Long].toInt
+            val cached = numCachedPartitions > 0
+            val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
-              val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
-              logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
+            val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
+            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
 
-              if (!dag.contains(rdd_object)) {
-                vertices(rdd_id) = rdd_object
-                dag(rdd_object) = new mutable.HashSet()
-                for (parent_id <- parents) {
-                  edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
-                }
-              } else {
-                dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
-                  p => p.addRefStage(stageId)
-                }
+            if (!dag.contains(rdd_object)) {
+              vertices(rdd_id) = rdd_object
+              dag(rdd_object) = new mutable.HashSet()
+              for (parent_id <- parents) {
+                edges.append((parent_id.asInstanceOf[Long].toInt, rdd_id))
+              }
+            } else {
+              dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
+                p => p.addRefStage(stageId)
               }
             }
           }
@@ -740,12 +731,8 @@ object RDDJobDag extends Logging {
       // add edges
       for ((parent_id, child_id) <- edges) {
         val child_rdd_object = vertices(child_id)
-        if (!vertices.contains(parent_id)) {
-          logInfo(s"Skipping RDD ${parent_id}, This may be broadcast RDD")
-        } else {
-          val parent_rdd_object = vertices(parent_id)
-          dag(parent_rdd_object).add(child_rdd_object)
-        }
+       val parent_rdd_object = vertices(parent_id)
+        dag(parent_rdd_object).add(child_rdd_object)
       }
 
       val vv = new mutable.HashSet[RDDNode]()
