@@ -1201,7 +1201,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     case CachingDone(blockId, size, executorId, onDisk) =>
       val rddId = blockId.asRDDId.get.rddId
-      rddDiscardMap.putIfAbsent(rddId, new mutable.HashSet[Int]())
+      rddDiscardMap.putIfAbsent(rddId, new ConcurrentHashMap[Int, Boolean]())
       val set = rddDiscardMap.get(rddId)
       set.synchronized {
         val s = blockId.toString.split("_")
