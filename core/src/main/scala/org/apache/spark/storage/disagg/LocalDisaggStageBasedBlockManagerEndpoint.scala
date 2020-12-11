@@ -1173,9 +1173,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
 
     case CachingDone(blockId, size, executorId, onDisk) =>
-      rddDiscardMap.get(blockId.asRDDId.get.rddId).synchronized {
-        if (rddDiscardMap.get(blockId.asRDDId.get.rddId).contains(blockId)) {
-          rddDiscardMap.get(blockId.asRDDId.get.rddId).remove(blockId)
+      val rddId = blockId.asRDDId.get.rddId
+      rddDiscardMap.putIfAbsent(rddId, new mutable.HashSet[BlockId]())
+      val set = rddDiscardMap.get(rddId)
+      set.synchronized {
+        if (set.contains(blockId)) {
+          set.remove(blockId)
         }
       }
       BlazeLogger.cachingDone(blockId, executorId, size, onDisk)
