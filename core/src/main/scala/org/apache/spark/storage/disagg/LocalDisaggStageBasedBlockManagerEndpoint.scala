@@ -415,8 +415,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               discardSet.synchronized {
                 // logInfo(s"DiscardSet for ${blockId}, " +
                 //  s"size: ${discardSet.size}, numPartition: $numPartition")
-                if (discardSet.size < numPartition * 0.5
-                  || metricTracker.completedStages.contains(node.rootStage)) {
+                if (discardSet.size < numPartition * 0.5) {
                   logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
                     s"${storingCost.compCost/storingCost.futureUse}, " +
