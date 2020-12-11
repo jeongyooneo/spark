@@ -478,7 +478,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               true
             }
           } else {
-            val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
+
+            if (previouslyEvicted.containsKey(blockId)) {
+              BlazeLogger.discardLocal(blockId, executorId,
+                storingCost.compCost, storingCost.disaggCost,
+                estimateSize, s"$estimateSize, PreviouslyEvicted", onDisk)
+              return false
+            }
 
             addToLocal(blockId, executorId, estimateSize, onDisk)
             BlazeLogger.logLocalCaching(blockId, executorId,
