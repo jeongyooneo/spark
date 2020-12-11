@@ -418,13 +418,17 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 //  s"size: ${discardSet.size}, numPartition: $numPartition")
                 if (parentNodes.isEmpty) {
                   // Root
-                  if (discardSet.size <= numPartition * 0.5) {
+                  if (discardSet.size <= numPartition * 0.5 || storingCost.numShuffle == 0) {
                     logInfo(s"Discard root vertex " +
                       s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                       + s"${storingCost.disaggCost}, " +
                       s"${storingCost.compCost / storingCost.futureUse}, " +
                       s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
-                    discardSet.add(blockIndex)
+
+                    if (storingCost.numShuffle > 0) {
+                      discardSet.add(blockIndex)
+                    }
+
                     // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
                     // if (!prevDiscardIndexes.contains(blockIndex)) {
                     // logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
@@ -447,13 +451,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   // No root
                   val parentDiscardSet = rddDiscardMap.get(parentNodes.get.rddId)
                   if (!parentDiscardSet.contains(blockIndex)
-                    && discardSet.size <= numPartition * 0.5) {
+                    && discardSet.size <= numPartition * 0.5 || storingCost.numShuffle == 0) {
                     logInfo(s"Discard intermediate " +
                       s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                       + s"${storingCost.disaggCost}, " +
                       s"${storingCost.compCost / storingCost.futureUse}, " +
                       s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
-                    discardSet.add(blockIndex)
+
+                    if (storingCost.numShuffle > 0) {
+                      discardSet.add(blockIndex)
+                    }
                     BlazeLogger.discardLocal(blockId, executorId,
                       storingCost.compCost, storingCost.disaggCost,
                       estimateSize, s"$estimateSize", onDisk)
