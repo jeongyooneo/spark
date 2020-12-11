@@ -424,8 +424,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               val numPartition = stagePartitionMap.get(node.rootStage)
 
               val checkZigZag =
-                (parentNodes ++ childNodes).map(node => rddDiscardMap.get(node.rddId))
-                  .filter(map => map.containsKey(blockIndex)).isEmpty
+                (parentNodes ++ childNodes)
+                .filter(node => rddDiscardMap.containsKey(node.rddId))
+                .map(node => rddDiscardMap.get(node.rddId))
+                .filter(map => map.containsKey(blockIndex)).isEmpty
 
               discardSet.synchronized {
                 if (checkZigZag
