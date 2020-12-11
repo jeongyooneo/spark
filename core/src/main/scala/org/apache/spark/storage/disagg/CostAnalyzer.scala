@@ -212,7 +212,8 @@ class CompDisaggCost(val blockId: BlockId,
                      val cost: Double,
                      val disaggCost: Long = 0,
                      val compCost: Long = 0,
-                     val futureUse: Double = 0) {
+                     val futureUse: Double = 0,
+                     val numShuffle: Int = 0) {
 
   var stages: Option[List[StageDistance]] = None
 

@@ -279,7 +279,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     (b, l, numShuffle)
   }
 
-  def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): Long = {
+  def blockCompTime(blockId: BlockId, nodeCreatedTime: Long): (Long, Int) = {
     val rddId = blockIdToRDDId(blockId)
     val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
@@ -289,7 +289,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     // disk overhead for shuffle
     val size = metricTracker.getBlockSize(blockId)
-    (times.sum + BlazeParameters.readThp * size * numShuffle).toLong
+    ((times.sum + BlazeParameters.readThp * size * numShuffle).toLong, numShuffle)
       /*
     if (numShuffle > 3) {
       t + 10000000
@@ -601,7 +601,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
 
           if (!stageSet.contains(childnode.rootStage) &&
-            !metricTracker.completedStages.contains(childnode.rootStage)) {
+            !metricTracker.completedStages.contains(childnode.rootStage)
+          && !metricTracker.stageStartTime.contains(childnode.rootStage)) {
             stageSet.add(childnode.rootStage)
             map.put(childnode.rootStage,
               new StageDistance(childnode.rootStage, distance, absolute, prevc))
@@ -609,6 +610,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           }
 
           if (!metricTracker.completedStages.contains(childnode.rootStage)
+            && !metricTracker.stageStartTime.contains(childnode.rootStage)
             && dag(childnode).size >= 2) {
             // finish
           } else {

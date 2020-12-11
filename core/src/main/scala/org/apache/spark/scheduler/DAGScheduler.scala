@@ -1100,6 +1100,9 @@ private[spark] class DAGScheduler(
         dag.onlineUpdate(stage.rdd.extractStageDag(stage.id))
     }
 
+    disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
+      stage.rdd.partitions.length)
+
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logDebug("submitStage(" + stage + ")")
@@ -1117,7 +1120,6 @@ private[spark] class DAGScheduler(
         }
       }
 
-      disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId)
     } else {
       abortStage(stage, "No active job for stage " + stage.id, None)
     }

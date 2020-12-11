@@ -256,8 +256,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
+  private val stagePartitionMap = new ConcurrentHashMap[Int, Int]()
 
-  def stageSubmitted(stageId: Int, jobId: Int): Unit = synchronized {
+  def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
+    stagePartitionMap.put(stageId, partition)
     stageJobMap.put(stageId, jobId)
     logInfo(s"Stage submitted ${stageId}, jobId: $jobId, jobMap: $stageJobMap")
     currJob.set(jobId)
@@ -386,7 +388,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
             logInfo(s"RDD cost: ${blockId}, ${storingCost.compCost}, "
               + s"${storingCost.disaggCost}, " +
-              s"${storingCost.compCost/storingCost.futureUse}, $estimateSize")
+              s"${storingCost.compCost/storingCost.futureUse}, " +
+              s"numShuffle: ${storingCost.numShuffle} $estimateSize")
 
             if (estimateSize == 0) {
               addToLocal(blockId, executorId, estimateSize, onDisk)
@@ -402,7 +405,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (storingCost.compCost < storingCost.disaggCost) {
               logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
                 + s"${storingCost.disaggCost}, " +
-                s"${storingCost.compCost/storingCost.futureUse}, $estimateSize")
+                s"${storingCost.compCost/storingCost.futureUse}, " +
+                s"numShuffle: ${storingCost.numShuffle},$estimateSize")
 
               // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
               // if (!prevDiscardIndexes.contains(blockIndex)) {

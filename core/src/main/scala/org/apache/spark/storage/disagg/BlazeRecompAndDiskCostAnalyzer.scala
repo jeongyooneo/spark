@@ -50,7 +50,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
   override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
-    val recompTime = rddJobDag.blockCompTime(blockId,
+    val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
      metricTracker.blockCreatedTimeMap.get(blockId))
 
     val realStages = stages.filter(p => node.getStages.contains(p.stageId))
@@ -74,7 +74,8 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       Math.min(recompTime * futureUse, writeTime + readTime * futureUse),
       (writeTime + readTime * futureUse).toLong,
       (recompTime * futureUse).toLong,
-      futureUse)
+      futureUse,
+      numShuffle)
 
       // realStages.size * recompTime)
     // logInfo(s"CompDisaggCost $blockId, " +
