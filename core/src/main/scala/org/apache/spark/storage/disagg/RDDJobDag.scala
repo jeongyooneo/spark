@@ -601,8 +601,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
 
           if (!stageSet.contains(childnode.rootStage) &&
-            !metricTracker.completedStages.contains(childnode.rootStage)
-          && !metricTracker.stageStartTime.contains(childnode.rootStage)) {
+            !metricTracker.completedStages.contains(childnode.rootStage)) {
+          // && !metricTracker.stageStartTime.contains(childnode.rootStage)) {
             stageSet.add(childnode.rootStage)
             map.put(childnode.rootStage,
               new StageDistance(childnode.rootStage, distance, absolute, prevc))
@@ -610,8 +610,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           }
 
           if (!metricTracker.completedStages.contains(childnode.rootStage)
-            && !metricTracker.stageStartTime.contains(childnode.rootStage)
             && dag(childnode).size >= 2) {
+            // && !metricTracker.stageStartTime.contains(childnode.rootStage)
             // finish
           } else {
             // if (getRefCntRDD(childnode.rddId) < 2) {
