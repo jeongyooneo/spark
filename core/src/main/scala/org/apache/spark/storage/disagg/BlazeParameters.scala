@@ -23,7 +23,7 @@ import org.apache.spark.network.util.ByteUnit
 
 private[spark] object BlazeParameters extends Logging {
 
-  val readThp = 4000.0 / (600 * 1024 * 1024)
+  val readThp = 2000.0 / (600 * 1024 * 1024)
 
   private[spark] val READ_THP = ConfigBuilder("spark.disagg.readthp")
     .doubleConf
