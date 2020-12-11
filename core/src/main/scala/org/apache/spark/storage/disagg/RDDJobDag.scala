@@ -244,8 +244,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       // find root stage!!
       // This is root RDD that reads input!
       // We increase the time because it causes memory pressure.
-      b.append(getBlockId(rddNode.rddId, childBlockId))
-      l.append(timeSum)
+      // b.append(getBlockId(rddNode.rddId, childBlockId))
+      // l.append(timeSum)
+      // DO nothing
     } else {
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
@@ -253,10 +254,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         val elapsedTimeFromParent = metricTracker.blockElapsedTimeMap.get(key)
         val added = timeSum + elapsedTimeFromParent
 
+        b.append(parentBlockId)
+
         if (metricTracker.blockStored(parentBlockId)) {
           logInfo(s"RDD ${myRDD} DFS from " +
             s"${childBlockId} to ${parentBlockId}: stored")
-          b.append(parentBlockId)
           if (metricTracker.localDiskStoredBlocksMap.containsKey(parentBlockId)) {
             // If it is cached, we should read it from mem or disk
             // If it is stored in disk, we should add disk read overhead
@@ -279,16 +281,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           }
         } else if (parent.shuffled) {
           val parentUnrollKey = s"unroll-${parentBlockId.name}"
-          b.append(getBlockId(rddNode.rddId, childBlockId))
-          l.append(timeSum + metricTracker.blockElapsedTimeMap.getOrDefault(parentUnrollKey, 0L))
+          l.append(added + metricTracker.blockElapsedTimeMap.getOrDefault(parentUnrollKey, 0L))
           numShuffle += 1
         } else {
+
+          l.append(added)
+
           val (bb, ll, s) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
           logInfo(s"RDD ${myRDD} DFS from " +
             s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
+
           b.appendAll(bb)
           l.appendAll(ll)
+
           numShuffle += s
         }
       }
