@@ -208,9 +208,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                                      childBlockId: BlockId,
                                      nodeCreatedTime: Long,
                                      visited: mutable.Set[RDDNode]):
-  (ListBuffer[BlockId], ListBuffer[Long], Int) = {
+  (ListBuffer[String], ListBuffer[Long], Int) = {
 
-    val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
+    val b: ListBuffer[String] = mutable.ListBuffer[String]()
     val l: ListBuffer[Long] = mutable.ListBuffer[Long]()
     var numShuffle = 0
 
@@ -223,18 +223,23 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     visited.add(rddNode)
 
+
+
     // Materialized time
     val unrollingKey = s"unroll-${childBlockId.name}"
     var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
+
+    b.append(unrollingKey)
+    l.append(timeSum)
 
     if (reverseDag.contains(rddNode) && reverseDag(rddNode).nonEmpty) {
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
         val key = s"${parentBlockId.name}-${childBlockId.name}"
         val elapsedTimeFromParent = metricTracker.blockElapsedTimeMap.get(key)
-        val added = timeSum + elapsedTimeFromParent
+        val added = elapsedTimeFromParent
 
-        b.append(parentBlockId)
+        b.append(key)
 
         if (metricTracker.blockStored(parentBlockId)) {
           logInfo(s"RDD ${myRDD} DFS from " +
