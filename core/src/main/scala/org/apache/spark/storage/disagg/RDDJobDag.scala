@@ -207,8 +207,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   private def dfsGetBlockElapsedTime(myRDD: Int,
                                      childBlockId: BlockId,
                                      nodeCreatedTime: Long,
-                                     visited: mutable.Set[RDDNode],
-                                     tSum: Long):
+                                     visited: mutable.Set[RDDNode]):
   (ListBuffer[BlockId], ListBuffer[Long], Int) = {
 
     val b: ListBuffer[BlockId] = mutable.ListBuffer[BlockId]()
@@ -226,28 +225,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     // Materialized time
     val unrollingKey = s"unroll-${childBlockId.name}"
-    var timeSum = if (metricTracker.blockElapsedTimeMap.containsKey(unrollingKey)) {
-      tSum + metricTracker.blockElapsedTimeMap.get(unrollingKey)
-    } else {
-      tSum
-    }
+    var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
 
-    // Eviction effect
-    /*
-    val evictionKey = s"eviction-${childBlockId.name}"
-    if (metricTracker.blockElapsedTimeMap.containsKey(evictionKey)) {
-      timeSum +=  metricTracker.blockElapsedTimeMap.get(evictionKey)
-    }
-    */
-
-    if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
-      // find root stage!!
-      // This is root RDD that reads input!
-      // We increase the time because it causes memory pressure.
-      // b.append(getBlockId(rddNode.rddId, childBlockId))
-      // l.append(timeSum)
-      // DO nothing
-    } else {
+    if (reverseDag.contains(rddNode) && reverseDag(rddNode).nonEmpty) {
       for (parent <- reverseDag(rddNode)) {
         val parentBlockId = getBlockId(parent.rddId, childBlockId)
         val key = s"${parentBlockId.name}-${childBlockId.name}"
@@ -266,16 +246,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             val parentEvictionKey = s"eviction-${parentBlockId.name}"
             var diskoverhead = BlazeParameters.readThp * metricTracker.getBlockSize(parentBlockId)
 
-          if (metricTracker.blockElapsedTimeMap.contains(parentUnrollKey)) {
-            diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentUnrollKey)
-          }
-            /*
-          if (metricTracker.blockElapsedTimeMap.contains(parentEvictionKey)) {
-            diskoverhead +=  metricTracker.blockElapsedTimeMap.get(parentEvictionKey)
-          }
-          */
+            diskoverhead += metricTracker.blockElapsedTimeMap.getOrDefault(parentUnrollKey, 0L)
             l.append(added + diskoverhead.toLong)
-
           } else {
             l.append(added)
           }
@@ -284,11 +256,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           l.append(added + metricTracker.blockElapsedTimeMap.getOrDefault(parentUnrollKey, 0L))
           numShuffle += 1
         } else {
-
           l.append(added)
 
           val (bb, ll, s) =
-            dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited, added)
+            dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited)
           logInfo(s"RDD ${myRDD} DFS from " +
             s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
 
@@ -307,7 +278,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
-        nodeCreatedTime, new mutable.HashSet[RDDNode](), 0L)
+        nodeCreatedTime, new mutable.HashSet[RDDNode]())
 
     logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
     val t = times.sum
