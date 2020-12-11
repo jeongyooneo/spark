@@ -287,7 +287,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     // logInfo(s"BlockComptTime of ${blockId}:
     // ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
 
-    val t = times.sum * numShuffle
+    val t = times.sum * (numShuffle + 1)
     t
       /*
     if (numShuffle > 3) {
