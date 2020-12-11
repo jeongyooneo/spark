@@ -433,28 +433,47 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     vertices(rddId)
   }
 
-  private val cachedNodesMap = new ConcurrentHashMap[RDDNode, Option[RDDNode]]()
+  private val cachedNodesMap = new ConcurrentHashMap[RDDNode, (Set[RDDNode], Set[RDDNode])]()
 
-  def getParentCachedNodes(rddNode: RDDNode): Option[RDDNode] = {
+  def getParentChildCachedNodes(rddNode: RDDNode): (Set[RDDNode], Set[RDDNode]) = {
     if (cachedNodesMap.containsKey(rddNode)) {
       cachedNodesMap.get(rddNode)
     } else {
-      cachedNodesMap.putIfAbsent(rddNode, findCachedParentNodes(rddNode))
+      cachedNodesMap.putIfAbsent(rddNode,
+        (findCachedParentNodes(rddNode), findCachedChildNodes(rddNode)))
       cachedNodesMap.get(rddNode)
     }
   }
+  private def findCachedChildNodes(rddNode: RDDNode): Set[RDDNode] = {
+    var set = new mutable.HashSet[RDDNode]()
 
-  private def findCachedParentNodes(rddNode: RDDNode): Option[RDDNode] = {
-    if (!reverseDag.contains(rddNode) || reverseDag(rddNode).isEmpty) {
-      return None
-    } else {
-      for (parent <- reverseDag(rddNode)) {
-        if (dag(parent).size >= 2) {
-          return Some(parent)
+    if (dag.contains(rddNode) && dag(rddNode).nonEmpty) {
+      for (child <- dag(rddNode)) {
+        if (dag(child).size >= 2) {
+          set.add(child)
+        } else {
+          set = set.union(findCachedChildNodes(child))
         }
       }
     }
-    return None
+
+    set.toSet
+  }
+
+  private def findCachedParentNodes(rddNode: RDDNode): Set[RDDNode] = {
+    var set = new mutable.HashSet[RDDNode]()
+
+    if (reverseDag.contains(rddNode) && reverseDag(rddNode).nonEmpty) {
+      for (parent <- reverseDag(rddNode)) {
+        if (dag(parent).size >= 2) {
+          set.add(parent)
+        } else {
+          set = set.union(findCachedParentNodes(parent))
+        }
+      }
+    }
+
+    set.toSet
   }
 
   def getRDDNode(blockId: BlockId): RDDNode = {

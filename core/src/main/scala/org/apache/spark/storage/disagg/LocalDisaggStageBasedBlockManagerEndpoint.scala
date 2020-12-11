@@ -257,7 +257,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private val stagePartitionMap = new ConcurrentHashMap[Int, Int]()
-  private val rddDiscardMap = new ConcurrentHashMap[Int, mutable.HashSet[Int]]()
+  private val rddDiscardMap = new ConcurrentHashMap[Int, ConcurrentHashMap[Int, Boolean]]()
 
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
     stagePartitionMap.put(stageId, partition)
@@ -416,85 +416,48 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             }
 
             if (storingCost.compCost < storingCost.disaggCost) {
-              rddDiscardMap.putIfAbsent(rddId, new mutable.HashSet[Int]())
+              rddDiscardMap.putIfAbsent(rddId, new ConcurrentHashMap[Int, Boolean]())
 
               val discardSet = rddDiscardMap.get(rddId)
               val node = rddJobDag.get.getRDDNode(blockId)
-              val parentNodes = rddJobDag.get.getParentCachedNodes(node)
+              val (parentNodes, childNodes) = rddJobDag.get.getParentChildCachedNodes(node)
               val numPartition = stagePartitionMap.get(node.rootStage)
 
+              val checkZigZag =
+                (parentNodes ++ childNodes).map(node => rddDiscardMap.get(node.rddId))
+                  .filter(map => map.containsKey(blockIndex)).isEmpty
 
               discardSet.synchronized {
-                // logInfo(s"DiscardSet for ${blockId}, " +
-                //  s"size: ${discardSet.size}, numPartition: $numPartition")
-                if (parentNodes.isEmpty) {
-                  // Root
-                  if (discardSet.size <= numPartition * 0.5 || storingCost.numShuffle == 0) {
-                    logInfo(s"Discard root vertex " +
-                      s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
-                      + s"${storingCost.disaggCost}, " +
-                      s"${storingCost.compCost / storingCost.futureUse}, " +
-                      s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
+                if (checkZigZag
+                  && discardSet.size() <= numPartition * 0.5 || storingCost.numShuffle == 0) {
+                  logInfo(s"Discard intermediate " +
+                    s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
+                    + s"${storingCost.disaggCost}, " +
+                    s"${storingCost.compCost / storingCost.futureUse}, " +
+                    s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
 
-                    if (storingCost.numShuffle > 0) {
-                      discardSet.add(blockIndex)
-                    }
+                  previouslyEvicted.put(blockId, true)
 
-                    previouslyEvicted.put(blockId, true)
-
-                    // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
-                    // if (!prevDiscardIndexes.contains(blockIndex)) {
-                    // logInfo(s"Discard by random selection: ${blockId}, size: ${estimateSize}, " +
-                    //  s"compTime: ${storingCost.compCost}, disaggCost: ${storingCost.disaggCost}")
-                    BlazeLogger.discardLocal(blockId, executorId,
-                      storingCost.compCost, storingCost.disaggCost,
-                      estimateSize, s"$estimateSize", onDisk)
-                    return false
-                  } else {
-                    previouslyEvicted.remove(blockId)
-
-                    addToLocal(blockId, executorId, estimateSize, onDisk)
-                    BlazeLogger.logLocalCaching(blockId, executorId,
-                      estimateSize, storingCost.compCost, storingCost.disaggCost, "5", onDisk)
-
-                    if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-                      BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-                    }
-                    return true
+                  if (storingCost.numShuffle > 0) {
+                    discardSet.put(blockIndex, true)
                   }
+
+                  BlazeLogger.discardLocal(blockId, executorId,
+                    storingCost.compCost, storingCost.disaggCost,
+                    estimateSize, s"$estimateSize", onDisk)
+                  return false
                 } else {
-                  // No root
-                  val parentDiscardSet = rddDiscardMap.get(parentNodes.get.rddId)
-                  if (!parentDiscardSet.contains(blockIndex)
-                    && discardSet.size <= numPartition * 0.5 || storingCost.numShuffle == 0) {
-                    logInfo(s"Discard intermediate " +
-                      s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
-                      + s"${storingCost.disaggCost}, " +
-                      s"${storingCost.compCost / storingCost.futureUse}, " +
-                      s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
 
-                    previouslyEvicted.put(blockId, true)
+                  previouslyEvicted.remove(blockId)
 
-                    if (storingCost.numShuffle > 0) {
-                      discardSet.add(blockIndex)
-                    }
-                    BlazeLogger.discardLocal(blockId, executorId,
-                      storingCost.compCost, storingCost.disaggCost,
-                      estimateSize, s"$estimateSize", onDisk)
-                    return false
-                  } else {
+                  addToLocal(blockId, executorId, estimateSize, onDisk)
+                  BlazeLogger.logLocalCaching(blockId, executorId,
+                    estimateSize, storingCost.compCost, storingCost.disaggCost, "5", onDisk)
 
-                    previouslyEvicted.remove(blockId)
-
-                    addToLocal(blockId, executorId, estimateSize, onDisk)
-                    BlazeLogger.logLocalCaching(blockId, executorId,
-                      estimateSize, storingCost.compCost, storingCost.disaggCost, "5", onDisk)
-
-                    if (recentlyRecachedBlocks.remove(blockId).isDefined) {
-                      BlazeLogger.recacheDisaggToLocal(blockId, executorId)
-                    }
-                    return true
+                  if (recentlyRecachedBlocks.remove(blockId).isDefined) {
+                    BlazeLogger.recacheDisaggToLocal(blockId, executorId)
                   }
+                  return true
                 }
               }
               // }
