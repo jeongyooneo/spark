@@ -153,7 +153,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
   val SLACK = 0
 
   override def canStoreBytesWithoutEviction(numBytes: Long,
-                                            memoryMode: MemoryMode): Boolean = {
+                                            memoryMode: MemoryMode): Boolean = synchronized {
     val (executionPool, storagePool, maxMemory) = memoryMode match {
       case MemoryMode.ON_HEAP => (
         onHeapExecutionMemoryPool,

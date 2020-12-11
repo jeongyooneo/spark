@@ -1597,7 +1597,7 @@ private[spark] class BlockManager(
           val size = memoryStore.sizeEstimationMap.get(blockId)
           // val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
           if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, true, true)) {
-            memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
+            memoryStore.putIteratorAsValues(blockId, diskIterator, classTag, true) match {
               case Left(iter) =>
                 // The memory store put() failed, so it returned the iterator back to us:
                 iter

@@ -287,7 +287,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean,
-                              onDisk: Boolean): Boolean = {
+                              onDisk: Boolean,
+                              promote: Boolean): Boolean = {
 
     val cachingDecStart = System.currentTimeMillis
 
@@ -340,10 +341,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       } else {
         if (localFull) {
-          if (storingCost.cost <= 0) {
+          if (storingCost.cost <= 0 || promote) {
+            // We do not PROMOTE if the local full because it will cause additional
+            // evictions
             BlazeLogger.discardLocal(blockId, executorId,
               storingCost.compCost, storingCost.disaggCost,
-              estimateSize, s"$estimateSize", onDisk)
+              estimateSize, s"$estimateSize, Local Full, cost 0 or Promote", onDisk)
             return false
           }
 
@@ -361,7 +364,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           } else {
             BlazeLogger.discardLocal(blockId, executorId,
               storingCost.compCost, storingCost.disaggCost,
-              estimateSize, s"$estimateSize", onDisk)
+              estimateSize, s"$estimateSize, Local Full", onDisk)
             recentlyRecachedBlocks.remove(blockId)
             false
           }
@@ -1125,20 +1128,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     // FOR LOCAL
     // FOR LOCAL
-    case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk) =>
+    case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg,
+    localFull, onDisk, promote) =>
       val start = System.currentTimeMillis()
       logInfo(s"Start cachingDecision ${blockId}, " +
-        s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
+        s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}, ${promote}")
       if (putDisagg) {
         synchronized {
           localExecutorLockMap.putIfAbsent(executorId, new Object)
           context.reply(cachingDecision(blockId, estimateSize, executorId,
-            putDisagg, localFull, onDisk))
+            putDisagg, localFull, onDisk, promote))
         }
       } else {
         localExecutorLockMap.putIfAbsent(executorId, new Object)
         context.reply(cachingDecision(blockId, estimateSize, executorId,
-          putDisagg, localFull, onDisk))
+          putDisagg, localFull, onDisk, promote))
       }
       val end = System.currentTimeMillis()
       logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +

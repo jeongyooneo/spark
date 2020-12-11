@@ -127,7 +127,7 @@ private[spark] class DiskStore(
     }
 
     if (!disaggManager.cachingDecision(blockId, size,
-      executorId, false, requiredEvictionSize > 0L, true)) {
+      executorId, false, requiredEvictionSize > 0L, true, false)) {
       pendingSize.addAndGet(-size)
       return
     }
@@ -202,7 +202,7 @@ private[spark] class DiskStore(
       if (blockId.isRDD && toDisagg) {
         // Send to disagg or not?
         if (disaggManager
-          .cachingDecision(blockId, bsize, executorId, true, true, true)) {
+          .cachingDecision(blockId, bsize, executorId, true, true, true, false)) {
           val inputStream = new FileInputStream(file)
           logInfo(s"Caching from disk to disagg $blockId, executor $executorId")
           disaggStore.put(blockId,

@@ -38,7 +38,8 @@ private[spark] object DisaggBlockManagerMessages {
   case class IsRddCache(rddId: Int) extends ToBlockManagerMaster
 
   case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, executorId: String,
-                             putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
+                             putDisagg: Boolean, localFull: Boolean,
+                             onDisk: Boolean, promote: Boolean)
     extends ToBlockManagerMaster
 
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,

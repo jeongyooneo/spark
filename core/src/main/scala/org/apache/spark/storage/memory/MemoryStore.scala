@@ -381,7 +381,8 @@ private[spark] class MemoryStore(
                               values: Iterator[T],
                               classTag: ClassTag[T],
                               memoryMode: MemoryMode,
-                              valuesHolder: ValuesHolder[T]): Either[Long, Long] = {
+                              valuesHolder: ValuesHolder[T],
+                              promote: Boolean = false): Either[Long, Long] = {
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
 
     // Number of elements unrolled so far
@@ -408,14 +409,14 @@ private[spark] class MemoryStore(
       if (!IS_BLAZE) {
         // It returns alwasy true if it is not blaze (if it is LRC or MRD)
         disaggManager.cachingDecision(blockId, estimateSize,
-          executorId, false, !keepUnrolling, false)
+          executorId, false, !keepUnrolling, false, false)
       } else {
         if (estimateSize > 0) {
           keepUnrolling = memoryManager.canStoreBytesWithoutEviction(estimateSize, memoryMode)
           // it means that we cannot cache the value without eviction because the storage is full.
           // we decide wheter to cache it in memory with eviction or in disagg
           if (!disaggManager.cachingDecision(blockId, estimateSize,
-            executorId, false, !keepUnrolling, false)) {
+            executorId, false, !keepUnrolling, false, promote)) {
             // We ran out of space while unrolling the values for this block
             logUnrollFailureMessage(blockId, estimateSize)
             return Left(unrollMemoryUsedByThisBlock)
@@ -442,7 +443,7 @@ private[spark] class MemoryStore(
           // it means that we cannot cache the value without eviction because the storage is full.
           // we decide wheter to cache it in memory with eviction or in disagg
           if (!disaggManager.cachingDecision(blockId, estimateSize,
-            executorId, false, !keepUnrolling, false)) {
+            executorId, false, !keepUnrolling, false, promote)) {
             // We ran out of space while unrolling the values for this block
             logUnrollFailureMessage(blockId, estimateSize)
             return Left(unrollMemoryUsedByThisBlock)
@@ -563,11 +564,12 @@ private[spark] class MemoryStore(
   private[storage] def putIteratorAsValues[T](
       blockId: BlockId,
       values: Iterator[T],
-      classTag: ClassTag[T]): Either[PartiallyUnrolledIterator[T], Long] = {
+      classTag: ClassTag[T],
+      promote: Boolean = false): Either[PartiallyUnrolledIterator[T], Long] = {
 
     val valuesHolder = new DeserializedValuesHolder[T](classTag)
 
-    putIterator(blockId, values, classTag, MemoryMode.ON_HEAP, valuesHolder) match {
+    putIterator(blockId, values, classTag, MemoryMode.ON_HEAP, valuesHolder, promote) match {
       case Right(storedSize) => Right(storedSize)
       case Left(unrollMemoryUsedByThisBlock) =>
         val unrolledIterator = if (valuesHolder.vector != null) {

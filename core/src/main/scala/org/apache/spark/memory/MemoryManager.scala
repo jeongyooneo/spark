@@ -102,7 +102,7 @@ private[spark] abstract class MemoryManager(
    */
   def acquireUnrollMemory(blockId: BlockId, numBytes: Long, memoryMode: MemoryMode): Boolean
 
-  def canStoreBytesWithoutEviction(numBytes: Long, memoryMode: MemoryMode): Boolean = {
+  def canStoreBytesWithoutEviction(numBytes: Long, memoryMode: MemoryMode): Boolean = synchronized {
     true
   }
 

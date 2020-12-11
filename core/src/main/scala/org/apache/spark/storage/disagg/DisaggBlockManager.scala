@@ -145,7 +145,7 @@ class DisaggBlockManager(
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,
                       executorId: String, putDisagg: Boolean,
-                      localFull: Boolean, onDisk: Boolean): Boolean = {
+                      localFull: Boolean, onDisk: Boolean, promote: Boolean): Boolean = {
 
     // val taskContext = TaskContext.get()
     // val taskId = s"${taskContext.stageId()}-" +
@@ -156,7 +156,7 @@ class DisaggBlockManager(
       false
     } else {
       driverEndpoint.askSync[Boolean](
-        StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk))
+        StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk, promote))
     }
   }
 
