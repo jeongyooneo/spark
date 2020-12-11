@@ -287,11 +287,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     // logInfo(s"BlockComptTime of ${blockId}:
     // ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
 
-    if (numShuffle >= 2) {
-      times.sum + 100000000
-    } else {
-      times.sum
-    }
+    // disk overhead for shuffle
+    val size = metricTracker.getBlockSize(blockId)
+    (times.sum + BlazeParameters.readThp * size * numShuffle).toLong
       /*
     if (numShuffle > 3) {
       t + 10000000
