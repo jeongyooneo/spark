@@ -242,8 +242,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         b.append(key)
 
         if (metricTracker.blockStored(parentBlockId)) {
-          logInfo(s"RDD ${myRDD} DFS from " +
-            s"${childBlockId} to ${parentBlockId}: stored")
+          // logInfo(s"RDD ${myRDD} DFS from " +
+          //  s"${childBlockId} to ${parentBlockId}: stored")
           if (metricTracker.localDiskStoredBlocksMap.containsKey(parentBlockId)) {
             // If it is cached, we should read it from mem or disk
             // If it is stored in disk, we should add disk read overhead
@@ -265,8 +265,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
           val (bb, ll, s) =
             dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited)
-          logInfo(s"RDD ${myRDD} DFS from " +
-            s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
+          // logInfo(s"RDD ${myRDD} DFS from " +
+          //  s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
 
           b.appendAll(bb)
           l.appendAll(ll)
@@ -284,9 +284,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
         nodeCreatedTime, new mutable.HashSet[RDDNode]())
+    // logInfo(s"BlockComptTime of ${blockId}:
+    // ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
 
-    logInfo(s"BlockComptTime of ${blockId}: ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
-    val t = times.sum
+    val t = times.sum * numShuffle
     t
       /*
     if (numShuffle > 3) {
