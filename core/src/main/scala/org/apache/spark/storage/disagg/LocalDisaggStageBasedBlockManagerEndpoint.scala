@@ -483,7 +483,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           logWarning(s"Low comp disagg block is empty " +
             s"for evicting $blockId, size $evictSize")
           List.empty
-        } else if (blockId.isEmpty) {
+        } else if (blockId.isEmpty || !blockId.get.isRDD) {
           // Spilling
           return iter.map(m => m.blockId)
         } else if (!BLAZE_COST_FUNC) {
