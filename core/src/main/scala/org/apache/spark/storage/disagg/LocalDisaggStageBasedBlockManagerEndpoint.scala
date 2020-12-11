@@ -354,6 +354,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             return false
           }
 
+          val node = rddJobDag.get.getRDDNode(blockId)
+          if (metricTracker.completedStages.contains(node.rootStage)) {
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.compCost, storingCost.disaggCost,
+              estimateSize, s"$estimateSize, CompletedStage", onDisk)
+            return false
+          }
+
           if (evictionPolicy
             .decisionLocalEviction(storingCost, executorId, blockId, estimateSize, onDisk)) {
             addToLocal(blockId, executorId, estimateSize, onDisk)
@@ -379,6 +387,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             BlazeLogger.discardLocal(blockId, executorId,
               storingCost.compCost, storingCost.disaggCost,
               estimateSize, s"$estimateSize", onDisk)
+            return false
+          }
+
+          val node = rddJobDag.get.getRDDNode(blockId)
+          if (metricTracker.completedStages.contains(node.rootStage)) {
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.compCost, storingCost.disaggCost,
+              estimateSize, s"$estimateSize, CompletedStage", onDisk)
             return false
           }
 
