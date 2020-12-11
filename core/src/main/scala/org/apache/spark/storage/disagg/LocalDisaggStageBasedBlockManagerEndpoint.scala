@@ -262,7 +262,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
     stagePartitionMap.put(stageId, partition)
     stageJobMap.put(stageId, jobId)
-    logInfo(s"Stage submitted ${stageId}, jobId: $jobId, partition: ${partition}, jobMap: $stageJobMap")
+    logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
+      s"partition: ${partition}, jobMap: $stageJobMap")
     currJob.set(jobId)
     metricTracker.stageSubmitted(stageId)
   }
@@ -412,7 +413,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
 
               discardSet.synchronized {
-                logInfo(s"DiscardSet for ${blockId}, size: ${discardSet.size}, numPartition: $numPartition")
+                logInfo(s"DiscardSet for ${blockId}, " +
+                  s"size: ${discardSet.size}, numPartition: $numPartition")
 
                 if (discardSet.size < numPartition * 0.7) {
                   logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
