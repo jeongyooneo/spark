@@ -710,6 +710,8 @@ object RDDJobDag extends Logging {
             val rdd_id = rdd("RDD ID").asInstanceOf[Long].toInt
             val name = rdd("Name").asInstanceOf[String]
 
+            logInfo(s"RDD ${rdd_id} Name: ${name}")
+
             if (!name.contains("broadcast")) {
               val numCachedPartitions = rdd("Number of Cached Partitions")
                 .asInstanceOf[Long].toInt
@@ -738,8 +740,12 @@ object RDDJobDag extends Logging {
       // add edges
       for ((parent_id, child_id) <- edges) {
         val child_rdd_object = vertices(child_id)
-        val parent_rdd_object = vertices(parent_id)
-        dag(parent_rdd_object).add(child_rdd_object)
+        if (!vertices.contains(parent_id)) {
+          logInfo(s"Skipping RDD ${parent_id}, This may be broadcast RDD")
+        } else {
+          val parent_rdd_object = vertices(parent_id)
+          dag(parent_rdd_object).add(child_rdd_object)
+        }
       }
 
       val vv = new mutable.HashSet[RDDNode]()

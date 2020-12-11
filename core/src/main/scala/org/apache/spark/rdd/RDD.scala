@@ -435,16 +435,18 @@ abstract class RDD[T: ClassTag](
         for (dep <- rdd.dependencies) {
           // add edges
           val parent = dep.rdd
-          val parentNode = new RDDNode(parent.id, -1, parent.isInstanceOf[ShuffledRDD[_, _, _]])
-          if (!dag.contains(parentNode)) {
-            dag.put(parentNode, new HashSet[RDDNode])
-          }
-          dag(parentNode).add(node)
+          if (!parent.name.contains("broadcast")) {
+            val parentNode = new RDDNode(parent.id, -1, parent.isInstanceOf[ShuffledRDD[_, _, _]])
+            if (!dag.contains(parentNode)) {
+              dag.put(parentNode, new HashSet[RDDNode])
+            }
+            dag(parentNode).add(node)
 
-          dep match {
-            case shufDep: ShuffleDependency[_, _, _] =>
-            case narrowDep: NarrowDependency[_] =>
-              waitingForVisit.push(narrowDep.rdd)
+            dep match {
+              case shufDep: ShuffleDependency[_, _, _] =>
+              case narrowDep: NarrowDependency[_] =>
+                waitingForVisit.push(narrowDep.rdd)
+            }
           }
         }
       }
