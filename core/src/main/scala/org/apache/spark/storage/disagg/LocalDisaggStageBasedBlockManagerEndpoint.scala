@@ -413,14 +413,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
 
               discardSet.synchronized {
-                logInfo(s"DiscardSet for ${blockId}, " +
-                  s"size: ${discardSet.size}, numPartition: $numPartition")
+                // logInfo(s"DiscardSet for ${blockId}, " +
+                //  s"size: ${discardSet.size}, numPartition: $numPartition")
 
                 if (discardSet.size < numPartition * 0.7) {
                   logInfo(s"Discard by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
                     s"${storingCost.compCost/storingCost.futureUse}, " +
-                    s"numShuffle: ${storingCost.numShuffle},$estimateSize")
+                    s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
                   discardSet.add(blockId)
                   // val prevDiscardIndexes = discardRddMap(rddRelation(rddId))
                   // if (!prevDiscardIndexes.contains(blockIndex)) {
