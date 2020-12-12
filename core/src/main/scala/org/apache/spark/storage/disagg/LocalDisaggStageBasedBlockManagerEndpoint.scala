@@ -896,7 +896,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
   }
 
-  def removeRddsFromLocal(rdds: Set[Int]): Unit = {
+  override def removeRddsFromLocal(rdds: Set[Int]): Unit = {
     metricTracker.getExecutorLocalMemoryBlocksMap.synchronized {
       metricTracker.getExecutorLocalMemoryBlocksMap.foreach {
         entrySet =>
@@ -1282,6 +1282,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       logInfo(s"Block elapsed time ${key}: ${time}, class: ${clazz}")
       metricTracker.blockElapsedTimeMap.put(key, time)
   }
+
 }
 
 

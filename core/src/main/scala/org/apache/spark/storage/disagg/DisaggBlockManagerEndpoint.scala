@@ -39,7 +39,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolea
   def stageCompleted(stageId: Int): Unit
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit
   def removeFromLocal(blockId: BlockId, executorId: String, onDisk: Boolean): Unit
-  def removeRddsFromLocal(rdds: Set[Int]): Unit
+  def removeRddsFromLocal(rdds: scala.collection.Set[Int]): Unit
 
   class CrailBlockInfo(blockId: BlockId,
                        path: String) {
