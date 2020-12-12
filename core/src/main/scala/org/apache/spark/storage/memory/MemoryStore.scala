@@ -736,6 +736,8 @@ private[spark] class MemoryStore(
               disaggManager.localEviction(blockId, executorId,
                 space - freedMemory, prevEvictedSelection.toSet, false)
 
+            logInfo(s"Selected evict blocks for storing $blockId from master $evictBlockList")
+
             if (evictBlockList.isEmpty) {
               cnt += 5
             }
