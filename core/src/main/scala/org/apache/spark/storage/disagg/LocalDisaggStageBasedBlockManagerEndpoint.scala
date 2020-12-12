@@ -576,10 +576,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 }
               }
             }
-
-              if (sizeSum >= evictSize + 5 * 1024 * 1024) {
-                return evictionList.toList
-              }
           }
 
           if (sizeSum >= evictSize) {
