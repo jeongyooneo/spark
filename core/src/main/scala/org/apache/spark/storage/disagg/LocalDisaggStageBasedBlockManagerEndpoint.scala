@@ -673,8 +673,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     }
 
     if (!BLAZE_COST_FUNC) {
-      // Prevent promotion in LRC and MRD
-      return false
+      // Promotion in LRC and MRD
+      return true
     }
 
     if (recentlyRecachedBlocks.contains(blockId)) {
