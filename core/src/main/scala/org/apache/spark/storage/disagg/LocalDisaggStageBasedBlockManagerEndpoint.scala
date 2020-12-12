@@ -540,11 +540,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           logWarning(s"Low comp disagg block is empty " +
             s"for evicting $blockId, size $evictSize")
           List.empty
-        } else if (blockId.isEmpty || !blockId.get.isRDD) {
+        } else if (blockId.isEmpty || !blockId.get.isRDD || !BLAZE_COST_FUNC) {
           // Spilling
           return iter.map(m => m.blockId)
-        } else if (!BLAZE_COST_FUNC) {
 
+          /*
           val map = if (onDisk) {
             recentlyEvictFailBlocksFromLocalDisk
           } else {
@@ -579,10 +579,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           if (sizeSum >= evictSize) {
             return evictionList.toList
           } else {
-            logWarning(s"Size sum $sizeSum < eviction Size $evictSize, " +
+            logWarning(s"Size sum for no blaze $sizeSum < eviction Size $evictSize, " +
               s"for caching ${blockId} selected list: $evictionList")
             List.empty
           }
+          */
         } else {
 
           var sum = 0.0
