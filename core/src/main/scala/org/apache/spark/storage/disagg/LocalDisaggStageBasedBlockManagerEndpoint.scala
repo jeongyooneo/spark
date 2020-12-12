@@ -431,7 +431,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               discardSet.synchronized {
                 if (checkZigZag
-                  && discardSet.size() <= numPartition * 0.5 || storingCost.numShuffle == 0) {
+                  && discardSet.size() <= numPartition * 0.5) {
                   logInfo(s"Discard intermediate " +
                     s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
@@ -440,9 +440,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
                   previouslyEvicted.put(blockId, true)
 
-                  if (storingCost.numShuffle > 0) {
-                    discardSet.put(blockIndex, true)
-                  }
+                  discardSet.put(blockIndex, true)
 
                   BlazeLogger.discardLocal(blockId, executorId,
                     storingCost.compCost, storingCost.disaggCost,
