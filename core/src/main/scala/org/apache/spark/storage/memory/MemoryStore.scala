@@ -756,6 +756,9 @@ private[spark] class MemoryStore(
                 if (!IS_BLAZE) {
                   if (blockIsEvictable(evictBlock, entry)) {
                     if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                      logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: " +
+                        s"$evictBlock " +
+                        s"from executor $executorId, freeMemory: $freedMemory, space: $space")
                       selectedBlocks += evictBlock
                       freedMemory += entry.size
                     } else {
@@ -831,11 +834,13 @@ private[spark] class MemoryStore(
             // blocks and removing entries. However the check is still here for
             // future safety.
             if (entry != null) {
-              dropBlock(blockId, entry)
 
               if (blockId.isRDD && decisionByMaster) {
                 disaggManager.localEvictionDone(blockId, executorId, false)
               }
+
+              dropBlock(blockId, entry)
+
 
               afterDropAction(blockId)
             }

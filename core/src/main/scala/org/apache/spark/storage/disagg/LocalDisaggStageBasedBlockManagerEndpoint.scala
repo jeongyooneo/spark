@@ -549,6 +549,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         } else if (blockId.isEmpty || !blockId.get.isRDD || !BLAZE_COST_FUNC) {
           // Spilling
           return iter.map(m => m.blockId)
+              .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
 
           /*
           val map = if (onDisk) {
@@ -602,7 +603,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           val storingCost = costAnalyzer.compDisaggCost(blockId.get)
 
-          iter.foreach {
+          iter.filter(m => metricTracker
+            .localMemStoredBlocksMap
+            .get(executorId).contains(m.blockId)).foreach {
             discardingBlock => {
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.cost <= storingCost.cost
@@ -647,6 +650,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           }
         } else {
           return iter.map(m => m.blockId)
+            .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
         }
     }
   }
