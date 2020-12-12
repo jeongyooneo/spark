@@ -99,4 +99,8 @@ private[spark] object BlazeParameters extends Logging {
   private[spark] val PROMOTE_RATIO = ConfigBuilder("spark.disagg.promote")
     .doubleConf
     .createWithDefault(0.3)
+
+  private[spark] val ZIGZAG_RATIO = ConfigBuilder("spark.disagg.zigzag")
+    .doubleConf
+    .createWithDefault(0.5)
 }

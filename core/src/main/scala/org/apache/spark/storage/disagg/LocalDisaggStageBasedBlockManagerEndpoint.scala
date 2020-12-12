@@ -290,6 +290,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private val previouslyEvicted = new ConcurrentHashMap[BlockId, Boolean]()
 
+  private val zigZagRatio = conf.get(BlazeParameters.ZIGZAG_RATIO)
+
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean,
@@ -365,8 +367,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             return false
           }
 
-          if (evictionPolicy
-            .decisionLocalEviction(storingCost, executorId, blockId, estimateSize, onDisk)) {
+          val evictList = localEviction(
+            Some(blockId), executorId, estimateSize, Set.empty, false, true)
+
+          if (evictList.nonEmpty) {
             addToLocal(blockId, executorId, estimateSize, onDisk)
             BlazeLogger.logLocalCaching(blockId, executorId,
               estimateSize, storingCost.compCost, storingCost.disaggCost,
@@ -375,6 +379,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             if (recentlyRecachedBlocks.remove(blockId).isDefined) {
               BlazeLogger.recacheDisaggToLocal(blockId, executorId)
             }
+
             true
           } else {
             BlazeLogger.discardLocal(blockId, executorId,
@@ -431,7 +436,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               discardSet.synchronized {
                 if (checkZigZag
-                  && discardSet.size() <= numPartition * 0.5) {
+                  && discardSet.size() <= numPartition * zigZagRatio) {
                   logInfo(s"Discard intermediate " +
                     s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
@@ -508,7 +513,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private def localEviction(blockId: Option[BlockId],
                             executorId: String, evictionSize: Long,
                             prevEvicted: Set[BlockId],
-                            onDisk: Boolean): List[BlockId] = {
+                            onDisk: Boolean,
+                            cachingDecision: Boolean): List[BlockId] = {
 
     val evictionList: mutable.ListBuffer[BlockId] = new ListBuffer[BlockId]
     val blockManagerId = blockManagerMaster.executorBlockManagerMap.get(executorId).get
@@ -584,7 +590,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             List.empty
           }
           */
-        } else {
+        } else if (cachingDecision) {
 
           var sum = 0.0
 
@@ -639,6 +645,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               s"for caching ${blockId} selected list: $evictionList")
             List.empty
           }
+        } else {
+          return iter.map(m => m.blockId)
         }
     }
   }
@@ -1237,7 +1245,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
         context.reply(localEviction(blockId, executorId,
-          size, prevEvicted, onDisk))
+          size, prevEvicted, onDisk, false))
       }
     case EvictionFail(blockId, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
