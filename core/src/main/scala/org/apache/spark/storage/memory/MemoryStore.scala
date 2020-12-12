@@ -753,15 +753,28 @@ private[spark] class MemoryStore(
               if (entry == null) {
                 logWarning(s"Block is already evicted... ${evictBlock} is null... cannot evict")
               } else {
-                if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
-                  logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
-                    s"from executor $executorId, freeMemory: $freedMemory, space: $space")
-                  selectedBlocks += evictBlock
-                  freedMemory += entry.size
+                if (!IS_BLAZE) {
+                  if (blockIsEvictable(evictBlock, entry)) {
+                    if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                      selectedBlocks += evictBlock
+                      freedMemory += entry.size
+                    } else {
+                      logInfo(s"LocalDecision]  cannot lock $evictBlock " +
+                        s"from executor $executorId")
+                      disaggManager.evictionFail(evictBlock, executorId, false)
+                    }
+                  }
                 } else {
-                  logInfo(s"LocalDecision]  cannot lock $evictBlock " +
-                    s"from executor $executorId")
-                  disaggManager.evictionFail(evictBlock, executorId, false)
+                  if (blockInfoManager.lockForWriting(evictBlock, blocking = false).isDefined) {
+                    logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: $evictBlock " +
+                      s"from executor $executorId, freeMemory: $freedMemory, space: $space")
+                    selectedBlocks += evictBlock
+                    freedMemory += entry.size
+                  } else {
+                    logInfo(s"LocalDecision]  cannot lock $evictBlock " +
+                      s"from executor $executorId")
+                    disaggManager.evictionFail(evictBlock, executorId, false)
+                  }
                 }
               }
             }
