@@ -707,6 +707,7 @@ private[spark] class BlockManager(
     }
   }
 
+  private val IS_BLAZE = conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
   /**
    * Get block from local block manager as an iterator of Java objects.
    */
@@ -752,7 +753,7 @@ private[spark] class BlockManager(
               val et = System.currentTimeMillis()
               disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
 
-              if (readAfterCache) {
+              if (readAfterCache && IS_BLAZE) {
                 diskValues
               } else {
                 maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
@@ -1597,7 +1598,7 @@ private[spark] class BlockManager(
           val size = memoryStore.sizeEstimationMap.get(blockId)
           // val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
           if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, true, true)) {
-            memoryStore.putIteratorAsValues(blockId, diskIterator, classTag, true) match {
+            memoryStore.putIteraeorAsValues(blockId, diskIterator, classTag, true) match {
               case Left(iter) =>
                 // The memory store put() failed, so it returned the iterator back to us:
                 iter
