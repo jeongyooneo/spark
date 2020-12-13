@@ -924,11 +924,11 @@ private[spark] class BlockManager(
         // metadata for the block to read exists
         disaggManager.removeFile(blockId)
         disaggManager.removeFileInfo(blockId, executorId)
-        logInfo(s"Success removeFromAlluxio $blockId")
+        logInfo(s"Successfully removed $blockId from alluxio")
       } else {
         // the block and its metadata do not exist
         logInfo(s"$blockId not in alluxio and neither its metadata: " +
-          s"nothing to removeFromAlluxio !!")
+          s"nothing to remove !!")
       }
       true
     } catch {
@@ -2031,6 +2031,7 @@ private[spark] object BlockManager {
     }
   }
 }
+
 
 
 
