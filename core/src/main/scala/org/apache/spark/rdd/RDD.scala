@@ -285,14 +285,8 @@ abstract class RDD[T: ClassTag](
     val blockId = RDDBlockId(id, split.index)
 
     if (storageLevel != StorageLevel.NONE) {
-      logInfo(s"iterator of RDD $id will call getOrCompute for $blockId " +
-        s"task ${TaskContext.get().taskAttemptId()}")
-
       getOrCompute(split, context)
     } else {
-      logInfo(s"iterator of RDD $id (stl NONE) will call computeOrReadCheckpoint " +
-        s"for $blockId task ${TaskContext.get().taskAttemptId()}")
-
       computeOrReadCheckpoint(split, context)
     }
   }
