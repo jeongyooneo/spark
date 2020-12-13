@@ -37,9 +37,6 @@ private[spark] class BlazeRecompCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     val futureUse = realStages.size
-    val containDisk = metricTracker
-      .localDiskStoredBlocksMap.get(executorId).contains(blockId)
-
 
     val c = new CompDisaggCost(blockId,
       recompTime * futureUse,

@@ -41,12 +41,13 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
-    val containDisk = if (metricTracker
-      .localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
-      0
-    } else {
-      1
-    }
+     val containDisk = if (metricTracker
+      .localDiskStoredBlocksMap.containsKey(executorId)
+       && metricTracker.localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
+       0
+     } else {
+       1
+     }
 
     val c = new CompDisaggCost(blockId,
       writeTime * containDisk + readTime * futureUse,
