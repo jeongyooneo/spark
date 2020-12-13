@@ -183,7 +183,7 @@ private[storage] class BlockInfoManager extends Logging {
     if (stageId > 0 && partitionId > 0) {
       "stage-" + stageId.toString + "-" + partitionId.toString
     }
-    null
+    "-1"
   }
 
 
@@ -208,8 +208,6 @@ private[storage] class BlockInfoManager extends Logging {
   def lockForReading(
       blockId: BlockId,
       blocking: Boolean = true): Option[BlockInfo] = synchronized {
-    val taskId = TaskContext.get().partitionId()
-
     logInfo(s"Task $currentTaskStagePartitionId trying to acquire read lock for $blockId")
     do {
       infos.get(blockId) match {

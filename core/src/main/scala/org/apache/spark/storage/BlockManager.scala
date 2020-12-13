@@ -150,7 +150,7 @@ private[spark] class BlockManager(
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
-  private val executor = Executors.newFixedThreadPool(5)
+  private val executor = Executors.newFixedThreadPool(50)
 
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
@@ -1236,6 +1236,7 @@ private[spark] class BlockManager(
 
     require(blockId != null, "BlockId is null")
     require(level != null && level.isValid, "StorageLevel is null or invalid")
+    val startTimeMs = System.currentTimeMillis
 
     val putBlockInfo = {
       val newInfo = new BlockInfo(level, classTag, tellMaster)
@@ -1252,7 +1253,6 @@ private[spark] class BlockManager(
       }
     }
 
-    val startTimeMs = System.currentTimeMillis
     var exceptionWasThrown: Boolean = true
     val result: Option[T] = try {
       val res = putBody(putBlockInfo)
@@ -1362,7 +1362,7 @@ private[spark] class BlockManager(
   private def putIteratorToAlluxio[T](blockId: BlockId,
                                       values: Iterator[T],
                                       classTag: ClassTag[T]): Long = {
-    logInfo(s"putIteratorToAlluxio for $blockId start" +
+    logInfo(s"putIteratorToAlluxio for $blockId start " +
       s"executor $executorId, stage ${TaskContext.get().stageId()} " +
       s"task ${TaskContext.get().partitionId()}")
     var size = 0L
@@ -2031,6 +2031,7 @@ private[spark] object BlockManager {
     }
   }
 }
+
 
 
 

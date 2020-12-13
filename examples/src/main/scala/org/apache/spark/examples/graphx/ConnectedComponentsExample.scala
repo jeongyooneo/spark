@@ -45,7 +45,7 @@ object ConnectedComponentsExample {
       .appName(s"${this.getClass.getSimpleName}")
       .getOrCreate()
     val sc = spark.sparkContext
-    var input = "data/graphx/followers.txt"
+    var input = "/followers.txt"
     if (args.length > 0) {
       input = args(0)
     }
