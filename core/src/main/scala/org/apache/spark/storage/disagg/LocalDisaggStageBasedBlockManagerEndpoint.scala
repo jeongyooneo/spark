@@ -404,10 +404,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             val s = blockId.toString.split("_")
             val blockIndex = s(2).toInt
 
-            logInfo(s"RDD cost: ${blockId}, ${storingCost.compCost}, "
-              + s"${storingCost.disaggCost}, " +
+            logInfo(s"RDD cost: ${blockId}, " +
+              s"recomp: ${storingCost.compCost}, "
+              + s"disk: ${storingCost.disaggCost}, " +
               s"${storingCost.compCost/storingCost.futureUse}, " +
-              s"numShuffle: ${storingCost.numShuffle} $estimateSize")
+              s"numShuffle: ${storingCost.numShuffle}," +
+              s"storeInDisk: ${storingCost.onDisk}," +
+              s"size: $estimateSize")
 
             if (estimateSize == 0) {
               addToLocal(blockId, executorId, estimateSize, onDisk)

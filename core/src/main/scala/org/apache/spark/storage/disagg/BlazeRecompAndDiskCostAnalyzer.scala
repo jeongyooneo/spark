@@ -90,7 +90,8 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       (writeTime * containDisk + readTime * futureUse).toLong,
       (recomp).toLong,
       futureUse,
-      numShuffle)
+      numShuffle,
+      containDisk == 0)
 
       // realStages.size * recompTime)
     // logInfo(s"CompDisaggCost $blockId, " +
