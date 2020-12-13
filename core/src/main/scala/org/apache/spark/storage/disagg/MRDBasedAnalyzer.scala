@@ -24,7 +24,7 @@ private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
                                       metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
     // val refStages = rddJobDag.getReferenceStages(blockId)
     val mrdStage = rddJobDag.getMRDStage(blockId)
 

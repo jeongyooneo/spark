@@ -27,7 +27,7 @@ private[spark] class BlazeRecompCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
   // 10Gib per sec to byte per sec
   private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
@@ -37,6 +37,9 @@ private[spark] class BlazeRecompCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     val futureUse = realStages.size
+    val containDisk = metricTracker
+      .localDiskStoredBlocksMap.get(executorId).contains(blockId)
+
 
     val c = new CompDisaggCost(blockId,
       recompTime * futureUse,

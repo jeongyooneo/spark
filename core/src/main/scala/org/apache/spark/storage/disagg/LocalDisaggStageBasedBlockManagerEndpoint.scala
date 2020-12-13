@@ -311,7 +311,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
     metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
-    val storingCost = costAnalyzer.compDisaggCost(blockId)
+    val storingCost = costAnalyzer.compDisaggCost(executorId, blockId)
 
     if (estimateSize == 0) {
       logInfo(s"RDD estimation size zero $blockId")
@@ -420,7 +420,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               return true
             }
 
-            if (storingCost.compCost < storingCost.disaggCost) {
+            if (storingCost.compCost == storingCost.disaggCost) {
+              // This is the case that the data is already cached in disk
+              BlazeLogger.discardLocal(blockId, executorId,
+                storingCost.compCost, storingCost.disaggCost,
+                estimateSize, s"$estimateSize", onDisk)
+              return false
+            } else if (storingCost.compCost < storingCost.disaggCost) {
               rddDiscardMap.putIfAbsent(rddId, new ConcurrentHashMap[Int, Boolean]())
 
               val discardSet = rddDiscardMap.get(rddId)
@@ -601,7 +607,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             recentlyEvictFailBlocksFromLocal
           }
 
-          val storingCost = costAnalyzer.compDisaggCost(blockId.get)
+          val storingCost = costAnalyzer.compDisaggCost(executorId, blockId.get)
 
           iter.filter(m => metricTracker
             .localMemStoredBlocksMap
@@ -666,7 +672,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private def localEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean): Unit = {
-    val cost = costAnalyzer.compDisaggCost(blockId)
+    val cost = costAnalyzer.compDisaggCost(executorId, blockId)
     BlazeLogger.evictLocal(
       blockId, executorId, cost.compCost, cost.disaggCost,
       metricTracker.getBlockSize(blockId), onDisk)
@@ -702,7 +708,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       }
     }
 
-    val costForStoredBlock = costAnalyzer.compDisaggCost(blockId)
+    val costForStoredBlock = costAnalyzer.compDisaggCost(executorId, blockId)
 
     if (evictionPolicy.decisionPromote(costForStoredBlock, executorId, blockId, size)
       && recentlyRecachedBlocks.putIfAbsent(blockId, true).isEmpty) {
@@ -724,7 +730,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                              executorId: String,
                              putDisagg: Boolean): Boolean = {
 
-    val cost = costAnalyzer.compDisaggCost(blockId)
+    val cost = costAnalyzer.compDisaggCost(executorId, blockId)
     val estimateBlockSize = DisaggUtils.calculateDisaggBlockSize(estimateSize)
     val rddId = blockId.asRDDId.get.rddId
 

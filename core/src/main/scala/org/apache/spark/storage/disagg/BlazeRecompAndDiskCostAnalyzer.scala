@@ -47,13 +47,21 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
   val writeThp = BlazeParameters.writeThp
   private val readThp = BlazeParameters.readThp
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String,
+                              blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
      metricTracker.blockCreatedTimeMap.get(blockId))
 
     val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+
+     val containDisk = if (metricTracker
+      .localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
+       0
+     } else {
+       1
+     }
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     val futureUse = realStages.size
@@ -70,10 +78,16 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     }
     */
 
+    val recomp = if (containDisk == 0) {
+      readTime * futureUse
+    } else {
+      recompTime * futureUse
+    }
+
     val c = new CompDisaggCost(blockId,
-      Math.min(recompTime * futureUse, writeTime + readTime * futureUse),
-      (writeTime + readTime * futureUse).toLong,
-      (recompTime * futureUse).toLong,
+      Math.min(recomp, writeTime * containDisk + readTime * futureUse),
+      (writeTime * containDisk + readTime * futureUse).toLong,
+      (recomp).toLong,
       futureUse,
       numShuffle)
 

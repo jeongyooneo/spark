@@ -24,7 +24,7 @@ private[spark] class LRCCostAnalyzer(val rddJobDag: RDDJobDag,
                                      metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
     val refCnt = rddJobDag.getLRCRefCnt(blockId)
     // we do not consider disagg overhead here
     new CompDisaggCost(blockId, refCnt)

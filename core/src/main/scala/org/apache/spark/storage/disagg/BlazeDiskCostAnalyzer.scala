@@ -30,7 +30,7 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
   val writeThp = 15000.0 / (600 * 1024 * 1024)
   val readThp = 10000.0 / (600 * 1024 * 1024)
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
 
@@ -41,9 +41,16 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
+    val containDisk = if (metricTracker
+      .localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
+      0
+    } else {
+      1
+    }
+
     val c = new CompDisaggCost(blockId,
-      writeTime + readTime * futureUse,
-      (writeTime + readTime * futureUse).toLong,
+      writeTime * containDisk + readTime * futureUse,
+      (writeTime * containDisk + readTime * futureUse).toLong,
       Long.MaxValue,
       futureUse)
 

@@ -40,16 +40,11 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
   var sortedBlockByCompCostInDisagg: Option[List[CompDisaggCost]] = None
 
   // For cost analysis
-  def compDisaggCost(blockId: BlockId): CompDisaggCost
+  def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost
 
   def update: Unit = {
 
     var totalSize: Long = 0L
-
-    val disaggL = metricTracker
-      .getDisaggBlocks.map(blockId => {
-      compDisaggCost(blockId)
-    }).toList
 
     val updateStart = System.currentTimeMillis()
 
@@ -58,7 +53,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         val executorId = entry._1
         val blocks = entry._2
         val l = blocks.map(blockId => {
-          compDisaggCost(blockId)
+          compDisaggCost(executorId, blockId)
         }).toList
         (executorId, l)
       })
@@ -68,7 +63,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         val executorId = entry._1
         val blocks = entry._2
         val l = blocks.map(blockId => {
-          compDisaggCost(blockId)
+          compDisaggCost(executorId, blockId)
         }).toList
         (executorId, l)
       })
@@ -79,9 +74,6 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     totalSize = Math.max(1, totalSize)
 
     var start = System.currentTimeMillis()
-
-    sortedBlockByCompCostInDisagg =
-      Some(disaggL.sortWith(_.cost < _.cost))
 
     elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")

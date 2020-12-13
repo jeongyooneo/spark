@@ -229,8 +229,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val unrollingKey = s"unroll-${childBlockId.name}"
     var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
 
+    val evictionKey = s"eviction-${childBlockId.name}"
+    var evictionTime = metricTracker.blockElapsedTimeMap.getOrDefault(evictionKey, 0L)
+
     b.append(unrollingKey)
     l.append(timeSum)
+
+    b.append(evictionKey)
+    l.append(evictionTime)
 
     if (reverseDag.contains(rddNode) && reverseDag(rddNode).nonEmpty) {
       for (parent <- reverseDag(rddNode)) {

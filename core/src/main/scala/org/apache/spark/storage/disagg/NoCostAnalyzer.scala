@@ -23,7 +23,7 @@ import org.apache.spark.storage.BlockId
 private[spark] class NoCostAnalyzer(metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  override def compDisaggCost(blockId: BlockId): CompDisaggCost = {
+  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
     new CompDisaggCost(blockId, 0, 0)
   }
 }
