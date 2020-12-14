@@ -150,37 +150,30 @@ private[spark] class DisaggBlockManager(
    */
   def createFileOutputStream(blockId: BlockId): FileOutStream = {
     val path = new AlluxioURI("/" + blockId)
-    if (fs.exists(path)) {
-      // the block is evicted (and UnavailableException is thrown)
-      // thus we removed metadata for the block,
-      // but fs.exists(path) CAN return true, so we delete it
-      fs.delete(path)
-    }
-    fs.createFile(path)
-    /*
     try {
       if (fs.exists(path)) {
         // the block is evicted (and UnavailableException is thrown)
         // thus we removed metadata for the block,
         // but fs.exists(path) CAN return true, so we delete it
+        logInfo(s"createFileOutputStream $blockId already exists! let's delete it")
         fs.delete(path)
       }
-      fs.createFile(path)
+      logInfo(s"createFileOutputStream $blockId starting..")
+      val res = fs.createFile(path)
+      logInfo(s"createFileOutputStream $blockId finished")
+      res
     } catch {
-      case e1: ResourceExhaustedException =>
-        logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
-        // do nothing
       case e: Exception =>
         e.printStackTrace()
         throw e
     }
-     */
   }
 }
 
 private[spark] object DisaggBlockManager {
   val DRIVER_ENDPOINT_NAME = "DisaggBlockManager"
 }
+
 
 
 

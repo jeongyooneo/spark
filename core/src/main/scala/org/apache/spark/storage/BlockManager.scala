@@ -150,7 +150,9 @@ private[spark] class BlockManager(
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
-  private val executor = Executors.newFixedThreadPool(50)
+  private val executor = ExecutionContext.fromExecutorService(
+    ThreadUtils.newDaemonCachedThreadPool("put-alluxio-future", 50))
+  // val executor = Executors.newFixedThreadPool(20)
 
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
@@ -949,13 +951,25 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
-    val alluxioFetchStart = System.nanoTime
-    val alluxio = getAlluxioValues[T](blockId)
+    if (blockId.isRDD) {
+      val alluxio = getAlluxioValues[T](blockId)
+      if (alluxio.isDefined) {
+        return alluxio
+      }
+    } else {
+      logInfo(s"get $blockId locally or remotely ${TaskContext.get().taskAttemptId()}")
 
-    if (alluxio.isDefined) {
-      val alluxioFetchTime = System.nanoTime - alluxioFetchStart
-      return alluxio
+      val local = getLocalValues(blockId)
+      if (local.isDefined) {
+        return local
+      }
+
+      val remote = getRemoteValues[T](blockId)
+      if (remote.isDefined) {
+        return remote
+      }
     }
+
     None
   }
 
@@ -1252,6 +1266,8 @@ private[spark] class BlockManager(
         return None
       }
     }
+    logInfo(s"putBlockInfo $blockId " +
+      s"took ${System.currentTimeMillis() - startTimeMs} ms")
 
     var exceptionWasThrown: Boolean = true
     val result: Option[T] = try {
@@ -1311,50 +1327,55 @@ private[spark] class BlockManager(
   def putAlluxio(blockId: BlockId)
                 (writeFunc: WritableByteChannel => Unit): Long = {
     var size = 0L
+    // try {
+    // executor.submit(new Runnable {
+    // override def run(): Unit = {
     try {
-      val result = executor.submit(new Runnable {
-        override def run(): Unit = {
-          try {
-            disaggManager.writeLock(blockId, executorId)
-            // metadata for the block doesn't exist
-            val out = disaggManager.createFileOutputStream(blockId)
-            val channel = new CountingWritableChannel(Channels.newChannel(out))
-            writeFunc(channel)
-            size = channel.getCount
-            channel.close()
-            out.close()
-          } catch {
-            case e1: InvalidArgumentException =>
-              logInfo(s"putAlluxio1: Block has a block size smaller than the file block size")
-            // do nothing
-            case e2: ResourceExhaustedException =>
-              logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
-            // do nothing
-            case e: IOException => e.printStackTrace()
-              logInfo(s"Exception in createFileOutputStream $blockId " +
-                s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                s"task ${TaskContext.get().partitionId()}")
-              throw e
-          } finally {
-            disaggManager.writeUnlock(blockId, executorId, size)
-          }
-        }
-      })
-      result.get()
-      // Future.successful(true)
+      disaggManager.writeLock(blockId, executorId)
+      // metadata for the block doesn't exist
+      val out = disaggManager.createFileOutputStream(blockId)
+      val channel = new CountingWritableChannel(Channels.newChannel(out))
+      writeFunc(channel)
+      logInfo(s"putAlluxio $blockId finished writing")
+      size = channel.getCount
+      channel.close()
+      logInfo(s"putAlluxio $blockId finished writing, closed channel")
+      out.close()
+      logInfo(s"putAlluxio $blockId finished writing, closed channel and stream")
     } catch {
+      /*
       case e1: InvalidArgumentException =>
-        logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
+        logInfo(s"putAlluxio1: Block has a block size smaller than the file block size")
       // do nothing
       case e2: ResourceExhaustedException =>
         logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
       // do nothing
-      case e: Exception =>
-        logInfo(s"Exception in putAlluxio for $blockId " +
+      */
+      case e: Exception => e.printStackTrace()
+        logInfo(s"Exception in createFileOutputStream $blockId " +
           s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-          s"task ${TaskContext.get().taskAttemptId()}")
+          s"task ${TaskContext.get().partitionId()}")
         throw e
+    } finally {
+      disaggManager.writeUnlock(blockId, executorId, size)
     }
+    // }
+    // }).get()
+    /*
+  } catch {
+    case e1: InvalidArgumentException =>
+      logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
+    // do nothing
+    case e2: ResourceExhaustedException =>
+      logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
+    // do nothing
+    case e: Exception =>
+      logInfo(s"Exception in putAlluxio for $blockId " +
+        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+      throw e
+  }
+  */
 
     size
   }
@@ -1882,6 +1903,7 @@ private[spark] class BlockManager(
     blockInfoManager.clear()
     memoryStore.clear()
     futureExecutionContext.shutdownNow()
+    executor.shutdownNow()
     logInfo("BlockManager stopped")
   }
 }
@@ -2031,10 +2053,4 @@ private[spark] object BlockManager {
     }
   }
 }
-
-
-
-
-
-
 
