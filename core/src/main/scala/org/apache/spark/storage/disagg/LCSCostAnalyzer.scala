@@ -28,7 +28,12 @@ private[spark] class LCSCostAnalyzer(val rddJobDag: RDDJobDag,
   private val readThp = BlazeParameters.readThp
 
   override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
-    val refCnt = rddJobDag.getLRCRefCnt(blockId)
+    // val refCnt = rddJobDag.getLRCRefCnt(blockId)
+
+    val node = rddJobDag.getRDDNode(blockId)
+    val refCnt = rddJobDag.getReferenceStages(blockId)
+      .filter(p => node.getStages.contains(p.stageId)).size
+
     // we do not consider disagg overhead here
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
       metricTracker.blockCreatedTimeMap.get(blockId))
