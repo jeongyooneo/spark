@@ -21,7 +21,7 @@ import org.apache.spark.SparkConf
 
 private[spark] trait CachingPolicy {
 
-  def isRDDNodeCached(rddId: Int): Boolean
+  def isRDDNodeCached(rddId: Int): Option[Boolean]
 }
 
 object CachingPolicy {

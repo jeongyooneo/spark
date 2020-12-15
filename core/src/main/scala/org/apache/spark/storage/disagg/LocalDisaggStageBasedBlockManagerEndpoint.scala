@@ -170,11 +170,13 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       rddCachedMap.get(rddId)
     } else {
       val cache = cachingPolicy.isRDDNodeCached(rddId)
-      rddCachedMap.putIfAbsent(rddId, cache)
-      if (cache) {
+      if (cache.nonEmpty) {
+        rddCachedMap.putIfAbsent(rddId, cache.get)
         BlazeLogger.logCachingDecision(rddId)
+        cache.get
+      } else {
+        false
       }
-      cache
     }
   }
 

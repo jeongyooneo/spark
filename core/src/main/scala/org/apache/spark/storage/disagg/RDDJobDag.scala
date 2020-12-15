@@ -306,6 +306,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     */
   }
 
+  def containsRDD(rddId: Int): Boolean = {
+    vertices.contains(rddId)
+  }
+
   def getRefCntRDD(rddId: Int): Int = {
     val rddNode = vertices(rddId)
     val edges = dag(rddNode)

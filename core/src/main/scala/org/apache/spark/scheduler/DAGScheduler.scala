@@ -1093,6 +1093,7 @@ private[spark] class DAGScheduler(
   /** Submits stage, but first recursively submits any missing parents. */
   private def submitStage(stage: Stage) {
     // update dag
+    logInfo(s"TG: submitting stage ${stage.id}")
     rddJobDag match {
       case None =>
       case Some(dag) =>
