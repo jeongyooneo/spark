@@ -360,12 +360,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             return false
           }
 
+          /*
           if (zigZagRatio < 1 && previouslyEvicted.containsKey(blockId)) {
             BlazeLogger.discardLocal(blockId, executorId,
               storingCost.compCost, storingCost.disaggCost,
               estimateSize, s"$estimateSize, PreviouslyEvicted", onDisk)
             return false
           }
+          */
 
           val evictList = localEviction(
             Some(blockId), executorId, estimateSize, Set.empty, false, true)
@@ -437,22 +439,24 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               val (parentNodes, childNodes) = rddJobDag.get.getParentChildCachedNodes(node)
               val numPartition = stagePartitionMap.get(node.rootStage)
 
+              /*
               val checkZigZag =
                 (parentNodes ++ childNodes)
                 .filter(node => rddDiscardMap.containsKey(node.rddId))
                 .map(node => rddDiscardMap.get(node.rddId))
                 .filter(map => map.containsKey(blockIndex)).isEmpty
+              */
 
               discardSet.synchronized {
-                if (zigZagRatio >= 1 || (checkZigZag
-                  && discardSet.size() <= numPartition * zigZagRatio)) {
+                // if (zigZagRatio >= 1 || (checkZigZag
+                //  && discardSet.size() <= numPartition * zigZagRatio)) {
                   logInfo(s"Discard intermediate " +
                     s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
                     s"${storingCost.compCost / storingCost.futureUse}, " +
                     s"numShuffle: ${storingCost.numShuffle}, size: $estimateSize")
 
-                  previouslyEvicted.put(blockId, true)
+                  // previouslyEvicted.put(blockId, true)
 
                   discardSet.put(blockIndex, true)
 
@@ -460,6 +464,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     storingCost.compCost, storingCost.disaggCost,
                     estimateSize, s"$estimateSize", onDisk)
                   return false
+                /*
                 } else {
 
                   previouslyEvicted.remove(blockId)
@@ -473,11 +478,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   }
                   return true
                 }
+                */
               }
               // }
             } else {
 
-              previouslyEvicted.remove(blockId)
+              // previouslyEvicted.remove(blockId)
 
               val cachingDecElapsed = System.currentTimeMillis - cachingDecStart
 
@@ -493,12 +499,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             }
           } else {
 
+              /*
             if (zigZagRatio < 1 && previouslyEvicted.containsKey(blockId)) {
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.compCost, storingCost.disaggCost,
                 estimateSize, s"$estimateSize, PreviouslyEvicted", onDisk)
               return false
             }
+            */
 
             addToLocal(blockId, executorId, estimateSize, onDisk)
             BlazeLogger.logLocalCaching(blockId, executorId,
