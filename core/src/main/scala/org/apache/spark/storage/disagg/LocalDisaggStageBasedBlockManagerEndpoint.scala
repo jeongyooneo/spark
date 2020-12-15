@@ -360,7 +360,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             return false
           }
 
-          if (previouslyEvicted.containsKey(blockId)) {
+          if (zigZagRatio < 1 && previouslyEvicted.containsKey(blockId)) {
             BlazeLogger.discardLocal(blockId, executorId,
               storingCost.compCost, storingCost.disaggCost,
               estimateSize, s"$estimateSize, PreviouslyEvicted", onDisk)
@@ -493,7 +493,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             }
           } else {
 
-            if (previouslyEvicted.containsKey(blockId)) {
+            if (zigZagRatio < 1 && previouslyEvicted.containsKey(blockId)) {
               BlazeLogger.discardLocal(blockId, executorId,
                 storingCost.compCost, storingCost.disaggCost,
                 estimateSize, s"$estimateSize, PreviouslyEvicted", onDisk)
