@@ -284,8 +284,9 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    val st = System.currentTimeMillis()
     context.partitionId()
-    if (autocaching) {
+    val result = if (autocaching) {
       if (SparkEnv.get.blockManager.isRDDCache(this.id)) {
         this.storageLevel = StorageLevel.DISAGG
         getOrCompute(split, context)
@@ -300,6 +301,9 @@ abstract class RDD[T: ClassTag](
         computeOrReadCheckpoint(split, context)
       }
     }
+    val et = System.currentTimeMillis()
+    logInfo(s"IteratorTime ${this.id}_${split.index} ${et - st}")
+    result
   }
 
   /**
