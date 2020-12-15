@@ -23,8 +23,8 @@ private[spark] class RandomCachingPolicy(val percentage: Double) extends Caching
 
   val random = new Random
 
-  def isRDDNodeCached(rddId: Int): Boolean = {
-    random.nextDouble() <= percentage
+  def isRDDNodeCached(rddId: Int): Option[Boolean] = {
+    Some(random.nextDouble() <= percentage)
   }
 }
 
