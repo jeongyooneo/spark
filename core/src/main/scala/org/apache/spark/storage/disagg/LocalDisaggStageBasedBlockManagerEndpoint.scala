@@ -322,11 +322,20 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (!BLAZE_COST_FUNC) {
         // We just cache  if it is not blaze cost function !!
         // (if it is LRC or MRD)
-        addToLocal(blockId, executorId, estimateSize, onDisk)
-        BlazeLogger.logLocalCaching(blockId, executorId,
-          estimateSize, storingCost.cost, 0,
-          "1", onDisk)
-        return true
+        if (conf.get(BlazeParameters.COST_FUNCTION).contains("LCS")
+          && onDisk
+        && storingCost.compCost < storingCost.disaggCost) {
+          BlazeLogger.discardLocal(blockId, executorId,
+            storingCost.cost, storingCost.disaggCost, estimateSize, "LCS", onDisk)
+          recentlyRecachedBlocks.remove(blockId)
+          return false
+        } else {
+          addToLocal(blockId, executorId, estimateSize, onDisk)
+          BlazeLogger.logLocalCaching(blockId, executorId,
+            estimateSize, storingCost.cost, 0,
+            "1", onDisk)
+          return true
+        }
       }
 
       if (disableLocalCaching) {
