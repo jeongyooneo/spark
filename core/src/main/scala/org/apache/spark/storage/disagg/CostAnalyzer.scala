@@ -226,6 +226,8 @@ object CostAnalyzer {
         new BlazeRecompAndDiskCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Disk-Only")) {
         new BlazeDiskCostAnalyzer(rDDJobDag.get, metricTracker)
+      } else if (costType.equals("Blaze-Disk-Future-Use")) {
+        new BlazeDiskCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Recomp-Only")) {
         new BlazeRecompCostOnlyAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("MRD")) {
