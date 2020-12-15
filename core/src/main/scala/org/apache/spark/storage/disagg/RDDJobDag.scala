@@ -123,8 +123,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         dagChanged.set(true)
       }
 
-      // logInfo(s"Print DAG: $dag")
-      // logInfo(s"Print ReverseDAG: $reverseDag")
+      logInfo(s"DAG after update: $dag")
+      logInfo(s"ReverseDAG after update: $reverseDag")
   }
 
   override def toString: String = {
