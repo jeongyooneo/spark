@@ -1441,18 +1441,28 @@ private[spark] class BlockManager(
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         if (level.deserialized) {
+          val st = System.currentTimeMillis()
            memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
+              val et = System.currentTimeMillis()
+              // disaggManager.sendRecompTime(blockId, et - st)
               size = s
             case Left(iter) =>
+              val et = System.currentTimeMillis()
+              // disaggManager.sendRecompTime(blockId, et - st)
+
+
               // Not enough space to unroll this block; drop to disk if applicable
               if (USE_DISK) {
+                val diskSt = System.currentTimeMillis()
                 val estimateSize = memoryStore.sizeEstimationMap.get(blockId)
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
+                val diskEt = System.currentTimeMillis()
+                disaggManager.sendSerMetric(blockId, estimateSize, diskEt - diskSt)
 
                 if (diskStore.contains(blockId)) {
                   size = diskStore.getSize(blockId)
@@ -1800,6 +1810,7 @@ private[spark] class BlockManager(
         logInfo(s"Writing block $blockId to disk")
         data() match {
           case Left(elements) =>
+            val diskSt = System.currentTimeMillis()
             diskStore.put(blockId) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
@@ -1807,6 +1818,8 @@ private[spark] class BlockManager(
                 out,
                 elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
             }
+            val diskEt = System.currentTimeMillis()
+            disaggManager.sendSerMetric(blockId, info.size, diskEt - diskSt)
           case Right(bytes) =>
             diskStore.putBytes(blockId, bytes)
         }

@@ -444,8 +444,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 .filter(map => map.containsKey(blockIndex)).isEmpty
 
               discardSet.synchronized {
-                if (checkZigZag
-                  && discardSet.size() <= numPartition * zigZagRatio) {
+                if (zigZagRatio >= 1 || (checkZigZag
+                  && discardSet.size() <= numPartition * zigZagRatio)) {
                   logInfo(s"Discard intermediate " +
                     s"by cost comparison: ${blockId}, ${storingCost.compCost}, "
                     + s"${storingCost.disaggCost}, " +
