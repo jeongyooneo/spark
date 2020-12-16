@@ -30,6 +30,10 @@ private[spark] object BlazeParameters extends Logging {
     .doubleConf
     .createWithDefault(readThp)
 
+  private[spark] val IS_SPARK = ConfigBuilder("spark.disagg.isspark")
+    .booleanConf
+    .createWithDefault(false)
+
   private[spark] val DISAGG_THRESHOLD_MB = ConfigBuilder("spark.disagg.threshold")
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("0g")
