@@ -17,14 +17,14 @@
 
 package org.apache.spark.storage
 
-import alluxio.exception.status.{InvalidArgumentException, ResourceExhaustedException, UnavailableException}
+import alluxio.exception.status.UnavailableException
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 import java.io._
 import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
 import java.nio.ByteBuffer
 import java.nio.channels.{Channels, WritableByteChannel}
 import java.util.Collections
-import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters.mapAsScalaConcurrentMapConverter
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
@@ -150,9 +150,6 @@ private[spark] class BlockManager(
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
-  private val executor = ExecutionContext.fromExecutorService(
-    ThreadUtils.newDaemonCachedThreadPool("put-alluxio-future", 50))
-  // val executor = Executors.newFixedThreadPool(20)
 
   // Actual storage of where blocks are kept
   private[spark] val memoryStore =
@@ -841,6 +838,78 @@ private[spark] class BlockManager(
   }
 
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    var result = None: Option[BlockResult]
+    try {
+      logInfo(s"start getAlluxioValues $blockId " +
+        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+
+      if (disaggManager.readLock(blockId, executorId)) {
+        // metadata for the block to read exists
+        disaggManager.createFileInputStream(blockId, executorId) match {
+          case Some(in) =>
+            logInfo(s"start deser $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+
+            val alluxioIter = serializerManager.dataDeserializeStream(blockId,
+              in)(implicitly[ClassTag[T]])
+            logInfo(s"done deser $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+            in.close()
+            logInfo(s"closed inputStream for $blockId from alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+            val len = disaggManager.getSize(blockId, executorId)
+
+            logInfo(s"Got $blockId from alluxio: size $len " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+
+            val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+            result = Some(new BlockResult(ci, DataReadMethod.Network, len))
+          case None =>
+            logInfo(s"$blockId path doesn't exist or evicted in alluxio: " +
+              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+              s"task ${TaskContext.get().taskAttemptId()}")
+            handleAlluxioReadFailure(blockId)
+            disaggManager.removeFileInfo(blockId, executorId)
+            result = None
+        }
+      } else {
+        // the block and its metadata do not exist
+        logInfo(s"$blockId not in alluxio and neither its metadata: " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+      }
+    } catch {
+      case e: UnavailableException =>
+        logInfo(s"$blockId not available (evicted) in alluxio - should recompute it " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+        e.printStackTrace()
+        handleAlluxioReadFailure(blockId)
+        disaggManager.removeFileInfo(blockId, executorId)
+        result = None
+      case e: Exception => e.printStackTrace()
+        logInfo(s"Exception in createFileInputStream $blockId " +
+          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+          s"task ${TaskContext.get().taskAttemptId()}")
+        throw e
+    } finally {
+      logInfo(s"finally in getAlluxioValues $blockId " +
+        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+        s"task ${TaskContext.get().taskAttemptId()}")
+      disaggManager.readUnlock(blockId, executorId)
+    }
+
+    logInfo(s"getAlluxioValues for $blockId returns $result " +
+      s"executor $executorId, stage ${TaskContext.get().stageId()} " +
+      s"task ${TaskContext.get().taskAttemptId()}")
+
+    result
+    /*
     blockInfoManager.lockForReading(blockId) match {
       case None =>
         logInfo(s"getAlluxioValues: info for $blockId was not found")
@@ -918,6 +987,7 @@ private[spark] class BlockManager(
 
         result
     }
+     */
   }
 
   def removeFromAlluxio[T: ClassTag](blockId: BlockId): Boolean = {
@@ -1327,9 +1397,6 @@ private[spark] class BlockManager(
   def putAlluxio(blockId: BlockId)
                 (writeFunc: WritableByteChannel => Unit): Long = {
     var size = 0L
-    // try {
-    // executor.submit(new Runnable {
-    // override def run(): Unit = {
     try {
       disaggManager.writeLock(blockId, executorId)
       // metadata for the block doesn't exist
@@ -1343,14 +1410,6 @@ private[spark] class BlockManager(
       out.close()
       logInfo(s"putAlluxio $blockId finished writing, closed channel and stream")
     } catch {
-      /*
-      case e1: InvalidArgumentException =>
-        logInfo(s"putAlluxio1: Block has a block size smaller than the file block size")
-      // do nothing
-      case e2: ResourceExhaustedException =>
-        logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
-      // do nothing
-      */
       case e: Exception => e.printStackTrace()
         logInfo(s"Exception in createFileOutputStream $blockId " +
           s"executor $executorId, stage ${TaskContext.get().stageId()} " +
@@ -1359,23 +1418,6 @@ private[spark] class BlockManager(
     } finally {
       disaggManager.writeUnlock(blockId, executorId, size)
     }
-    // }
-    // }).get()
-    /*
-  } catch {
-    case e1: InvalidArgumentException =>
-      logInfo(s"putAlluxio2: Block has a block size smaller than the file block size")
-    // do nothing
-    case e2: ResourceExhaustedException =>
-      logInfo(s"ResourceExhaustedException for $blockId, falling back to GrpcDataWriter")
-    // do nothing
-    case e: Exception =>
-      logInfo(s"Exception in putAlluxio for $blockId " +
-        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-        s"task ${TaskContext.get().taskAttemptId()}")
-      throw e
-  }
-  */
 
     size
   }
@@ -1505,552 +1547,551 @@ private[spark] class BlockManager(
     }
   }
 
-  /**
-   * Attempts to cache spilled bytes read from disk into the MemoryStore in order to speed up
-   * subsequent reads. This method requires the caller to hold a read lock on the block.
-   *
-   * @return a copy of the bytes from the memory store if the put succeeded, otherwise None.
-   *         If this returns bytes from the memory store then the original disk store bytes will
-   *         automatically be disposed and the caller should not continue to use them. Otherwise,
-   *         if this returns None then the original disk store bytes will be unaffected.
-   */
-  private def maybeCacheDiskBytesInMemory(
-                                           blockInfo: BlockInfo,
-                                           blockId: BlockId,
-                                           level: StorageLevel,
-                                           diskData: BlockData): Option[ChunkedByteBuffer] = {
-    require(!level.deserialized)
-    if (level.useMemory) {
-      // Synchronize on blockInfo to guard against a race condition where two readers both try to
-      // put values read from disk into the MemoryStore.
-      blockInfo.synchronized {
-        if (memoryStore.contains(blockId)) {
-          diskData.dispose()
-          Some(memoryStore.getBytes(blockId).get)
-        } else {
-          val allocator = level.memoryMode match {
-            case MemoryMode.ON_HEAP => ByteBuffer.allocate _
-            case MemoryMode.OFF_HEAP => Platform.allocateDirectBuffer _
-          }
-          val putSucceeded = memoryStore.putBytes(blockId, diskData.size, level.memoryMode, () => {
-            // https://issues.apache.org/jira/browse/SPARK-6076
-            // If the file size is bigger than the free memory, OOM will happen. So if we
-            // cannot put it into MemoryStore, copyForMemory should not be created. That's why
-            // this action is put into a `() => ChunkedByteBuffer` and created lazily.
-            diskData.toChunkedByteBuffer(allocator)
-          })
-          if (putSucceeded) {
+    /**
+     * Attempts to cache spilled bytes read from disk into the MemoryStore in order to speed up
+     * subsequent reads. This method requires the caller to hold a read lock on the block.
+     *
+     * @return a copy of the bytes from the memory store if the put succeeded, otherwise None.
+     *         If this returns bytes from the memory store then the original disk store bytes will
+     *         automatically be disposed and the caller should not continue to use them. Otherwise,
+     *         if this returns None then the original disk store bytes will be unaffected.
+     */
+    private def maybeCacheDiskBytesInMemory(
+                                             blockInfo: BlockInfo,
+                                             blockId: BlockId,
+                                             level: StorageLevel,
+                                             diskData: BlockData): Option[ChunkedByteBuffer] = {
+      require(!level.deserialized)
+      if (level.useMemory) {
+        // Synchronize on blockInfo to guard against a race condition where two readers both try to
+        // put values read from disk into the MemoryStore.
+        blockInfo.synchronized {
+          if (memoryStore.contains(blockId)) {
             diskData.dispose()
             Some(memoryStore.getBytes(blockId).get)
           } else {
-            None
+            val allocator = level.memoryMode match {
+              case MemoryMode.ON_HEAP => ByteBuffer.allocate _
+              case MemoryMode.OFF_HEAP => Platform.allocateDirectBuffer _
+            }
+            val putSucceeded = memoryStore.putBytes(blockId, diskData.size, level.memoryMode,
+              () => {
+              // https://issues.apache.org/jira/browse/SPARK-6076
+              // If the file size is bigger than the free memory, OOM will happen. So if we
+              // cannot put it into MemoryStore, copyForMemory should not be created. That's why
+              // this action is put into a `() => ChunkedByteBuffer` and created lazily.
+              diskData.toChunkedByteBuffer(allocator)
+            })
+            if (putSucceeded) {
+              diskData.dispose()
+              Some(memoryStore.getBytes(blockId).get)
+            } else {
+              None
+            }
           }
         }
-      }
-    } else {
-      None
-    }
-  }
-
-  /**
-   * Attempts to cache spilled values read from disk into the MemoryStore in order to speed up
-   * subsequent reads. This method requires the caller to hold a read lock on the block.
-   *
-   * @return a copy of the iterator. The original iterator passed this method should no longer
-   *         be used after this method returns.
-   */
-  private def maybeCacheDiskValuesInMemory[T](
-                                               blockInfo: BlockInfo,
-                                               blockId: BlockId,
-                                               level: StorageLevel,
-                                               diskIterator: Iterator[T]): Iterator[T] = {
-    require(level.deserialized)
-    val classTag = blockInfo.classTag.asInstanceOf[ClassTag[T]]
-    if (level.useMemory) {
-      // Synchronize on blockInfo to guard against a race condition where two readers both try to
-      // put values read from disk into the MemoryStore.
-      blockInfo.synchronized {
-        if (memoryStore.contains(blockId)) {
-          // Note: if we had a means to discard the disk iterator, we would do that here.
-          memoryStore.getValues(blockId).get
-        } else {
-          memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
-            case Left(iter) =>
-              // The memory store put() failed, so it returned the iterator back to us:
-              iter
-            case Right(_) =>
-              // The put() succeeded, so we can read the values back:
-              memoryStore.getValues(blockId).get
-          }
-        }
-      }.asInstanceOf[Iterator[T]]
-    } else {
-      diskIterator
-    }
-  }
-
-  /**
-   * Get peer block managers in the system.
-   */
-  private def getPeers(forceFetch: Boolean): Seq[BlockManagerId] = {
-    peerFetchLock.synchronized {
-      val cachedPeersTtl = conf.getInt("spark.storage.cachedPeersTtl", 60 * 1000) // milliseconds
-      val timeout = System.currentTimeMillis - lastPeerFetchTime > cachedPeersTtl
-      if (cachedPeers == null || forceFetch || timeout) {
-        cachedPeers = master.getPeers(blockManagerId).sortBy(_.hashCode)
-        lastPeerFetchTime = System.currentTimeMillis
-        logDebug("Fetched peers from master: " + cachedPeers.mkString("[", ",", "]"))
-      }
-      cachedPeers
-    }
-  }
-
-  /**
-   * Called for pro-active replenishment of blocks lost due to executor failures
-   *
-   * @param blockId blockId being replicate
-   * @param existingReplicas existing block managers that have a replica
-   * @param maxReplicas maximum replicas needed
-   */
-  def replicateBlock(
-                      blockId: BlockId,
-                      existingReplicas: Set[BlockManagerId],
-                      maxReplicas: Int): Unit = {
-    logInfo(s"Using $blockManagerId to pro-actively replicate $blockId")
-    blockInfoManager.lockForReading(blockId).foreach { info =>
-      val data = doGetLocalBytes(blockId, info)
-      val storageLevel = StorageLevel(
-        useDisk = info.level.useDisk,
-        useMemory = info.level.useMemory,
-        useOffHeap = info.level.useOffHeap,
-        deserialized = info.level.deserialized,
-        replication = maxReplicas)
-      // we know we are called as a result of an executor removal, so we refresh peer cache
-      // this way, we won't try to replicate to a missing executor with a stale reference
-      getPeers(forceFetch = true)
-      try {
-        replicate(blockId, data, storageLevel, info.classTag, existingReplicas)
-      } finally {
-        logDebug(s"Releasing lock for $blockId")
-        releaseLockAndDispose(blockId, data)
-      }
-    }
-  }
-
-  /**
-   * Replicate block to another node. Note that this is a blocking call that returns after
-   * the block has been replicated.
-   */
-  private def replicate(
-                         blockId: BlockId,
-                         data: BlockData,
-                         level: StorageLevel,
-                         classTag: ClassTag[_],
-                         existingReplicas: Set[BlockManagerId] = Set.empty): Unit = {
-
-    val maxReplicationFailures = conf.getInt("spark.storage.maxReplicationFailures", 1)
-    val tLevel = StorageLevel(
-      useDisk = level.useDisk,
-      useMemory = level.useMemory,
-      useOffHeap = level.useOffHeap,
-      deserialized = level.deserialized,
-      replication = 1)
-
-    val numPeersToReplicateTo = level.replication - 1
-    val startTime = System.nanoTime
-
-    val peersReplicatedTo = mutable.HashSet.empty ++ existingReplicas
-    val peersFailedToReplicateTo = mutable.HashSet.empty[BlockManagerId]
-    var numFailures = 0
-
-    val initialPeers = getPeers(false).filterNot(existingReplicas.contains)
-
-    var peersForReplication = blockReplicationPolicy.prioritize(
-      blockManagerId,
-      initialPeers,
-      peersReplicatedTo,
-      blockId,
-      numPeersToReplicateTo)
-
-    while(numFailures <= maxReplicationFailures &&
-      !peersForReplication.isEmpty &&
-      peersReplicatedTo.size < numPeersToReplicateTo) {
-      val peer = peersForReplication.head
-      try {
-        val onePeerStartTime = System.nanoTime
-        logTrace(s"Trying to replicate $blockId of ${data.size} bytes to $peer")
-        // This thread keeps a lock on the block, so we do not want the netty thread to unlock
-        // block when it finishes sending the message.
-        val buffer = new BlockManagerManagedBuffer(blockInfoManager, blockId, data, false,
-          unlockOnDeallocate = false)
-        blockTransferService.uploadBlockSync(
-          peer.host,
-          peer.port,
-          peer.executorId,
-          blockId,
-          buffer,
-          tLevel,
-          classTag)
-        logTrace(s"Replicated $blockId of ${data.size} bytes to $peer" +
-          s" in ${(System.nanoTime - onePeerStartTime).toDouble / 1e6} ms")
-        peersForReplication = peersForReplication.tail
-        peersReplicatedTo += peer
-      } catch {
-        case NonFatal(e) =>
-          logWarning(s"Failed to replicate $blockId to $peer, failure #$numFailures", e)
-          peersFailedToReplicateTo += peer
-          // we have a failed replication, so we get the list of peers again
-          // we don't want peers we have already replicated to and the ones that
-          // have failed previously
-          val filteredPeers = getPeers(true).filter { p =>
-            !peersFailedToReplicateTo.contains(p) && !peersReplicatedTo.contains(p)
-          }
-
-          numFailures += 1
-          peersForReplication = blockReplicationPolicy.prioritize(
-            blockManagerId,
-            filteredPeers,
-            peersReplicatedTo,
-            blockId,
-            numPeersToReplicateTo - peersReplicatedTo.size)
-      }
-    }
-    logDebug(s"Replicating $blockId of ${data.size} bytes to " +
-      s"${peersReplicatedTo.size} peer(s) took ${(System.nanoTime - startTime) / 1e6} ms")
-    if (peersReplicatedTo.size < numPeersToReplicateTo) {
-      logWarning(s"Block $blockId replicated to only " +
-        s"${peersReplicatedTo.size} peer(s) instead of $numPeersToReplicateTo peers")
-    }
-
-    logDebug(s"block $blockId replicated to ${peersReplicatedTo.mkString(", ")}")
-  }
-
-  /**
-   * Read a block consisting of a single object.
-   */
-  def getSingle[T: ClassTag](blockId: BlockId): Option[T] = {
-    get[T](blockId).map(_.data.next().asInstanceOf[T])
-  }
-
-  /**
-   * Write a block consisting of a single object.
-   *
-   * @return true if the block was stored or false if the block was already stored or an
-   *         error occurred.
-   */
-  def putSingle[T: ClassTag](
-                              blockId: BlockId,
-                              value: T,
-                              level: StorageLevel,
-                              tellMaster: Boolean = true): Boolean = {
-    putIterator(blockId, Iterator(value), level, tellMaster)
-  }
-
-  /**
-   * Drop a block from memory, possibly putting it on disk if applicable. Called when the memory
-   * store reaches its limit and needs to free up space.
-   *
-   * If `data` is not put on disk, it won't be created.
-   *
-   * The caller of this method must hold a write lock on the block before calling this method.
-   * This method does not release the write lock.
-   *
-   * @return the block's new effective StorageLevel.
-   */
-  private[storage] override def dropFromMemory[T: ClassTag]
-  (blockId: BlockId, data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
-    val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
-    var blockIsUpdated = false
-    val level = info.level
-
-    // Drop to disk, if storage level requires
-    if (level.useDisk && !diskStore.contains(blockId)) {
-      logInfo(s"Writing block $blockId to disk")
-      data() match {
-        case Left(elements) =>
-          diskStore.put(blockId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            serializerManager.dataSerializeStream(
-              blockId,
-              out,
-              elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
-          }
-        case Right(bytes) =>
-          diskStore.putBytes(blockId, bytes)
-      }
-      blockIsUpdated = true
-    }
-
-    // Actually drop from memory store
-    val droppedMemorySize =
-      if (memoryStore.contains(blockId)) memoryStore.getSize(blockId) else 0L
-    val blockIsRemoved = memoryStore.remove(blockId)
-    if (blockIsRemoved) {
-      blockIsUpdated = true
-    } else {
-      logWarning(s"Block $blockId could not be dropped from memory as it does not exist")
-    }
-
-    val status = getCurrentBlockStatus(blockId, info)
-    if (info.tellMaster) {
-      reportBlockStatus(blockId, status, droppedMemorySize)
-    }
-    if (blockIsUpdated) {
-      addUpdatedBlockStatusToTaskMetrics(blockId, status)
-    }
-    if (blockId.isRDD) {
-      logInfo(s"Dropping block $blockId from memory")
-      if (TaskContext.get() != null) {
-        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
-          s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
       } else {
-        master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
-          s"-1\t$droppedMemorySize bytes")
+        None
       }
     }
-    status.storageLevel
-  }
 
-  /**
-   * Remove all blocks belonging to the given RDD.
-   *
-   * @return The number of blocks removed.
-   */
-  def removeRdd(rddId: Int): Int = {
-    // TODO: Avoid a linear scan by creating another mapping of RDD.id to blocks.
-    logInfo(s"Removing RDD $rddId")
-    val blocksToRemove = blockInfoManager.entries.flatMap(_._1.asRDDId).filter(_.rddId == rddId)
-    blocksToRemove.foreach { blockId => removeBlock(blockId, tellMaster = false) }
-    blocksToRemove.size
-  }
-
-  /**
-   * Remove all blocks belonging to the given broadcast.
-   */
-  def removeBroadcast(broadcastId: Long, tellMaster: Boolean): Int = {
-    logDebug(s"Removing broadcast $broadcastId")
-    val blocksToRemove = blockInfoManager.entries.map(_._1).collect {
-      case bid @ BroadcastBlockId(`broadcastId`, _) => bid
-    }
-    blocksToRemove.foreach { blockId => removeBlock(blockId, tellMaster) }
-    blocksToRemove.size
-  }
-
-  /**
-   * Remove a block from both memory and disk.
-   */
-  def removeBlock(blockId: BlockId, tellMaster: Boolean = true): Unit = {
-    logInfo(s"Removing block $blockId")
-    val startTime = System.currentTimeMillis()
-    blockInfoManager.lockForWriting(blockId) match {
-      case None =>
-        // The block has already been removed; do nothing.
-        logWarning(s"Asked to remove block $blockId, which does not exist")
-      case Some(info) =>
-        removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
-        addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
-        logInfo(s"Removing $blockId " +
-          s"took ${System.currentTimeMillis() - startTime} ms")
-    }
-  }
-
-  /**
-   * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
-   * lock on the block.
-   */
-  private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean): Unit = {
-    // Removals are idempotent in disk store and memory store. At worst, we get a warning.
-    val removedFromMemory = memoryStore.remove(blockId)
-    val removedFromDisk = diskStore.remove(blockId)
-    // Check whether the block exists in Alluxio, remove if exists
-    val removedFromAlluxio = removeFromAlluxio(blockId)
-
-    if (!removedFromMemory && !removedFromDisk && !removedFromAlluxio && !blockId.isRDD) {
-      logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
-    }
-
-    blockInfoManager.removeBlock(blockId)
-    if (tellMaster) {
-      reportBlockStatus(blockId, BlockStatus.empty)
-    }
-  }
-
-  private def addUpdatedBlockStatusToTaskMetrics(blockId: BlockId, status: BlockStatus): Unit = {
-    if (conf.get(config.TASK_METRICS_TRACK_UPDATED_BLOCK_STATUSES)) {
-      Option(TaskContext.get()).foreach { c =>
-        c.taskMetrics().incUpdatedBlockStatuses(blockId -> status)
+    /**
+     * Attempts to cache spilled values read from disk into the MemoryStore in order to speed up
+     * subsequent reads. This method requires the caller to hold a read lock on the block.
+     *
+     * @return a copy of the iterator. The original iterator passed this method should no longer
+     *         be used after this method returns.
+     */
+    private def maybeCacheDiskValuesInMemory[T](
+                                                 blockInfo: BlockInfo,
+                                                 blockId: BlockId,
+                                                 level: StorageLevel,
+                                                 diskIterator: Iterator[T]): Iterator[T] = {
+      require(level.deserialized)
+      val classTag = blockInfo.classTag.asInstanceOf[ClassTag[T]]
+      if (level.useMemory) {
+        // Synchronize on blockInfo to guard against a race condition where two readers both try to
+        // put values read from disk into the MemoryStore.
+        blockInfo.synchronized {
+          if (memoryStore.contains(blockId)) {
+            // Note: if we had a means to discard the disk iterator, we would do that here.
+            memoryStore.getValues(blockId).get
+          } else {
+            memoryStore.putIteratorAsValues(blockId, diskIterator, classTag) match {
+              case Left(iter) =>
+                // The memory store put() failed, so it returned the iterator back to us:
+                iter
+              case Right(_) =>
+                // The put() succeeded, so we can read the values back:
+                memoryStore.getValues(blockId).get
+            }
+          }
+        }.asInstanceOf[Iterator[T]]
+      } else {
+        diskIterator
       }
     }
-  }
 
-  def releaseLockAndDispose(
-                             blockId: BlockId,
-                             data: BlockData,
-                             taskAttemptId: Option[Long] = None): Unit = {
-    releaseLock(blockId, taskAttemptId)
-    data.dispose()
-  }
-
-  def stop(): Unit = {
-    blockTransferService.close()
-    if (shuffleClient ne blockTransferService) {
-      // Closing should be idempotent, but maybe not for the NioBlockTransferService.
-      shuffleClient.close()
-    }
-    remoteBlockTempFileManager.stop()
-    diskBlockManager.stop()
-    rpcEnv.stop(slaveEndpoint)
-    blockInfoManager.clear()
-    memoryStore.clear()
-    futureExecutionContext.shutdownNow()
-    executor.shutdownNow()
-    logInfo("BlockManager stopped")
-  }
-}
-
-
-private[spark] object BlockManager {
-  private val ID_GENERATOR = new IdGenerator
-
-  def blockIdsToLocations(blockIds: Array[BlockId],
-                          env: SparkEnv,
-                          blockManagerMaster: BlockManagerMaster = null):
-  Map[BlockId, Seq[String]] = {
-
-    // blockManagerMaster != null is used in tests
-    assert(env != null || blockManagerMaster != null)
-    val blockLocations: Seq[Seq[BlockManagerId]] = if (blockManagerMaster == null) {
-      env.blockManager.getLocationBlockIds(blockIds)
-    } else {
-      blockManagerMaster.getLocations(blockIds)
-    }
-
-    val blockManagers = new HashMap[BlockId, Seq[String]]
-    for (i <- 0 until blockIds.length) {
-      blockManagers(blockIds(i)) = blockLocations(i).map { loc =>
-        ExecutorCacheTaskLocation(loc.host, loc.executorId).toString
+    /**
+     * Get peer block managers in the system.
+     */
+    private def getPeers(forceFetch: Boolean): Seq[BlockManagerId] = {
+      peerFetchLock.synchronized {
+        val cachedPeersTtl = conf.getInt("spark.storage.cachedPeersTtl", 60 * 1000) // milliseconds
+        val timeout = System.currentTimeMillis - lastPeerFetchTime > cachedPeersTtl
+        if (cachedPeers == null || forceFetch || timeout) {
+          cachedPeers = master.getPeers(blockManagerId).sortBy(_.hashCode)
+          lastPeerFetchTime = System.currentTimeMillis
+          logDebug("Fetched peers from master: " + cachedPeers.mkString("[", ",", "]"))
+        }
+        cachedPeers
       }
     }
-    blockManagers.toMap
-  }
 
-  private class ShuffleMetricsSource(
-                                      override val sourceName: String,
-                                      metricSet: MetricSet) extends Source {
-
-    override val metricRegistry = new MetricRegistry
-    metricRegistry.registerAll(metricSet)
-  }
-
-  class RemoteBlockDownloadFileManager(blockManager: BlockManager)
-    extends DownloadFileManager with Logging {
-    // lazy because SparkEnv is set after this
-    lazy val encryptionKey = SparkEnv.get.securityManager.getIOEncryptionKey()
-
-    private class ReferenceWithCleanup(
-                                        file: DownloadFile,
-                                        referenceQueue: JReferenceQueue[DownloadFile]
-                                      ) extends WeakReference[DownloadFile](file, referenceQueue) {
-
-      val filePath = file.path()
-
-      def cleanUp(): Unit = {
-        logDebug(s"Clean up file $filePath")
-
-        if (!file.delete()) {
-          logDebug(s"Fail to delete file $filePath")
+    /**
+     * Called for pro-active replenishment of blocks lost due to executor failures
+     *
+     * @param blockId blockId being replicate
+     * @param existingReplicas existing block managers that have a replica
+     * @param maxReplicas maximum replicas needed
+     */
+    def replicateBlock(
+                        blockId: BlockId,
+                        existingReplicas: Set[BlockManagerId],
+                        maxReplicas: Int): Unit = {
+      logInfo(s"Using $blockManagerId to pro-actively replicate $blockId")
+      blockInfoManager.lockForReading(blockId).foreach { info =>
+        val data = doGetLocalBytes(blockId, info)
+        val storageLevel = StorageLevel(
+          useDisk = info.level.useDisk,
+          useMemory = info.level.useMemory,
+          useOffHeap = info.level.useOffHeap,
+          deserialized = info.level.deserialized,
+          replication = maxReplicas)
+        // we know we are called as a result of an executor removal, so we refresh peer cache
+        // this way, we won't try to replicate to a missing executor with a stale reference
+        getPeers(forceFetch = true)
+        try {
+          replicate(blockId, data, storageLevel, info.classTag, existingReplicas)
+        } finally {
+          logDebug(s"Releasing lock for $blockId")
+          releaseLockAndDispose(blockId, data)
         }
       }
     }
 
-    private val referenceQueue = new JReferenceQueue[DownloadFile]
-    private val referenceBuffer = Collections.newSetFromMap[ReferenceWithCleanup](
-      new ConcurrentHashMap)
+    /**
+     * Replicate block to another node. Note that this is a blocking call that returns after
+     * the block has been replicated.
+     */
+    private def replicate(
+                           blockId: BlockId,
+                           data: BlockData,
+                           level: StorageLevel,
+                           classTag: ClassTag[_],
+                           existingReplicas: Set[BlockManagerId] = Set.empty): Unit = {
 
-    private val POLL_TIMEOUT = 1000
-    @volatile private var stopped = false
+      val maxReplicationFailures = conf.getInt("spark.storage.maxReplicationFailures", 1)
+      val tLevel = StorageLevel(
+        useDisk = level.useDisk,
+        useMemory = level.useMemory,
+        useOffHeap = level.useOffHeap,
+        deserialized = level.deserialized,
+        replication = 1)
 
-    private val cleaningThread = new Thread() { override def run() { keepCleaning() } }
-    cleaningThread.setDaemon(true)
-    cleaningThread.setName("RemoteBlock-temp-file-clean-thread")
-    cleaningThread.start()
+      val numPeersToReplicateTo = level.replication - 1
+      val startTime = System.nanoTime
 
-    override def createTempFile(transportConf: TransportConf): DownloadFile = {
-      val file = blockManager.diskBlockManager.createTempLocalBlock()._2
-      encryptionKey match {
-        case Some(key) =>
-          // encryption is enabled, so when we read the decrypted data off the network, we need to
-          // encrypt it when writing to disk.  Note that the data may have been encrypted when it
-          // was cached on disk on the remote side, but it was already decrypted by now (see
-          // EncryptedBlockData).
-          new EncryptedDownloadFile(file, key)
+      val peersReplicatedTo = mutable.HashSet.empty ++ existingReplicas
+      val peersFailedToReplicateTo = mutable.HashSet.empty[BlockManagerId]
+      var numFailures = 0
+
+      val initialPeers = getPeers(false).filterNot(existingReplicas.contains)
+
+      var peersForReplication = blockReplicationPolicy.prioritize(
+        blockManagerId,
+        initialPeers,
+        peersReplicatedTo,
+        blockId,
+        numPeersToReplicateTo)
+
+      while(numFailures <= maxReplicationFailures &&
+        !peersForReplication.isEmpty &&
+        peersReplicatedTo.size < numPeersToReplicateTo) {
+        val peer = peersForReplication.head
+        try {
+          val onePeerStartTime = System.nanoTime
+          logTrace(s"Trying to replicate $blockId of ${data.size} bytes to $peer")
+          // This thread keeps a lock on the block, so we do not want the netty thread to unlock
+          // block when it finishes sending the message.
+          val buffer = new BlockManagerManagedBuffer(blockInfoManager, blockId, data, false,
+            unlockOnDeallocate = false)
+          blockTransferService.uploadBlockSync(
+            peer.host,
+            peer.port,
+            peer.executorId,
+            blockId,
+            buffer,
+            tLevel,
+            classTag)
+          logTrace(s"Replicated $blockId of ${data.size} bytes to $peer" +
+            s" in ${(System.nanoTime - onePeerStartTime).toDouble / 1e6} ms")
+          peersForReplication = peersForReplication.tail
+          peersReplicatedTo += peer
+        } catch {
+          case NonFatal(e) =>
+            logWarning(s"Failed to replicate $blockId to $peer, failure #$numFailures", e)
+            peersFailedToReplicateTo += peer
+            // we have a failed replication, so we get the list of peers again
+            // we don't want peers we have already replicated to and the ones that
+            // have failed previously
+            val filteredPeers = getPeers(true).filter { p =>
+              !peersFailedToReplicateTo.contains(p) && !peersReplicatedTo.contains(p)
+            }
+
+            numFailures += 1
+            peersForReplication = blockReplicationPolicy.prioritize(
+              blockManagerId,
+              filteredPeers,
+              peersReplicatedTo,
+              blockId,
+              numPeersToReplicateTo - peersReplicatedTo.size)
+        }
+      }
+      logDebug(s"Replicating $blockId of ${data.size} bytes to " +
+        s"${peersReplicatedTo.size} peer(s) took ${(System.nanoTime - startTime) / 1e6} ms")
+      if (peersReplicatedTo.size < numPeersToReplicateTo) {
+        logWarning(s"Block $blockId replicated to only " +
+          s"${peersReplicatedTo.size} peer(s) instead of $numPeersToReplicateTo peers")
+      }
+
+      logDebug(s"block $blockId replicated to ${peersReplicatedTo.mkString(", ")}")
+    }
+
+    /**
+     * Read a block consisting of a single object.
+     */
+    def getSingle[T: ClassTag](blockId: BlockId): Option[T] = {
+      get[T](blockId).map(_.data.next().asInstanceOf[T])
+    }
+
+    /**
+     * Write a block consisting of a single object.
+     *
+     * @return true if the block was stored or false if the block was already stored or an
+     *         error occurred.
+     */
+    def putSingle[T: ClassTag](
+                                blockId: BlockId,
+                                value: T,
+                                level: StorageLevel,
+                                tellMaster: Boolean = true): Boolean = {
+      putIterator(blockId, Iterator(value), level, tellMaster)
+    }
+
+    /**
+     * Drop a block from memory, possibly putting it on disk if applicable. Called when the memory
+     * store reaches its limit and needs to free up space.
+     *
+     * If `data` is not put on disk, it won't be created.
+     *
+     * The caller of this method must hold a write lock on the block before calling this method.
+     * This method does not release the write lock.
+     *
+     * @return the block's new effective StorageLevel.
+     */
+    private[storage] override def dropFromMemory[T: ClassTag]
+    (blockId: BlockId, data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
+      val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
+      var blockIsUpdated = false
+      val level = info.level
+
+      // Drop to disk, if storage level requires
+      if (level.useDisk && !diskStore.contains(blockId)) {
+        logInfo(s"Writing block $blockId to disk")
+        data() match {
+          case Left(elements) =>
+            diskStore.put(blockId) { channel =>
+              val out = Channels.newOutputStream(channel)
+              serializerManager.dataSerializeStream(
+                blockId,
+                out,
+                elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
+            }
+          case Right(bytes) =>
+            diskStore.putBytes(blockId, bytes)
+        }
+        blockIsUpdated = true
+      }
+
+      // Actually drop from memory store
+      val droppedMemorySize =
+        if (memoryStore.contains(blockId)) memoryStore.getSize(blockId) else 0L
+      val blockIsRemoved = memoryStore.remove(blockId)
+      if (blockIsRemoved) {
+        blockIsUpdated = true
+      } else {
+        logWarning(s"Block $blockId could not be dropped from memory as it does not exist")
+      }
+
+      val status = getCurrentBlockStatus(blockId, info)
+      if (info.tellMaster) {
+        reportBlockStatus(blockId, status, droppedMemorySize)
+      }
+      if (blockIsUpdated) {
+        addUpdatedBlockStatusToTaskMetrics(blockId, status)
+      }
+      if (blockId.isRDD) {
+        logInfo(s"Dropping block $blockId from memory")
+        if (TaskContext.get() != null) {
+          master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+            s"${TaskContext.get().stageId()}\t$droppedMemorySize bytes")
+        } else {
+          master.sendLog(s"Evicted\t$blockId\t$executorId\t" +
+            s"-1\t$droppedMemorySize bytes")
+        }
+      }
+      status.storageLevel
+    }
+
+    /**
+     * Remove all blocks belonging to the given RDD.
+     *
+     * @return The number of blocks removed.
+     */
+    def removeRdd(rddId: Int): Int = {
+      // TODO: Avoid a linear scan by creating another mapping of RDD.id to blocks.
+      logInfo(s"Removing RDD $rddId")
+      val blocksToRemove = blockInfoManager.entries.flatMap(_._1.asRDDId).filter(_.rddId == rddId)
+      blocksToRemove.foreach { blockId => removeBlock(blockId, tellMaster = false) }
+      blocksToRemove.size
+    }
+
+    /**
+     * Remove all blocks belonging to the given broadcast.
+     */
+    def removeBroadcast(broadcastId: Long, tellMaster: Boolean): Int = {
+      logDebug(s"Removing broadcast $broadcastId")
+      val blocksToRemove = blockInfoManager.entries.map(_._1).collect {
+        case bid @ BroadcastBlockId(`broadcastId`, _) => bid
+      }
+      blocksToRemove.foreach { blockId => removeBlock(blockId, tellMaster) }
+      blocksToRemove.size
+    }
+
+    /**
+     * Remove a block from both memory and disk.
+     */
+    def removeBlock(blockId: BlockId, tellMaster: Boolean = true): Unit = {
+      logInfo(s"Removing block $blockId")
+      val startTime = System.currentTimeMillis()
+      blockInfoManager.lockForWriting(blockId) match {
         case None =>
-          new SimpleDownloadFile(file, transportConf)
+          // The block has already been removed; do nothing.
+          logWarning(s"Asked to remove block $blockId, which does not exist")
+        case Some(info) =>
+          removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
+          addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
+          logInfo(s"Removing $blockId " +
+            s"took ${System.currentTimeMillis() - startTime} ms")
       }
     }
 
-    override def registerTempFileToClean(file: DownloadFile): Boolean = {
-      referenceBuffer.add(new ReferenceWithCleanup(file, referenceQueue))
+    /**
+     * Internal version of [[removeBlock()]] which assumes that the caller already holds a write
+     * lock on the block.
+     */
+    private def removeBlockInternal(blockId: BlockId, tellMaster: Boolean): Unit = {
+      // Removals are idempotent in disk store and memory store. At worst, we get a warning.
+      val removedFromMemory = memoryStore.remove(blockId)
+      val removedFromDisk = diskStore.remove(blockId)
+      // Check whether the block exists in Alluxio, remove if exists
+      val removedFromAlluxio = removeFromAlluxio(blockId)
+
+      if (!removedFromMemory && !removedFromDisk && !removedFromAlluxio && !blockId.isRDD) {
+        logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
+      }
+
+      blockInfoManager.removeBlock(blockId)
+      if (tellMaster) {
+        reportBlockStatus(blockId, BlockStatus.empty)
+      }
+    }
+
+    private def addUpdatedBlockStatusToTaskMetrics(blockId: BlockId, status: BlockStatus): Unit = {
+      if (conf.get(config.TASK_METRICS_TRACK_UPDATED_BLOCK_STATUSES)) {
+        Option(TaskContext.get()).foreach { c =>
+          c.taskMetrics().incUpdatedBlockStatuses(blockId -> status)
+        }
+      }
+    }
+
+    def releaseLockAndDispose(
+                               blockId: BlockId,
+                               data: BlockData,
+                               taskAttemptId: Option[Long] = None): Unit = {
+      releaseLock(blockId, taskAttemptId)
+      data.dispose()
     }
 
     def stop(): Unit = {
-      stopped = true
-      cleaningThread.interrupt()
-      cleaningThread.join()
+      blockTransferService.close()
+      if (shuffleClient ne blockTransferService) {
+        // Closing should be idempotent, but maybe not for the NioBlockTransferService.
+        shuffleClient.close()
+      }
+      remoteBlockTempFileManager.stop()
+      diskBlockManager.stop()
+      rpcEnv.stop(slaveEndpoint)
+      blockInfoManager.clear()
+      memoryStore.clear()
+      futureExecutionContext.shutdownNow()
+      logInfo("BlockManager stopped")
+    }
+  }
+
+
+  private[spark] object BlockManager {
+    private val ID_GENERATOR = new IdGenerator
+
+    def blockIdsToLocations(blockIds: Array[BlockId],
+                            env: SparkEnv,
+                            blockManagerMaster: BlockManagerMaster = null):
+    Map[BlockId, Seq[String]] = {
+
+      // blockManagerMaster != null is used in tests
+      assert(env != null || blockManagerMaster != null)
+      val blockLocations: Seq[Seq[BlockManagerId]] = if (blockManagerMaster == null) {
+        env.blockManager.getLocationBlockIds(blockIds)
+      } else {
+        blockManagerMaster.getLocations(blockIds)
+      }
+
+      val blockManagers = new HashMap[BlockId, Seq[String]]
+      for (i <- 0 until blockIds.length) {
+        blockManagers(blockIds(i)) = blockLocations(i).map { loc =>
+          ExecutorCacheTaskLocation(loc.host, loc.executorId).toString
+        }
+      }
+      blockManagers.toMap
     }
 
-    private def keepCleaning(): Unit = {
-      while (!stopped) {
-        try {
-          Option(referenceQueue.remove(POLL_TIMEOUT))
-            .map(_.asInstanceOf[ReferenceWithCleanup])
-            .foreach { ref =>
-              referenceBuffer.remove(ref)
-              ref.cleanUp()
-            }
-        } catch {
-          case _: InterruptedException =>
-          // no-op
-          case NonFatal(e) =>
-            logError("Error in cleaning thread", e)
+    private class ShuffleMetricsSource(
+                                        override val sourceName: String,
+                                        metricSet: MetricSet) extends Source {
+
+      override val metricRegistry = new MetricRegistry
+      metricRegistry.registerAll(metricSet)
+    }
+
+    class RemoteBlockDownloadFileManager(blockManager: BlockManager)
+      extends DownloadFileManager with Logging {
+      // lazy because SparkEnv is set after this
+      lazy val encryptionKey = SparkEnv.get.securityManager.getIOEncryptionKey()
+
+      private class ReferenceWithCleanup(file: DownloadFile,
+                                         referenceQueue: JReferenceQueue[DownloadFile])
+        extends WeakReference[DownloadFile](file, referenceQueue) {
+
+        val filePath = file.path()
+
+        def cleanUp(): Unit = {
+          logDebug(s"Clean up file $filePath")
+
+          if (!file.delete()) {
+            logDebug(s"Fail to delete file $filePath")
+          }
+        }
+      }
+
+      private val referenceQueue = new JReferenceQueue[DownloadFile]
+      private val referenceBuffer = Collections.newSetFromMap[ReferenceWithCleanup](
+        new ConcurrentHashMap)
+
+      private val POLL_TIMEOUT = 1000
+      @volatile private var stopped = false
+
+      private val cleaningThread = new Thread() { override def run() { keepCleaning() } }
+      cleaningThread.setDaemon(true)
+      cleaningThread.setName("RemoteBlock-temp-file-clean-thread")
+      cleaningThread.start()
+
+      override def createTempFile(transportConf: TransportConf): DownloadFile = {
+        val file = blockManager.diskBlockManager.createTempLocalBlock()._2
+        encryptionKey match {
+          case Some(key) =>
+            // encryption is enabled, so when we read the decrypted data off the network, we need to
+            // encrypt it when writing to disk.  Note that the data may have been encrypted when it
+            // was cached on disk on the remote side, but it was already decrypted by now (see
+            // EncryptedBlockData).
+            new EncryptedDownloadFile(file, key)
+          case None =>
+            new SimpleDownloadFile(file, transportConf)
+        }
+      }
+
+      override def registerTempFileToClean(file: DownloadFile): Boolean = {
+        referenceBuffer.add(new ReferenceWithCleanup(file, referenceQueue))
+      }
+
+      def stop(): Unit = {
+        stopped = true
+        cleaningThread.interrupt()
+        cleaningThread.join()
+      }
+
+      private def keepCleaning(): Unit = {
+        while (!stopped) {
+          try {
+            Option(referenceQueue.remove(POLL_TIMEOUT))
+              .map(_.asInstanceOf[ReferenceWithCleanup])
+              .foreach { ref =>
+                referenceBuffer.remove(ref)
+                ref.cleanUp()
+              }
+          } catch {
+            case _: InterruptedException =>
+            // no-op
+            case NonFatal(e) =>
+              logError("Error in cleaning thread", e)
+          }
         }
       }
     }
-  }
 
-  /**
-   * A DownloadFile that encrypts data when it is written, and decrypts when it's read.
-   */
-  private class EncryptedDownloadFile(
-                                       file: File,
-                                       key: Array[Byte]) extends DownloadFile {
+    /**
+     * A DownloadFile that encrypts data when it is written, and decrypts when it's read.
+     */
+    private class EncryptedDownloadFile(
+                                         file: File,
+                                         key: Array[Byte]) extends DownloadFile {
 
-    private val env = SparkEnv.get
+      private val env = SparkEnv.get
 
-    override def delete(): Boolean = file.delete()
+      override def delete(): Boolean = file.delete()
 
-    override def openForWriting(): DownloadFileWritableChannel = {
-      new EncryptedDownloadWritableChannel()
-    }
-
-    override def path(): String = file.getAbsolutePath
-
-    private class EncryptedDownloadWritableChannel extends DownloadFileWritableChannel {
-      private val countingOutput: CountingWritableChannel = new CountingWritableChannel(
-        Channels.newChannel(env.serializerManager.wrapForEncryption(new FileOutputStream(file))))
-
-      override def closeAndRead(): ManagedBuffer = {
-        countingOutput.close()
-        val size = countingOutput.getCount
-        new EncryptedManagedBuffer(new EncryptedBlockData(file, size, env.conf, key))
+      override def openForWriting(): DownloadFileWritableChannel = {
+        new EncryptedDownloadWritableChannel()
       }
 
-      override def write(src: ByteBuffer): Int = countingOutput.write(src)
+      override def path(): String = file.getAbsolutePath
 
-      override def isOpen: Boolean = countingOutput.isOpen()
+      private class EncryptedDownloadWritableChannel extends DownloadFileWritableChannel {
+        private val countingOutput: CountingWritableChannel = new CountingWritableChannel(
+          Channels.newChannel(env.serializerManager.wrapForEncryption(new FileOutputStream(file))))
 
-      override def close(): Unit = countingOutput.close()
+        override def closeAndRead(): ManagedBuffer = {
+          countingOutput.close()
+          val size = countingOutput.getCount
+          new EncryptedManagedBuffer(new EncryptedBlockData(file, size, env.conf, key))
+        }
+
+        override def write(src: ByteBuffer): Int = countingOutput.write(src)
+
+        override def isOpen: Boolean = countingOutput.isOpen()
+
+        override def close(): Unit = countingOutput.close()
+      }
     }
   }
-}
 
