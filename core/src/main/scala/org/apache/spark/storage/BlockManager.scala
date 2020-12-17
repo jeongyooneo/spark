@@ -1816,7 +1816,7 @@ private[spark] class BlockManager(
                 elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
             }
             val diskEt = System.currentTimeMillis()
-            disaggManager.sendSerMetric(blockId, info.size, diskEt - diskSt)
+            // disaggManager.sendSerMetric(blockId, info.size, diskEt - diskSt)
           case Right(bytes) =>
             diskStore.putBytes(blockId, bytes)
         }

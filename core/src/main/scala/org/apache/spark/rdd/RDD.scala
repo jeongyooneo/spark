@@ -429,7 +429,7 @@ abstract class RDD[T: ClassTag](
         visited += rdd
         val node = new RDDNode(
           rdd.id, stageId, jobId, rdd.isInstanceOf[ShuffledRDD[_, _, _]],
-          rdd.creationSite.shortForm)
+          rdd.creationSite.shortForm, rdd.name)
 
         // update stage id
         if (!dag.contains(node)) {
@@ -444,10 +444,11 @@ abstract class RDD[T: ClassTag](
           val parent = dep.rdd
           val parentNode = new RDDNode(parent.id, -1,
             jobId, parent.isInstanceOf[ShuffledRDD[_, _, _]],
-            parent.creationSite.shortForm)
+            parent.creationSite.shortForm, rdd.name)
           if (!dag.contains(parentNode)) {
             dag.put(parentNode, new HashSet[RDDNode])
           }
+
           dag(parentNode).add(node)
 
           dep match {

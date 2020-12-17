@@ -66,7 +66,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   val recentlyBlockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
   val localExecutorLockMap = new ConcurrentHashMap[String, Object]().asScala
   private val disaggBlockLockMap = new ConcurrentHashMap[BlockId, ReadWriteLock].asScala
-  private val stageJobMap = new mutable.HashMap[Int, Int]()
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
   val task = new Runnable {
@@ -216,16 +215,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
                 logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
                   s"${rddNode.rddId}: stage $lastStage, " +
-                  s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+                  s"currJob: ${currJob.get()}, jobMap: ${metricTracker.stageJobMap}")
 
-                if (stageJobMap.contains(lastStage)) {
+                if (metricTracker.stageJobMap.contains(lastStage)) {
                   logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
                     s"${rddNode.rddId}: stage $lastStage, " +
-                    s"jobId: ${stageJobMap(lastStage)}, " +
-                    s"currJob: ${currJob.get()}, jobMap: ${stageJobMap}")
+                    s"jobId: ${metricTracker.stageJobMap(lastStage)}, " +
+                    s"currJob: ${currJob.get()}, jobMap: ${metricTracker.stageJobMap}")
 
                   if (!fullyProfiled) {
-                    currJob.get() > stageJobMap(lastStage)
+                    currJob.get() > metricTracker.stageJobMap(lastStage)
                   } else {
                     // stageId >= lastStage
                     true
@@ -266,9 +265,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
     stagePartitionMap.put(stageId, partition)
-    stageJobMap.put(stageId, jobId)
+    metricTracker.stageJobMap.put(stageId, jobId)
     logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
-      s"partition: ${partition}, jobMap: $stageJobMap")
+      s"partition: ${partition}, jobMap: ${metricTracker.stageJobMap}")
     currJob.set(jobId)
     metricTracker.stageSubmitted(stageId)
   }
@@ -587,7 +586,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           List.empty
         } else if (blockId.isEmpty || !blockId.get.isRDD
           || !BLAZE_COST_FUNC || cachingUnconditionally ||
-          !sizePredictionMap.containsKey(blockId.get)) {
+          !metricTracker.sizePredictionMap.containsKey(blockId.get)) {
           // Spilling
           return iter.map(m => m.blockId)
               .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
@@ -1104,8 +1103,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
 
-  private val sizePredictionMap = new ConcurrentHashMap[BlockId, Long]()
-
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     // FOR DISAGG
     // FOR DISAGG
@@ -1310,25 +1307,27 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
         rddJobDag match {
           case Some(dag) =>
-            if (sizePredictionMap.containsKey(blockId)) {
-              context.reply(sizePredictionMap.get(blockId))
+            if (metricTracker.sizePredictionMap.containsKey(blockId)) {
+              context.reply(metricTracker.sizePredictionMap.get(blockId))
             }
 
             val rddNode = dag.getRDDNode(blockId)
+            val index = blockId.name.split("_")(2).toInt
             val callsiteNode =
-              dag.findSameCallsiteParent(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+              dag.findSameCallsiteParent(rddNode, rddNode, new mutable.HashSet[RDDNode](),
+                index, blockId)
+
+            logInfo(s"size prediction for ${blockId} with ${callsiteNode}")
 
             if (callsiteNode.isDefined) {
-              val index = blockId.name.split("_")(2).toInt
-              val callsiteBlock = s"rdd_${callsiteNode.get.rddId}_${index}"
+              val callsiteBlock = RDDBlockId(callsiteNode.get.rddId, index)
               val size = metricTracker.localBlockSizeHistoryMap.get(callsiteBlock)
-              logInfo(s"size prediction for ${blockId} with ${callsiteBlock}: $size")
-              sizePredictionMap.putIfAbsent(blockId, size)
-              context.reply(metricTracker.localBlockSizeHistoryMap.get(callsiteBlock))
+              metricTracker.sizePredictionMap.putIfAbsent(blockId, size)
+              context.reply(size)
             } else {
-              // no size prediction
               context.reply(-1L)
             }
+
           case None => context.reply(-1L)
         }
       } else {
@@ -1376,7 +1375,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     case SendRDDElapsedTime(srcBlock, dstBlock, clazz, time) =>
       val key = s"${srcBlock}-${dstBlock}"
       logInfo(s"Block elapsed time ${key}: ${time}, class: ${clazz}")
-      metricTracker.blockElapsedTimeMap.put(key, time)
+      if (metricTracker.blockElapsedTimeMap.containsKey(key)) {
+        metricTracker.blockElapsedTimeMap.put(key,
+          Math.max(metricTracker.blockElapsedTimeMap.get(key), time))
+      } else {
+        metricTracker.blockElapsedTimeMap.put(key, time)
+      }
   }
 
 }

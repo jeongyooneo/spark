@@ -50,44 +50,43 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   }
 
   def onlineUpdate(newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
-      // update dag
-      newDag.foreach { pair =>
-
-        val parent = pair._1
-        pair._2.foreach {
-          child =>
-            if (!reverseDag.contains(child)) {
-              reverseDag(child) = new mutable.HashSet[RDDNode]()
-            } else {
-              reverseDag.keys.filter(p => p.rddId == child.rddId).foreach {
-                p => p.addRefStages(child.getStages)
-              }
+    // update dag
+    newDag.foreach { pair =>
+      val parent = pair._1
+      pair._2.foreach {
+        child =>
+          if (!reverseDag.contains(child)) {
+            reverseDag(child) = new mutable.HashSet[RDDNode]()
+          } else {
+            reverseDag.keys.filter(p => p.rddId == child.rddId).foreach {
+              p => p.addRefStages(child.getStages)
             }
-            reverseDag(child).add(parent)
+          }
+          reverseDag(child).add(parent)
+      }
+
+      if (!dag.contains(pair._1)) {
+        logInfo(s"New vertex is created ${pair._1}->${pair._2}")
+        dag.put(pair._1, pair._2)
+        prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
+        dagChanged.set(true)
+      } else {
+
+        dag.keys.filter(p => p.rddId == pair._1.rddId).foreach {
+          p => p.addRefStages(pair._1.getStages)
         }
 
-        if (!dag.contains(pair._1)) {
-          logInfo(s"New vertex is created ${pair._1}->${pair._2}")
-          dag.put(pair._1, pair._2)
+        // TODO: if autocaching false, we should set cached here
+
+        if (!pair._2.subsetOf(dag(pair._1))) {
+          pair._2.foreach { dag(pair._1).add(_) }
+          logInfo(s"New edges are created for RDD " +
+            s"${pair._1.rddId}, ${dag(pair._1)}")
           prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
           dagChanged.set(true)
-        } else {
-
-          dag.keys.filter(p => p.rddId == pair._1.rddId).foreach {
-            p => p.addRefStages(pair._1.getStages)
-          }
-
-          // TODO: if autocaching false, we should set cached here
-
-          if (!pair._2.subsetOf(dag(pair._1))) {
-            pair._2.foreach { dag(pair._1).add(_) }
-            logInfo(s"New edges are created for RDD " +
-              s"${pair._1.rddId}, ${dag(pair._1)}")
-            prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
-            dagChanged.set(true)
-          }
         }
       }
+    }
 
       // compare with the reverse dag dependency
       // to find DAG mistmatch !!
@@ -204,10 +203,39 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     (b, l)
   }
 
+  private def findCachedCallsiteUnrollingTime(rddNode: RDDNode,
+                                 index: Int,
+                                 childBlockId: BlockId,
+                                 cacheMap: mutable.Map[BlockId, (Long, Option[RDDNode])]):
+  (Long, Option[RDDNode]) = {
+
+    if (cacheMap.contains(childBlockId)) {
+      return cacheMap(childBlockId)
+    }
+
+    val index = childBlockId.name.split("_")(2).toInt
+    val callsite = findSameCallsiteParent(
+      rddNode, rddNode, new mutable.HashSet[RDDNode](), index, childBlockId)
+    if (callsite.isDefined) {
+      val callsiteUnrollingKey = s"unroll-eviction-rdd_${callsite.get.rddId}_$index"
+      val callsiteBlock = RDDBlockId(callsite.get.rddId, index)
+      if (metricTracker.blockElapsedTimeMap.containsKey(callsiteUnrollingKey)) {
+        val result = (metricTracker.blockElapsedTimeMap.get(callsiteUnrollingKey), callsite)
+        cacheMap.put(callsiteBlock, result)
+        return result
+      } else {
+        return findCachedCallsiteUnrollingTime(
+          callsite.get, index, callsiteBlock, cacheMap)
+      }
+    }
+    (0L, None)
+  }
+
   private def dfsGetBlockElapsedTime(myRDD: Int,
                                      childBlockId: BlockId,
                                      nodeCreatedTime: Long,
-                                     visited: mutable.Set[RDDNode]):
+                                     visited: mutable.Set[RDDNode],
+                                     map: mutable.Map[BlockId, (Long, Option[RDDNode])]):
   (ListBuffer[String], ListBuffer[Long], Int) = {
 
     val b: ListBuffer[String] = mutable.ListBuffer[String]()
@@ -224,16 +252,16 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     visited.add(rddNode)
 
     // Materialized time
-    val unrollingKey = s"unroll-${childBlockId.name}"
+    val unrollingKey = s"unroll-eviction-${childBlockId.name}"
     var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
 
-    if (timeSum == 0) {
-      val callsite = findSameCallsiteParent(rddNode, rddNode, new mutable.HashSet[RDDNode]())
-      if (callsite.isDefined) {
-        val index = childBlockId.name.split("_")(2)
-        val callsiteUnrollingKey = s"unroll-rdd_${callsite.get.rddId}_$index"
-        timeSum += metricTracker.blockElapsedTimeMap.get(callsiteUnrollingKey)
-      }
+    // For cached node
+    if (timeSum == 0 && dag(rddNode).size >= 2) {
+      val index = childBlockId.name.split("_")(2).toInt
+      val result = findCachedCallsiteUnrollingTime(rddNode, index, childBlockId, map)
+      timeSum += result._1
+      logDebug(s"Callsite finding for unrolling ${childBlockId}: ${result._2}, time: ${result._1}")
+
     }
 
     // val evictionKey = s"eviction-${childBlockId.name}"
@@ -277,7 +305,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           l.append(added)
 
           val (bb, ll, s) =
-            dfsGetBlockElapsedTime(myRDD, parentBlockId, nodeCreatedTime, visited)
+            dfsGetBlockElapsedTime(myRDD, parentBlockId,
+              nodeCreatedTime, visited, map)
           // logInfo(s"RDD ${myRDD} DFS from " +
           //  s"${childBlockId} to ${parentBlockId}: ${bb}, ${ll}, shuffle: $s")
 
@@ -296,9 +325,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddId = blockIdToRDDId(blockId)
     val (parentBlocks, times, numShuffle) =
       dfsGetBlockElapsedTime(rddId, blockId,
-        nodeCreatedTime, new mutable.HashSet[RDDNode]())
-    // logInfo(s"BlockComptTime of ${blockId}:
-    // ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
+        nodeCreatedTime, new mutable.HashSet[RDDNode](),
+        new mutable.HashMap[BlockId, (Long, Option[RDDNode])]())
+     logDebug(s"BlockComptTime of ${blockId}:" +
+       s" ${parentBlocks}, " + s"${times}, shuffle: $numShuffle")
 
     // disk overhead for shuffle
     val size = metricTracker.getBlockSize(blockId)
@@ -480,8 +510,17 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     set.toSet
   }
 
+  private val callsiteCacheMap = new ConcurrentHashMap[BlockId, Option[RDDNode]]()
+
   def findSameCallsiteParent(findNode: RDDNode, currNode: RDDNode,
-                             traversed: mutable.HashSet[RDDNode]): Option[RDDNode] = {
+                             traversed: mutable.HashSet[RDDNode],
+                             index: Int,
+                             blockId: BlockId): Option[RDDNode] = {
+
+    if (callsiteCacheMap.containsKey(blockId)) {
+      return callsiteCacheMap.get(blockId)
+    }
+
     if (traversed.contains(currNode)) {
       return None
     }
@@ -490,14 +529,34 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (reverseDag.contains(currNode) && reverseDag(currNode).nonEmpty) {
       for (parent <- reverseDag(currNode)) {
-        if (parent.callsite.equals(findNode.callsite) && getRefCntRDD(parent.rddId) >= 2) {
-          return Some(parent)
+        if (parent.callsite.equals(findNode.callsite) && dag(parent).size >= 2) {
+          logDebug(s"Finding callsite for $blockId: ${parent}")
+          val callsiteBlock = RDDBlockId(parent.rddId, index)
+          val size = metricTracker.getBlockSize(callsiteBlock)
+          if (size > 0) {
+            callsiteCacheMap.put(blockId, Some(parent))
+            return Some(parent)
+          } else {
+            logDebug(s"Size zero callsite for $blockId: ${callsiteBlock}")
+            val result = findSameCallsiteParent(findNode, parent, traversed, index, blockId)
+            if (result.isDefined) {
+              callsiteCacheMap.put(blockId, result)
+              return result
+            }
+          }
         } else {
-          return findSameCallsiteParent(findNode, parent, traversed)
+          logDebug(s"Recursive finding callsite for $blockId: ${parent}, " +
+            s"dag(parent): ${dag(parent).size}")
+          val result = findSameCallsiteParent(findNode, parent, traversed, index, blockId)
+          if (result.isDefined) {
+            callsiteCacheMap.put(blockId, result)
+            return result
+          }
         }
       }
     }
 
+    callsiteCacheMap.put(blockId, None)
     None
   }
 
@@ -791,7 +850,7 @@ object RDDJobDag extends Logging {
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
             val rdd_object = new RDDNode(
-              rdd_id, stageId, currentJob, name.equals("ShuffledRDD"), callsite)
+              rdd_id, stageId, currentJob, name.equals("ShuffledRDD"), callsite, name)
             logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, jobId: ${currentJob}, " +
               s"name: ${name}, callsite: $callsite")
 

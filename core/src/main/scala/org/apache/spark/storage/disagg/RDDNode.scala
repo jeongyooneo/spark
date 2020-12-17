@@ -24,7 +24,8 @@ class RDDNode(val rddId: Int,
               stageId: Int,
               jobId: Int,
               val shuffled: Boolean,
-              val callsite: String) extends Logging {
+              val callsite: String,
+              val name: String) extends Logging {
 
   private val stageIds = new mutable.HashSet[Int]()
 

@@ -56,13 +56,12 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       metricTracker.blockCreatedTimeMap.get(blockId))
 
     val realStages = stages.filter(p => node.getStages.contains(p.stageId))
-      .filter(p => p.stageId != node.rootStage)
+      // .filter(p => p.stageId != node.rootStage)
 
     val currentUsage = rddJobDag.getCurrentStageUsage(node, blockId, taskAttemp)
 
-    logInfo(s"Current usage of rdd ${blockId}: ${currentUsage}, " +
+    logDebug(s"Current usage of rdd ${blockId}: ${currentUsage}, " +
       s"realStage: ${realStages.map(p => p.stageId)}")
-
 
     val containDisk = if (metricTracker
       .localDiskStoredBlocksMap.containsKey(executorId)

@@ -221,12 +221,12 @@ private[spark] class MemoryStore(
 
   def getEstimateSize(blockId: BlockId): Long = {
     if (sizeEstimationMap.containsKey(blockId)) {
-        sizeEstimationMap.get(blockId)
-      } else if (disaggManager.getLocalBlockSize(blockId) > 0) {
-        disaggManager.getLocalBlockSize(blockId)
-      } else {
-        disaggManager.sizePrediction(blockId, executorId)
-      }
+      sizeEstimationMap.get(blockId)
+    } else if (disaggManager.getLocalBlockSize(blockId) > 0) {
+      disaggManager.getLocalBlockSize(blockId)
+    } else {
+      disaggManager.sizePrediction(blockId, executorId)
+    }
   }
 
   /**
@@ -333,27 +333,35 @@ private[spark] class MemoryStore(
       }
     }
 
+    var initMem = initialMemoryThreshold
+    var hasEstimate = false
+    if (blockId.isRDD && decisionByMaster && IS_BLAZE) {
+     val s = Math.max(0, getEstimateSize(blockId))
+      initMem += s
+      hasEstimate = s > 0
+    }
+
     val evictStart = System.currentTimeMillis()
 
     // Request enough memory to begin unrolling
     keepUnrolling =
-      reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, memoryMode)
+      reserveUnrollMemoryForThisTask(blockId, initMem, memoryMode)
 
     if (!keepUnrolling) {
       logWarning(s"Failed to reserve initial memory threshold of " +
-        s"${Utils.bytesToString(initialMemoryThreshold)} for computing block $blockId in memory.")
+        s"${Utils.bytesToString(initMem)} for computing block $blockId in memory.")
     } else {
-      unrollMemoryUsedByThisBlock += initialMemoryThreshold
+      unrollMemoryUsedByThisBlock += initMem
     }
 
     var unrollSum = 0L
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (newValues.hasNext && keepUnrolling) {
-      val unrollStart = System.currentTimeMillis()
+      // val unrollStart = System.currentTimeMillis()
       vHolder.storeValue(newValues.next())
-      unrollSum += (System.currentTimeMillis() - unrollStart)
-      if (elementsUnrolled % memoryCheckPeriod == 0) {
+      // unrollSum += (System.currentTimeMillis() - unrollStart)
+      if (elementsUnrolled % memoryCheckPeriod == 0 && !hasEstimate) {
         val currentSize = vHolder.estimatedSize()
         // If our vector's size has exceeded the threshold, request more memory
         if (currentSize >= memoryThreshold) {
@@ -373,13 +381,9 @@ private[spark] class MemoryStore(
     // Make sure that we have enough memory to store the block. By this point, it is possible that
     // the block's actual memory usage has exceeded the unroll memory by a small amount, so we
     // perform one final call to attempt to allocate additional memory if necessary.
-    val evictEnd = System.currentTimeMillis()
 
-    disaggManager.sendRDDElapsedTime("eviction", blockId.name,
-      "MemoryStore", evictEnd - evictStart - unrollSum)
-
-    disaggManager.sendRDDElapsedTime("unroll", blockId.name,
-      "MemoryStore", unrollSum)
+    // disaggManager.sendRDDElapsedTime("unroll", blockId.name,
+    //  "MemoryStore", unrollSum)
 
     if (keepUnrolling) {
       val entryBuilder = vHolder.getBuilder()
@@ -404,6 +408,11 @@ private[spark] class MemoryStore(
         entries.synchronized {
           entries.put(blockId, entry)
         }
+
+        val evictEnd = System.currentTimeMillis()
+
+        disaggManager.sendRDDElapsedTime("unroll-eviction", blockId.name,
+          "MemoryStore", evictEnd - evictStart)
 
         sizeEstimationMap.put(blockId, entry.size)
         disaggManager.sendSize(blockId, executorId, entry.size)
