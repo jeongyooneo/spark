@@ -712,7 +712,7 @@ object RDDJobDag extends Logging {
         var currentJob = 0
 
         if (jsonMap("Event").equals("SparkListenerJobStart")) {
-            currentJob = jsonMap("Job ID").asInstanceOf[Int]
+            currentJob = jsonMap("Job ID").asInstanceOf[Long].toInt
         } else if (jsonMap("Event").equals("SparkListenerStageCompleted")) {
           val stageInfo = jsonMap("Stage Info").asInstanceOf[java.util.Map[Any, Any]].asScala
           logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
