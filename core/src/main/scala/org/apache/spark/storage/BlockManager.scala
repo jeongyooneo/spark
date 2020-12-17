@@ -1395,22 +1395,20 @@ private[spark] class BlockManager(
    * @throws IllegalStateException if the block already exists in the disk store.
    */
   def putAlluxio(blockId: BlockId)
-                (writeFunc: WritableByteChannel => Unit): Long = {
+                (writeFunc: OutputStream => Unit): Long = {
     var size = 0L
     try {
       disaggManager.writeLock(blockId, executorId)
       // metadata for the block doesn't exist
       val out = disaggManager.createFileOutputStream(blockId)
-      val channel = new CountingWritableChannel(Channels.newChannel(out))
-      writeFunc(channel)
-      logInfo(s"putAlluxio $blockId finished writing")
-      size = channel.getCount
-      channel.close()
-      logInfo(s"putAlluxio $blockId finished writing, closed channel")
-      out.close()
+      // val channel = new CountingWritableChannel(Channels.newChannel(out))
+      writeFunc(out)
+      // size = channel.getCount
+      // channel.close()
+      // out.close()
       logInfo(s"putAlluxio $blockId finished writing, closed channel and stream")
     } catch {
-      case e: Exception => e.printStackTrace()
+      case e: IOException => e.printStackTrace()
         logInfo(s"Exception in createFileOutputStream $blockId " +
           s"executor $executorId, stage ${TaskContext.get().stageId()} " +
           s"task ${TaskContext.get().partitionId()}")
@@ -1430,8 +1428,7 @@ private[spark] class BlockManager(
       s"task ${TaskContext.get().partitionId()}")
     var size = 0L
 
-    size = putAlluxio(blockId) { channel =>
-      val out = Channels.newOutputStream(channel)
+    size = putAlluxio(blockId) { out =>
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
 

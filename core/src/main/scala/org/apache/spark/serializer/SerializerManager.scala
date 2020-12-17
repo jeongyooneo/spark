@@ -23,6 +23,7 @@ import java.nio.ByteBuffer
 import scala.reflect.ClassTag
 
 import org.apache.spark.SparkConf
+import org.apache.spark.internal.Logging
 import org.apache.spark.io.CompressionCodec
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.storage._
@@ -35,7 +36,7 @@ import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStrea
 private[spark] class SerializerManager(
     defaultSerializer: Serializer,
     conf: SparkConf,
-    encryptionKey: Option[Array[Byte]]) {
+    encryptionKey: Option[Array[Byte]]) extends Logging {
 
   def this(defaultSerializer: Serializer, conf: SparkConf) = this(defaultSerializer, conf, None)
 
@@ -171,7 +172,9 @@ private[spark] class SerializerManager(
     val byteStream = new BufferedOutputStream(outputStream)
     val autoPick = !blockId.isInstanceOf[StreamBlockId]
     val ser = getSerializer(implicitly[ClassTag[T]], autoPick).newInstance()
-    ser.serializeStream(wrapForCompression(blockId, byteStream)).writeAll(values).close()
+    logInfo(s"Using ${ser.getClass.getSimpleName} alluxio write")
+    // ser.serializeStream(wrapForCompression(blockId, byteStream)).writeAll(values).close()
+    ser.serializeStream(byteStream).writeAll(values).close()
   }
 
   /** Serializes into a chunked byte buffer. */
