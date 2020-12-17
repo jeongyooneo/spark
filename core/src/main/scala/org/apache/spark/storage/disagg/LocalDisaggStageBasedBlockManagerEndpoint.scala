@@ -575,7 +575,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           logWarning(s"Low comp disagg block is empty " +
             s"for evicting $blockId, size $evictSize")
           List.empty
-        } else if (blockId.isEmpty || !blockId.get.isRDD || !BLAZE_COST_FUNC) {
+        } else if (blockId.isEmpty || !blockId.get.isRDD
+          || !BLAZE_COST_FUNC || cachingUnconditionally) {
           // Spilling
           return iter.map(m => m.blockId)
               .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
