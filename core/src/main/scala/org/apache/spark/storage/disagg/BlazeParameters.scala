@@ -107,4 +107,8 @@ private[spark] object BlazeParameters extends Logging {
   private[spark] val ZIGZAG_RATIO = ConfigBuilder("spark.disagg.zigzag")
     .doubleConf
     .createWithDefault(0.5)
+
+   private[spark] val CACHING_UNCONDITONALLY = ConfigBuilder("spark.disagg.cachingUnconditionally")
+    .booleanConf
+    .createWithDefault(false)
 }

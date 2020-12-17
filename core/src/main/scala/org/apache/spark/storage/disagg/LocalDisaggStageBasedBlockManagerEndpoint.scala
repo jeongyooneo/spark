@@ -293,6 +293,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val previouslyEvicted = new ConcurrentHashMap[BlockId, Boolean]()
 
   private val zigZagRatio = conf.get(BlazeParameters.ZIGZAG_RATIO)
+  private val cachingUnconditionally = conf.get(BlazeParameters.CACHING_UNCONDITONALLY)
 
   private def cachingDecision(blockId: BlockId, estimateSize: Long,
                               executorId: String,
@@ -321,7 +322,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     if (!putDisagg) {
 
-      if (!BLAZE_COST_FUNC) {
+      if (!BLAZE_COST_FUNC || cachingUnconditionally) {
         // We just cache  if it is not blaze cost function !!
         // (if it is LRC or MRD)
         if (conf.get(BlazeParameters.COST_FUNCTION).contains("LCS")
@@ -713,7 +714,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       return false
     }
 
-    if (!BLAZE_COST_FUNC) {
+    if (!BLAZE_COST_FUNC || cachingUnconditionally) {
       // Promotion in LRC and MRD
       return true
     }
