@@ -975,14 +975,14 @@ private[spark] class BlockManager(
 
     logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
     // val disaggFetchStart = System.nanoTime
-    val disagg = getDisaggValues[T](blockId)
+    // val disagg = getDisaggValues[T](blockId)
 
-    if (disagg.isDefined) {
-      logInfo(s"Found block $blockId in disagg memory")
+    // if (disagg.isDefined) {
+    //  logInfo(s"Found block $blockId in disagg memory")
       // val disaggFetchTime = System.nanoTime - disaggFetchStart
       // logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
-      return disagg
-    }
+    //  return disagg
+    // }
 
     val st = System.currentTimeMillis()
     val remote = getRemoteValues[T](blockId)
