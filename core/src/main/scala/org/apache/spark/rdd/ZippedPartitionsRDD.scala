@@ -21,6 +21,7 @@ import java.io.{IOException, ObjectOutputStream}
 
 import scala.reflect.ClassTag
 import org.apache.spark._
+import org.apache.spark.storage.RDDBlockId
 import org.apache.spark.util.Utils
 
 private[spark] class ZippedPartitionsPartition(
@@ -85,6 +86,9 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
   override def compute(s: Partition, context: TaskContext): Iterator[V] = {
     val partitions = s.asInstanceOf[ZippedPartitionsPartition].partitions
+
+    val index = s.index
+
     val rdd1Iter = rdd1.iterator(partitions(0), context)
     val rdd2Iter = rdd2.iterator(partitions(1), context)
 
@@ -94,7 +98,9 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
     val elapsed = (et - st)
 
-    val index = s.index
+    SparkEnv.get.blockManager.disaggManager
+         .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
+
     SparkEnv.get.blockManager.disaggManager
       .sendRDDElapsedTime(s"rdd_${rdd1.id}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)

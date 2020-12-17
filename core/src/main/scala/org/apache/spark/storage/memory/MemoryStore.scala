@@ -279,6 +279,8 @@ private[spark] class MemoryStore(
     var vHolder = valuesHolder
     var newValues = values
 
+    val taskAttempId = currentTaskAttemptId()
+
     // check whether to cache it into memory or disagg
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)

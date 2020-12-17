@@ -40,6 +40,8 @@ private[spark] class MetricTracker extends Logging {
   private val localMemBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
+  val taskAttempBlockCount = new ConcurrentHashMap[String, AtomicInteger]()
+
   val blockStoredMap = new ConcurrentHashMap[BlockId, AtomicInteger]()
 
   val blockElapsedTimeMap = new ConcurrentHashMap[String, Long]()

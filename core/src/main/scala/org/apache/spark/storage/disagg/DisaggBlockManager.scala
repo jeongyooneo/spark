@@ -20,11 +20,11 @@ package org.apache.spark.storage.disagg
 import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.crail._
-import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.storage._
 import org.apache.spark.storage.disagg.DisaggBlockManagerMessages._
+import org.apache.spark.{SparkConf, TaskContext}
 
 import scala.collection.convert.decorateAsScala._
 
@@ -78,6 +78,10 @@ class DisaggBlockManager(
 
   def sendRDDElapsedTime(srcBlock: String, dstBlock: String, clazz: String, time: Long): Unit = {
     driverEndpoint.ask(SendRDDElapsedTime(srcBlock, dstBlock, clazz, time))
+  }
+
+  def sendTaskAttempBlock(taskAttemp: Long, blockId: BlockId): Unit = {
+    driverEndpoint.ask(TaskAttempBlockId(taskAttemp, blockId))
   }
 
   def sendRecompTime(blockId: BlockId, time: Long): Unit = {
@@ -163,8 +167,10 @@ class DisaggBlockManager(
       // Diable disagg
       false
     } else {
+      val attemp = TaskContext.get().taskAttemptId()
       driverEndpoint.askSync[Boolean](
-        StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg, localFull, onDisk, promote))
+        StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg,
+          localFull, onDisk, promote, attemp))
     }
   }
 

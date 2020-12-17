@@ -18,14 +18,13 @@
 package org.apache.spark.graphx
 
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.graphx.impl.RoutingTablePartition
 import org.apache.spark.graphx.impl.ShippableVertexPartition
 import org.apache.spark.graphx.impl.VertexAttributeBlock
 import org.apache.spark.graphx.impl.VertexRDDImpl
 import org.apache.spark.rdd._
-import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 
 /**
  * Extends `RDD[(VertexId, VD)]` by ensuring that there is only one entry for each vertex and by
@@ -77,6 +76,9 @@ abstract class VertexRDD[VD](
     val et = System.currentTimeMillis()
 
     val elapsed = (et - st)
+    SparkEnv.get.blockManager.disaggManager
+      .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
+
     SparkEnv.get.blockManager.disaggManager
       .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)

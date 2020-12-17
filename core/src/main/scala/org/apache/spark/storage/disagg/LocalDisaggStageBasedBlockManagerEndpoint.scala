@@ -57,6 +57,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   blockManagerMaster.setDisaggBlockManager(this)
 
+
   val autocaching = conf.get(BlazeParameters.AUTOCACHING)
   val executor: ExecutorService = Executors.newCachedThreadPool()
   val disableLocalCaching = conf.get(BlazeParameters.DISABLE_LOCAL_CACHING)
@@ -172,7 +173,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       val cache = cachingPolicy.isRDDNodeCached(rddId)
       if (cache.nonEmpty) {
         rddCachedMap.putIfAbsent(rddId, cache.get)
-        BlazeLogger.logCachingDecision(rddId)
+        if (cache.get) {
+          BlazeLogger.logCachingDecision(rddId)
+        }
         cache.get
       } else {
         false
@@ -299,7 +302,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                               executorId: String,
                               putDisagg: Boolean, localFull: Boolean,
                               onDisk: Boolean,
-                              promote: Boolean): Boolean = {
+                              promote: Boolean,
+                              taskAttemp: Long): Boolean = {
 
     val cachingDecStart = System.currentTimeMillis
 
@@ -313,7 +317,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
     metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
-    val storingCost = costAnalyzer.compDisaggCost(executorId, blockId)
+    val storingCost = costAnalyzer.compDisaggCostWithTaskAttemp(executorId, blockId, taskAttemp)
 
 
     if (!putDisagg) {
@@ -1234,7 +1238,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     // FOR LOCAL
     // FOR LOCAL
     case StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg,
-    localFull, onDisk, promote) =>
+    localFull, onDisk, promote, attemp) =>
       val start = System.currentTimeMillis()
       logInfo(s"Start cachingDecision ${blockId}, " +
         s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}, ${promote}")
@@ -1242,12 +1246,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         synchronized {
           localExecutorLockMap.putIfAbsent(executorId, new Object)
           context.reply(cachingDecision(blockId, estimateSize, executorId,
-            putDisagg, localFull, onDisk, promote))
+            putDisagg, localFull, onDisk, promote, attemp))
         }
       } else {
         localExecutorLockMap.putIfAbsent(executorId, new Object)
         context.reply(cachingDecision(blockId, estimateSize, executorId,
-          putDisagg, localFull, onDisk, promote))
+          putDisagg, localFull, onDisk, promote, attemp))
       }
       val end = System.currentTimeMillis()
       logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +
@@ -1363,6 +1367,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       } else {
         context.reply(-1L)
       }
+
+    case TaskAttempBlockId(taskAttemp, blockId) =>
+      val key = s"taskAttemp-${blockId.name}"
+      metricTracker.taskAttempBlockCount.putIfAbsent(key, new AtomicInteger())
+      metricTracker.taskAttempBlockCount.get(key).incrementAndGet()
 
     case SendRDDElapsedTime(srcBlock, dstBlock, clazz, time) =>
       val key = s"${srcBlock}-${dstBlock}"

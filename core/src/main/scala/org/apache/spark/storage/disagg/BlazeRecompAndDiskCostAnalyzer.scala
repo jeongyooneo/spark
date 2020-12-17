@@ -47,6 +47,67 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
   val writeThp = BlazeParameters.writeThp
   private val readThp = BlazeParameters.readThp
 
+  override def compDisaggCostWithTaskAttemp(executorId: String,
+                                            blockId: BlockId,
+                                            taskAttemp: Long): CompDisaggCost = {
+    val node = rddJobDag.getRDDNode(blockId)
+    val stages = rddJobDag.getReferenceStages(blockId)
+    val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
+      metricTracker.blockCreatedTimeMap.get(blockId))
+
+    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+      .filter(p => p.stageId != node.rootStage)
+
+    val currentUsage = rddJobDag.getCurrentStageUsage(node, blockId, taskAttemp)
+
+    logInfo(s"Current usage of rdd ${blockId}: ${currentUsage}, " +
+      s"realStage: ${realStages.map(p => p.stageId)}")
+
+
+    val containDisk = if (metricTracker
+      .localDiskStoredBlocksMap.containsKey(executorId)
+      && metricTracker.localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
+      0
+    } else {
+      1
+    }
+
+    // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
+    val futureUse = realStages.size + currentUsage
+    val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
+    var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
+
+    /*
+    if (metricTracker.blockElapsedTimeMap.contains(s"unroll-${blockId.name}")) {
+      readTime +=  metricTracker.blockElapsedTimeMap.get(s"unroll-${blockId.name}")
+    }
+
+    if (metricTracker.blockElapsedTimeMap.contains(s"eviction-${blockId.name}")) {
+      readTime +=  metricTracker.blockElapsedTimeMap.get(s"eviction-${blockId.name}")
+    }
+    */
+
+    val recomp = if (containDisk == 0) {
+      readTime * futureUse
+    } else {
+      recompTime * futureUse
+    }
+
+    val c = new CompDisaggCost(blockId,
+      Math.min(recomp, writeTime * containDisk + readTime * futureUse),
+      (writeTime * containDisk + readTime * futureUse).toLong,
+      (recomp).toLong,
+      futureUse,
+      numShuffle,
+      containDisk == 0)
+
+    // realStages.size * recompTime)
+    // logInfo(s"CompDisaggCost $blockId, " +
+    //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
+    c.setStageInfo(realStages, recompTime)
+    c
+  }
+
   override def compDisaggCost(executorId: String,
                               blockId: BlockId): CompDisaggCost = {
     val node = rddJobDag.getRDDNode(blockId)

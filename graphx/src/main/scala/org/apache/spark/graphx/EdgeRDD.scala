@@ -24,7 +24,7 @@ import org.apache.spark.graphx.impl.EdgePartition
 import org.apache.spark.graphx.impl.EdgePartitionBuilder
 import org.apache.spark.graphx.impl.EdgeRDDImpl
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 
 /**
  * `EdgeRDD[ED, VD]` extends `RDD[Edge[ED]]` by storing the edges in columnar format on each
@@ -57,6 +57,9 @@ abstract class EdgeRDD[ED](
     }
 
     val et = System.currentTimeMillis()
+
+    SparkEnv.get.blockManager.disaggManager
+      .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
 
     val elapsed = (et - st)
     SparkEnv.get.blockManager.disaggManager
