@@ -22,6 +22,7 @@ import scala.collection.mutable
 
 class RDDNode(val rddId: Int,
               stageId: Int,
+              jobId: Int,
               val shuffled: Boolean) extends Logging {
 
   private val stageIds = new mutable.HashSet[Int]()
@@ -83,6 +84,6 @@ class RDDNode(val rddId: Int,
 
   override def toString: String = {
     // s"(rdd: $rddId, stage: $stageIds)"
-    s"(rdd: $rddId)"
+    s"(rdd: $rddId, job: ${jobId}, stage: ${rootStage})"
   }
 }

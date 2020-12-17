@@ -1098,7 +1098,7 @@ private[spark] class DAGScheduler(
       case None =>
       case Some(dag) =>
         logInfo(s"Online update dag for stage ${stage.id}")
-        dag.onlineUpdate(stage.rdd.extractStageDag(stage.id))
+        dag.onlineUpdate(stage.rdd.extractStageDag(stage.id, stage.firstJobId))
     }
 
     disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,

@@ -223,8 +223,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     visited.add(rddNode)
 
-
-
     // Materialized time
     val unrollingKey = s"unroll-${childBlockId.name}"
     var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
@@ -711,8 +709,11 @@ object RDDJobDag extends Logging {
         val l = line.stripLineEnd
         // parse
         val jsonMap = JSON.parse(l).asInstanceOf[java.util.Map[String, Any]].asScala
+        var currentJob = 0
 
-        if (jsonMap("Event").equals("SparkListenerStageCompleted")) {
+        if (jsonMap("Event").equals("SparkListenerJobStart")) {
+            currentJob = jsonMap("Job ID").asInstanceOf[Int]
+        } else if (jsonMap("Event").equals("SparkListenerStageCompleted")) {
           val stageInfo = jsonMap("Stage Info").asInstanceOf[java.util.Map[Any, Any]].asScala
           logInfo(s"Stage parsing ${stageInfo("Stage ID")}")
           val rdds = stageInfo("RDD Info").asInstanceOf[Array[Object]].toIterator
@@ -734,8 +735,8 @@ object RDDJobDag extends Logging {
             val cached = numCachedPartitions > 0
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
-            val rdd_object = new RDDNode(rdd_id, stageId, name.equals("ShuffledRDD"))
-            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, name: ${name}")
+            val rdd_object = new RDDNode(rdd_id, stageId, currentJob, name.equals("ShuffledRDD"))
+            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, jobId: ${currentJob}, name: ${name}")
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object
