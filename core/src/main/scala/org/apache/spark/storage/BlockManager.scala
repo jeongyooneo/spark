@@ -1454,15 +1454,12 @@ private[spark] class BlockManager(
 
               // Not enough space to unroll this block; drop to disk if applicable
               if (USE_DISK) {
-                val diskSt = System.currentTimeMillis()
                 val estimateSize = memoryStore.sizeEstimationMap.get(blockId)
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
-                val diskEt = System.currentTimeMillis()
-                disaggManager.sendSerMetric(blockId, estimateSize, diskEt - diskSt)
 
                 if (diskStore.contains(blockId)) {
                   size = diskStore.getSize(blockId)

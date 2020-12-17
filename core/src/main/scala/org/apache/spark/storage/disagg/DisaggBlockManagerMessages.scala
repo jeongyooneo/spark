@@ -67,6 +67,9 @@ private[spark] object DisaggBlockManagerMessages {
                            size: Long, prevEvicted: Set[BlockId], onDisk: Boolean)
     extends ToBlockManagerMaster
 
+  case class SizePrediction(blockId: BlockId, executorId: String) extends ToBlockManagerMaster
+  case class SendSize(blockId: BlockId, executorId: String, size: Long) extends ToBlockManagerMaster
+
   case class EvictionFail(blockId: BlockId, executorId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 

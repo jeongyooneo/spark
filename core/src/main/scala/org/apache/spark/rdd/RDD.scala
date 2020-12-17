@@ -419,14 +419,17 @@ abstract class RDD[T: ClassTag](
         + ancestor.name + " " + ancestor.id))
   }
 
-  private def rddsInStage(stageId: Int, jobId: Int): Map[RDDNode, mutable.Set[RDDNode]] = {
+  private def rddsInStage(stageId: Int, jobId: Int)
+  : Map[RDDNode, mutable.Set[RDDNode]] = {
     val visited = new HashSet[RDD[_]]
     val waitingForVisit = new ArrayStack[RDD[_]]
     val dag = new mutable.HashMap[RDDNode, HashSet[RDDNode]]
     def visit(rdd: RDD[_]) {
       if (!visited(rdd)) {
         visited += rdd
-        val node = new RDDNode(rdd.id, stageId, jobId, rdd.isInstanceOf[ShuffledRDD[_, _, _]])
+        val node = new RDDNode(
+          rdd.id, stageId, jobId, rdd.isInstanceOf[ShuffledRDD[_, _, _]],
+          rdd.creationSite.shortForm)
 
         // update stage id
         if (!dag.contains(node)) {
@@ -440,7 +443,8 @@ abstract class RDD[T: ClassTag](
           // add edges
           val parent = dep.rdd
           val parentNode = new RDDNode(parent.id, -1,
-            jobId, parent.isInstanceOf[ShuffledRDD[_, _, _]])
+            jobId, parent.isInstanceOf[ShuffledRDD[_, _, _]],
+            parent.creationSite.shortForm)
           if (!dag.contains(parentNode)) {
             dag.put(parentNode, new HashSet[RDDNode])
           }
@@ -464,7 +468,8 @@ abstract class RDD[T: ClassTag](
     dag
   }
 
-  def extractStageDag(stageId: Int, jobId: Int): Map[RDDNode, mutable.Set[RDDNode]] = {
+  def extractStageDag(stageId: Int, jobId: Int)
+  : Map[RDDNode, mutable.Set[RDDNode]] = {
     rddsInStage(stageId, jobId)
   }
 

@@ -227,14 +227,23 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val unrollingKey = s"unroll-${childBlockId.name}"
     var timeSum = metricTracker.blockElapsedTimeMap.getOrDefault(unrollingKey, 0L)
 
-    val evictionKey = s"eviction-${childBlockId.name}"
-    var evictionTime = metricTracker.blockElapsedTimeMap.getOrDefault(evictionKey, 0L)
+    if (timeSum == 0) {
+      val callsite = findSameCallsiteParent(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+      if (callsite.isDefined) {
+        val index = childBlockId.name.split("_")(2)
+        val callsiteUnrollingKey = s"unroll-rdd_${callsite.get.rddId}_$index"
+        timeSum += metricTracker.blockElapsedTimeMap.get(callsiteUnrollingKey)
+      }
+    }
+
+    // val evictionKey = s"eviction-${childBlockId.name}"
+    // var evictionTime = metricTracker.blockElapsedTimeMap.getOrDefault(evictionKey, 0L)
 
     b.append(unrollingKey)
     l.append(timeSum)
 
-    b.append(evictionKey)
-    l.append(evictionTime)
+    // b.append(evictionKey)
+    // l.append(evictionTime)
 
     if (reverseDag.contains(rddNode) && reverseDag(rddNode).nonEmpty) {
       for (parent <- reverseDag(rddNode)) {
@@ -467,6 +476,27 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     set.toSet
+  }
+
+  def findSameCallsiteParent(findNode: RDDNode, currNode: RDDNode,
+                             traversed: mutable.HashSet[RDDNode]): Option[RDDNode] = {
+    if (traversed.contains(currNode)) {
+      return None
+    }
+
+    traversed.add(currNode)
+
+    if (reverseDag.contains(currNode) && reverseDag(currNode).nonEmpty) {
+      for (parent <- reverseDag(currNode)) {
+        if (parent.callsite.equals(findNode.callsite) && getRefCntRDD(parent.rddId) >= 2) {
+          return Some(parent)
+        } else {
+          return findSameCallsiteParent(findNode, parent, traversed)
+        }
+      }
+    }
+
+    None
   }
 
   def getRDDNode(blockId: BlockId): RDDNode = {
@@ -728,6 +758,7 @@ object RDDJobDag extends Logging {
             val rdd = rdd_.asInstanceOf[java.util.Map[Any, Any]].asScala
             val rdd_id = rdd("RDD ID").asInstanceOf[Long].toInt
             val name = rdd("Name").asInstanceOf[String]
+            val callsite = rdd("Callsite").asInstanceOf[String]
 
             logInfo(s"RDD ${rdd_id} Name: ${name}")
 
@@ -736,8 +767,10 @@ object RDDJobDag extends Logging {
             val cached = numCachedPartitions > 0
             val parents = rdd("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
-            val rdd_object = new RDDNode(rdd_id, stageId, currentJob, name.equals("ShuffledRDD"))
-            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, jobId: ${currentJob}, name: ${name}")
+            val rdd_object = new RDDNode(
+              rdd_id, stageId, currentJob, name.equals("ShuffledRDD"), callsite)
+            logInfo(s"RDDID ${rdd_id}, STAGEID: $stageId, jobId: ${currentJob}, " +
+              s"name: ${name}, callsite: $callsite")
 
             if (!dag.contains(rdd_object)) {
               vertices(rdd_id) = rdd_object

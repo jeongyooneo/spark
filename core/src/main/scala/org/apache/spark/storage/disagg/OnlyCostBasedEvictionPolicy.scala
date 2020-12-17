@@ -86,8 +86,12 @@ private[spark] class OnlyCostBasedEvictionPolicy(
     }
 
     if (blocks.get() != null) {
-      val l = blocks.get()(executorId)
-      func(l)
+      val map = blocks.get()
+      if (map.contains(executorId)) {
+        func(map(executorId))
+      } else {
+        throw new RuntimeException(s"ExecutorId not fount ${executorId} in map ${map.keySet}")
+      }
     } else {
       func(List.empty)
     }

@@ -84,6 +84,14 @@ class DisaggBlockManager(
     driverEndpoint.ask(SendRecompTime(blockId, time))
   }
 
+  def sizePrediction(blockId: BlockId, executorId: String): Long = {
+    driverEndpoint.askSync[Long](SizePrediction(blockId, executorId))
+  }
+
+  def sendSize(blockId: BlockId, executorId: String, size: Long): Unit = {
+    driverEndpoint.ask(SendSize(blockId, executorId, size))
+  }
+
   def sendSerMetric(blockId: BlockId, size: Long, cost: Long): Unit = {
     driverEndpoint.ask(WriteDisaggBlock(blockId, size, cost))
   }

@@ -225,7 +225,7 @@ private[spark] class MemoryStore(
       } else if (disaggManager.getLocalBlockSize(blockId) > 0) {
         disaggManager.getLocalBlockSize(blockId)
       } else {
-        -1
+        disaggManager.sizePrediction(blockId, executorId)
       }
   }
 
@@ -298,7 +298,9 @@ private[spark] class MemoryStore(
             return Left(unrollMemoryUsedByThisBlock)
           }
         } else {
+          // We should predict the size of RDD partition without unrolling
 
+          /*
           val l = new ListBuffer[T]
           val unrollStart = System.currentTimeMillis()
           val estimateSize = sizeEstimation(values, l, classTag, valuesHolder)
@@ -324,6 +326,7 @@ private[spark] class MemoryStore(
             logUnrollFailureMessage(blockId, estimateSize)
             return Left(unrollMemoryUsedByThisBlock)
           }
+          */
         }
       }
     }
@@ -341,9 +344,13 @@ private[spark] class MemoryStore(
       unrollMemoryUsedByThisBlock += initialMemoryThreshold
     }
 
+    var unrollSum = 0L
+
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (newValues.hasNext && keepUnrolling) {
+      val unrollStart = System.currentTimeMillis()
       vHolder.storeValue(newValues.next())
+      unrollSum += (System.currentTimeMillis() - unrollStart)
       if (elementsUnrolled % memoryCheckPeriod == 0) {
         val currentSize = vHolder.estimatedSize()
         // If our vector's size has exceeded the threshold, request more memory
@@ -367,8 +374,10 @@ private[spark] class MemoryStore(
     val evictEnd = System.currentTimeMillis()
 
     disaggManager.sendRDDElapsedTime("eviction", blockId.name,
-      "MemoryStore", evictEnd - evictStart)
+      "MemoryStore", evictEnd - evictStart - unrollSum)
 
+    disaggManager.sendRDDElapsedTime("unroll", blockId.name,
+      "MemoryStore", unrollSum)
 
     if (keepUnrolling) {
       val entryBuilder = vHolder.getBuilder()
@@ -393,6 +402,9 @@ private[spark] class MemoryStore(
         entries.synchronized {
           entries.put(blockId, entry)
         }
+
+        sizeEstimationMap.put(blockId, entry.size)
+        disaggManager.sendSize(blockId, executorId, entry.size)
 
         logInfo("Block %s stored as values in memory (estimated size %s, free %s)".format(blockId,
           Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))

@@ -309,16 +309,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     val t = System.currentTimeMillis()
     metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, t)
-    metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, estimateSize)
     metricTracker.localStoredBlocksHistoryMap
       .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
     metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
     val storingCost = costAnalyzer.compDisaggCost(executorId, blockId)
 
-    if (estimateSize == 0) {
-      logInfo(s"RDD estimation size zero $blockId")
-    }
 
     if (!putDisagg) {
 
@@ -333,12 +329,22 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           recentlyRecachedBlocks.remove(blockId)
           return false
         } else {
-          addToLocal(blockId, executorId, estimateSize, onDisk)
-          BlazeLogger.logLocalCaching(blockId, executorId,
-            estimateSize, storingCost.cost, 0,
-            "1", onDisk)
+          // addToLocal(blockId, executorId, estimateSize, onDisk)
+          // BlazeLogger.logLocalCaching(blockId, executorId,
+          //  estimateSize, storingCost.cost, 0,
+          //  "1", onDisk)
           return true
         }
+      }
+
+
+      if (estimateSize < 0) {
+        logInfo(s"RDD estimation size zero $blockId")
+        addToLocal(blockId, executorId, estimateSize, onDisk)
+        BlazeLogger.logLocalCaching(blockId, executorId,
+          estimateSize, storingCost.cost, 0,
+          "FirstAndStore", onDisk)
+        throw new RuntimeException(s"hahaha estimate size ${estimateSize} for block ${blockId}")
       }
 
       if (disableLocalCaching) {
@@ -448,7 +454,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
               val discardSet = rddDiscardMap.get(rddId)
               val node = rddJobDag.get.getRDDNode(blockId)
-              val (parentNodes, childNodes) = rddJobDag.get.getParentChildCachedNodes(node)
+              // val (parentNodes, childNodes) = rddJobDag.get.getParentChildCachedNodes(node)
               val numPartition = stagePartitionMap.get(node.rootStage)
 
               /*
@@ -576,7 +582,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             s"for evicting $blockId, size $evictSize")
           List.empty
         } else if (blockId.isEmpty || !blockId.get.isRDD
-          || !BLAZE_COST_FUNC || cachingUnconditionally) {
+          || !BLAZE_COST_FUNC || cachingUnconditionally ||
+          !sizePredictionMap.containsKey(blockId.get)) {
           // Spilling
           return iter.map(m => m.blockId)
               .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
@@ -633,10 +640,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           val storingCost = costAnalyzer.compDisaggCost(executorId, blockId.get)
 
-          iter.filter(m => metricTracker
+          val arrayList = iter.filter(m => metricTracker
             .localMemStoredBlocksMap
             .get(executorId).contains(m.blockId)).foreach {
-            discardingBlock => {
+            discardingBlock =>
               if (!prevEvicted.contains(discardingBlock.blockId)
                 && discardingBlock.cost <= storingCost.cost
                 && discardingBlock.blockId != blockId.get) {
@@ -662,12 +669,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   }
                 }
               }
-            }
 
-              if (sizeSum >= evictSize + 5 * 1024 * 1024) {
-                logInfo(s"CostSum: $sum, block: $blockId")
-                return evictionList.toList
-              }
+            if (sizeSum >= evictSize + 5 * 1024 * 1024) {
+              logInfo(s"CostSum: $sum, block: $blockId")
+              return evictionList.toList
+            }
           }
 
           if (sizeSum >= evictSize) {
@@ -936,6 +942,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           localExecutorLockMap(executorId).synchronized {
             blockSet.foreach {
               bid =>
+                logInfo(s"RDDs: ${rdds}, bid: ${bid}")
                 if (rdds.contains(bid.asRDDId.get.rddId)) {
                   removeSet.add((bid, executorId))
                 }
@@ -1092,6 +1099,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     logInfo(s"Release tryWritelock $blockId")
     disaggBlockLockMap(blockId).writeLock().unlock()
   }
+
+  private val sizePredictionMap = new ConcurrentHashMap[BlockId, Long]()
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     // FOR DISAGG
@@ -1273,6 +1282,54 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
     case IsRddCache(rddId) =>
       context.reply(isRddCache(rddId))
+
+    case SendSize(blockId, executorId, size) =>
+      localExecutorLockMap.putIfAbsent(executorId, new Object)
+
+      if (blockId.isRDD) {
+        metricTracker.localBlockSizeHistoryMap.putIfAbsent(blockId, size)
+        val cost = costAnalyzer.compDisaggCost(executorId, blockId)
+        addToLocal(blockId, executorId, size, false)
+        BlazeLogger.logLocalCaching(blockId, executorId,
+          size, cost.compCost, cost.disaggCost, "FirstStoring", false)
+      }
+
+    case SizePrediction(blockId, executorId) =>
+      localExecutorLockMap.putIfAbsent(executorId, new Object)
+
+      if (blockId.isRDD) {
+        metricTracker.localStoredBlocksHistoryMap
+          .putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
+        metricTracker.blockCreatedTimeMap.putIfAbsent(blockId, System.currentTimeMillis())
+        metricTracker.localStoredBlocksHistoryMap.get(executorId).add(blockId)
+        metricTracker.recentlyBlockCreatedTimeMap.put(blockId, System.currentTimeMillis())
+
+        rddJobDag match {
+          case Some(dag) =>
+            if (sizePredictionMap.containsKey(blockId)) {
+              context.reply(sizePredictionMap.get(blockId))
+            }
+
+            val rddNode = dag.getRDDNode(blockId)
+            val callsiteNode =
+              dag.findSameCallsiteParent(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+
+            if (callsiteNode.isDefined) {
+              val index = blockId.name.split("_")(2).toInt
+              val callsiteBlock = s"rdd_${callsiteNode.get.rddId}_${index}"
+              val size = metricTracker.localBlockSizeHistoryMap.get(callsiteBlock)
+              logInfo(s"size prediction for ${blockId} with ${callsiteBlock}: $size")
+              sizePredictionMap.putIfAbsent(blockId, size)
+              context.reply(metricTracker.localBlockSizeHistoryMap.get(callsiteBlock))
+            } else {
+              // no size prediction
+              context.reply(-1L)
+            }
+          case None => context.reply(-1L)
+        }
+      } else {
+        context.reply(-1L)
+      }
 
     case LocalEviction(blockId, executorId, size, prevEvicted, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
