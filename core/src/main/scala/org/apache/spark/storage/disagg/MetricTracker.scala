@@ -153,8 +153,11 @@ private[spark] class MetricTracker extends Logging {
   def addExecutorBlock(blockId: BlockId, executorId: String, size: Long,
                        onDisk: Boolean): Unit = {
 
-    blockStoredMap.putIfAbsent(blockId, new AtomicInteger())
-    blockStoredMap.get(blockId).incrementAndGet()
+    blockStoredMap.synchronized {
+      blockStoredMap.putIfAbsent(blockId, new AtomicInteger())
+      blockStoredMap.get(blockId).incrementAndGet()
+    }
+
     if (onDisk) {
       localDiskStoredBlocksSizeMap.put(blockId, size)
       localDiskStoredBlocksMap.putIfAbsent(executorId,
