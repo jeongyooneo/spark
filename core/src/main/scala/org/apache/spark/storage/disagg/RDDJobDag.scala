@@ -705,11 +705,12 @@ object RDDJobDag extends Logging {
     } else if (dagPath.equals("None")) {
       Option(new RDDJobDag(dag, mutable.Map(), metricTracker))
     } else {
+      var currentJob = 0
+
       for (line <- Source.fromFile(dagPath).getLines) {
         val l = line.stripLineEnd
         // parse
         val jsonMap = JSON.parse(l).asInstanceOf[java.util.Map[String, Any]].asScala
-        var currentJob = 0
 
         if (jsonMap("Event").equals("SparkListenerJobStart")) {
             currentJob = jsonMap("Job ID").asInstanceOf[Long].toInt
