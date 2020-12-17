@@ -1918,8 +1918,6 @@ private[spark] class BlockManager(
     }
   }
 
-  val autocaching = conf.get(BlazeParameters.AUTOCACHING)
-
   def removeBlockFromDisk(blockId: BlockId, tellMaster: Boolean = true): Boolean = {
     logDebug(s"Removing block $blockId")
     blockInfoManager.lockForWriting(blockId) match {
@@ -1952,10 +1950,6 @@ private[spark] class BlockManager(
     val storageLevel = blockInfoManager.get(blockId).get.level
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
-
-    if (!autocaching) {
-      val removedFromDisagg = disaggStore.remove(blockId)
-    }
 
     if (!storageLevel.useDisagg && !removedFromMemory && !removedFromDisk) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
