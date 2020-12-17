@@ -39,7 +39,8 @@ private[spark] object DisaggBlockManagerMessages {
 
   case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, executorId: String,
                              putDisagg: Boolean, localFull: Boolean,
-                             onDisk: Boolean, promote: Boolean)
+                             onDisk: Boolean, promote: Boolean,
+                             taskAttemp: Long)
     extends ToBlockManagerMaster
 
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
@@ -76,6 +77,8 @@ private[spark] object DisaggBlockManagerMessages {
   case class ReadBlockFromLocal(blockId: BlockId, executorId: String,
                                 fromRemote: Boolean, onDisk: Boolean, readTime: Long)
   extends ToBlockManagerMaster
+
+  case class TaskAttempBlockId(taskAttemp: Long, blockId: BlockId) extends ToBlockManagerMaster
 
   // metric
   case class ReadDisaggBlock(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster

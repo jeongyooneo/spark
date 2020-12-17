@@ -17,6 +17,8 @@
 
 package org.apache.spark.rdd
 
+import org.apache.spark.storage.RDDBlockId
+
 import scala.reflect.ClassTag
 import org.apache.spark.{Partition, SparkEnv, TaskContext}
 import org.apache.spark.util.Utils
@@ -75,6 +77,9 @@ class ZippedWithIndexRDD[T: ClassTag](prev: RDD[T]) extends RDD[(T, Long)](prev)
     val et = System.currentTimeMillis()
 
     val elapsed = (et - st)
+    SparkEnv.get.blockManager.disaggManager
+      .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
+
     SparkEnv.get.blockManager.disaggManager
       .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)

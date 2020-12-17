@@ -312,7 +312,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddNode = vertices(rddId)
     val edges = dag(rddNode)
 
-    edges.map(p => p.rootStage).toSet.size
+    // logInfo(s"Edges for rdd $rddId ${edges}")
+    // edges.map(p => p.rootStage).size
+    edges.size
   }
 
   def getLRCRefCnt(blockId: BlockId): Int = {
@@ -490,6 +492,27 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     rddNode.getStages.diff(metricTracker.completedStages).size
+  }
+
+  def getCurrentStageUsage(node: RDDNode, blockId: BlockId, taskAttemp: Long): Int = {
+    val childNodes = dag(node)
+
+    val sameStageChildren = childNodes
+      .filter(n => n.rootStage == node.rootStage &&
+      !metricTracker.completedStages.contains(node.rootStage))
+
+    if (sameStageChildren.size > 1) {
+      // Check couting
+      val attempKey = s"$taskAttemp-${blockId.name}"
+      val cnt = if (metricTracker.taskAttempBlockCount.containsKey(attempKey)) {
+        metricTracker.taskAttempBlockCount.get(attempKey).get() + 1
+      } else {
+        1
+      }
+      sameStageChildren.size - cnt
+    } else {
+      0
+    }
   }
 
   def getReferenceStages(blockId: BlockId): List[StageDistance] = {

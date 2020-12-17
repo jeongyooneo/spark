@@ -41,6 +41,9 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
   // For cost analysis
   def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost
+  def compDisaggCostWithTaskAttemp(executorId: String, blockId: BlockId,
+                                   taskAttemp: Long): CompDisaggCost
+  = compDisaggCost(executorId, blockId)
 
   def update: Unit = {
 
