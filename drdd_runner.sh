@@ -15,40 +15,23 @@ MEM_OVERHEAD=${10}
 SLACK=${11}
 PROMOTE=${12}
 PROFILE_TIMEOUT=${13}
+MEM_FRACTION=${14}
+DISK_THRESHOLD=${15}
 
-ARGS="${@:14}"
+ARGS="${@:16}"
 
 branch=`git rev-parse --abbrev-ref HEAD`
-my_branch="spl-master"
-my_branch="tg-2nd-draft-debug"
-#my_branch="tg-2nd-draft-refactoring"
-#my_branch="tg-2.4-local-disagg-debug"
 
 echo "current branch $branch"
 
-if [ "$TEST_TYPE" == "Spark" ] && [ "$branch" != "vanilla-v2.4.4" ]; then
-	echo "building branch $branch"	
-	git checkout vanilla-v2.4.4
-	./build/sbt -Phadoop-2.7,yarn -DskipTests package		
-fi
+parallel-ssh -i -h /home/ubuntu/compute-hosts.txt 'rm -rf /home/ubuntu/spark_cache/*'	
 
-if [ "$TEST_TYPE" == "Spark-Disk" ] && [ "$branch" != "vanilla-v2.4.4-memdisk" ]; then
-	echo "building branch vanilla-v2.4.4-memdisk"	
-	git checkout vanilla-v2.4.4-memdisk
-	./build/sbt -Phadoop-2.7,yarn -DskipTests package		
+echo "Remove spark shuffle dir"
+parallel-ssh -i -h /home/ubuntu/compute-hosts.txt 'rm -rf /home/ubuntu/spark_shuffle/*'	
 
-fi
 
-if [ "$TEST_TYPE" == "Blaze-Reverse" ] && [ "$branch" != "tg-2nd-draft-disagg" ]; then
-	echo "building branch tg-2nd-draft-disagg"	
-	git checkout tg-2nd-draft-disagg 
-	./build/sbt -Phadoop-2.7,yarn -DskipTests package		
-
-elif [[ $TEST_TYPE != *"Spark"* ]] && [ "$branch" != "$my_branch" ]; then
-	echo "building branch $branch"	
-	git checkout $my_branch
-	./build/sbt -Phadoop-2.7,yarn -DskipTests package		
-fi
+echo "Stopping iostats ..."
+parallel-ssh -h /home/ubuntu/compute-hosts.txt pkill iostat
 
 
 PROFILING=true
@@ -58,44 +41,79 @@ AUTOCACHING=true
 DISAGG_ONLY=false
 DISAGG_FIRST=false
 
-if [[ $TEST_TYPE == *"Spark"* ]]; then
+USE_DISK=false
+LOC_UNAWARE=false
+
+DISABLE_LOCAL=false 
+ZIGZAG_RATIO=0.5
+
+IS_SPARK=false
+CACHING_UNCONDITIONAL=false
+
+if [[ $TEST_TYPE == "Spark" ]]; then
+COST_FUNCTION=No
+EVICT_POLICY=Cost-based
 AUTOCACHING=false
-PROFILING=false
-
-elif [ "$TEST_TYPE" == "Blaze-Disagg" ]; then
-MEMORY_MANAGER=Disagg
-DISAGG_ONLY=true
-COST_FUNCTION=Blaze-MRD
-EVICT_POLICY=Cost-size-ratio2
-
-elif [ "$TEST_TYPE" == "Blaze-Both" ]; then
-echo "both"
-COST_FUNCTION=Blaze-MRD
-EVICT_POLICY=Cost-size-ratio2
-
-elif [ "$TEST_TYPE" == "Blaze-Stage-Ref" ]; then
-
-COST_FUNCTION=Blaze-Stage-Ref
-EVICT_POLICY=Cost-size-ratio2
-
-
-elif [ "$TEST_TYPE" == "Blaze-Reverse" ]; then
-
-COST_FUNCTION=Blaze-MRD
-EVICT_POLICY=Cost-size-ratio2
-DISAGG_FIRST=true
-
-elif [ "$TEST_TYPE" == "Blaze-No-profile-autocaching" ]; then
-COST_FUNCTION=Blaze-Stage-Ref
-EVICT_POLICY=Cost-size-ratio2
-AUTOCACHING=true
 PROFILING=false
 DAG_PATH=None
+USE_DISK=true
+IS_SPARK=true
+CACHING_UNCONDITIONAL=false
 
-elif [ "$TEST_TYPE" == "Blaze-No-profile" ]; then
-COST_FUNCTION=Blaze-Stage-Ref
-EVICT_POLICY=Cost-size-ratio2
-AUTOCACHING=false
+elif  [[ $TEST_TYPE == "Spark-Autocaching" ]]; then
+COST_FUNCTION=No
+EVICT_POLICY=Cost-based
+AUTOCACHING=true
+PROFILING=true
+DAG_PATH=None
+USE_DISK=true
+IS_SPARK=true
+
+elif [ "$TEST_TYPE" == "Blaze-Caching-Unconditional" ]; then
+
+COST_FUNCTION=Blaze-Disk-Recomp
+EVICT_POLICY=Cost-based
+USE_DISK=true
+CACHING_UNCONDITIONAL=true
+
+elif [ "$TEST_TYPE" == "Blaze-Disk-Recomp-Cost" ]; then
+
+COST_FUNCTION=Blaze-Disk-Recomp
+EVICT_POLICY=Cost-based
+USE_DISK=true
+
+elif [ "$TEST_TYPE" == "Blaze-Disk-Recomp-Cost-No-Zigzag" ]; then
+
+COST_FUNCTION=Blaze-Disk-Recomp
+EVICT_POLICY=Cost-based
+USE_DISK=true
+ZIGZAG_RATIO=1
+
+elif [ "$TEST_TYPE" == "Blaze-Disk-Future-Use" ]; then
+
+COST_FUNCTION=Blaze-Disk-Future-Use
+EVICT_POLICY=Cost-based
+USE_DISK=true
+
+
+elif [ "$TEST_TYPE" == "Blaze-Disk-Cost" ]; then
+
+COST_FUNCTION=Blaze-Disk-Only
+EVICT_POLICY=Cost-based
+USE_DISK=true
+
+elif [ "$TEST_TYPE" == "Blaze-Recomp-Cost" ]; then
+
+COST_FUNCTION=Blaze-Recomp-Only
+EVICT_POLICY=Cost-based
+USE_DISK=true
+
+
+elif [ "$TEST_TYPE" == "Blaze-No-Profiling" ]; then
+COST_FUNCTION=Blaze-Disk-Recomp
+EVICT_POLICY=Cost-based
+USE_DISK=true
+AUTOCACHING=true
 PROFILING=false
 DAG_PATH=None
 
@@ -135,48 +153,66 @@ EVICT_POLICY=RDD-Ordering
 AUTOCACHING=true
 PROFILING=true
 
-
-elif [ "$TEST_TYPE" == "Blaze-Cost-based" ]; then
-COST_FUNCTION=Blaze-MRD
-EVICT_POLICY=Cost-based
-
 elif [ "$TEST_TYPE" == "Blaze-Explicit" ]; then
 
-COST_FUNCTION=Blaze-MRD
+COST_FUNCTION=Blaze-Stage-Ref
 EVICT_POLICY=Cost-size-ratio2
 AUTOCACHING=false
 
-elif [ "$TEST_TYPE" == "Real-LRC" ]; then
+elif [ "$TEST_TYPE" == "LCS" ]; then
 
-COST_FUNCTION=LRC
-EVICT_POLICY=Cost-based
-
-AUTOCACHING=false
-PROFILING=false
-DAG_PATH=None
-
-elif [ "$TEST_TYPE" == "Real-LRC-profile" ]; then
-
-COST_FUNCTION=LRC
-EVICT_POLICY=Cost-based
-
-AUTOCACHING=false
-PROFILING=true
-
-elif [ "$TEST_TYPE" == "Blaze-MRD-profile" ]; then
-
-COST_FUNCTION=MRD
-EVICT_POLICY=Cost-based
-AUTOCACHING=false
-PROFILING=true
-
-elif [ "$TEST_TYPE" == "Blaze-MRD" ]; then
-
-COST_FUNCTION=MRD
+COST_FUNCTION=LCS
 EVICT_POLICY=Cost-based
 AUTOCACHING=false
 PROFILING=false
 DAG_PATH=None
+USE_DISK=true
+
+
+elif [ "$TEST_TYPE" == "LRC" ]; then
+
+COST_FUNCTION=LRC
+EVICT_POLICY=Cost-based
+AUTOCACHING=false
+PROFILING=false
+DAG_PATH=None
+USE_DISK=true
+
+elif [ "$TEST_TYPE" == "LRC-Disk" ]; then
+
+COST_FUNCTION=LRC
+EVICT_POLICY=Cost-based
+AUTOCACHING=false
+PROFILING=false
+DAG_PATH=None
+USE_DISK=true
+
+
+elif [ "$TEST_TYPE" == "LRC-profile" ]; then
+
+COST_FUNCTION=LRC
+EVICT_POLICY=Cost-based
+AUTOCACHING=false
+PROFILING=true
+
+elif [ "$TEST_TYPE" == "MRD" ]; then
+
+COST_FUNCTION=MRD
+EVICT_POLICY=Cost-based
+AUTOCACHING=false
+PROFILING=false
+DAG_PATH=None
+USE_DISK=true
+
+elif [ "$TEST_TYPE" == "MRD-Disk" ]; then
+
+COST_FUNCTION=MRD
+EVICT_POLICY=Cost-based
+AUTOCACHING=false
+PROFILING=false
+DAG_PATH=None
+USE_DISK=true
+
 
 else
 
@@ -195,19 +231,24 @@ fi
 ITER=3
 
 
-if [ "$TEST_TYPE" != "Spark" ]; then
 parallel-ssh -h ~/crail-hosts.txt 'sudo rm -rf /dev/hugepages/cache/*'
 parallel-ssh -h ~/crail-hosts.txt 'sudo rm -rf /dev/hugepages/data/*'
 
 parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /dev/hugepages/cache/*'
 parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /dev/hugepages/data/*' 
 
-parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /home/ubuntu/xvdc/yarn/*'
+parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /home/ubuntu/spark_cache/*'
+parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /home/ubuntu/spark_cache/data/*'
+
+stop-crail.sh
+
+#parallel-ssh -h ~/compute-hosts.txt 'sudo rm -rf /home/ubuntu/xvdc/yarn/*'
 
 
 # recompile crail 
 
-stop-crail.sh && start-crail.sh
+if [[ $TEST_TYPE == *"Blaze"* ]]; then
+start-crail.sh
 sleep 5
 fi
 
@@ -215,8 +256,8 @@ fi
 CORES=14
 NODES=10
 EXECUTOR_PER_NODE=$(( EXECUTORS / $NODES))
-CORES=$(( CORES / (EXECUTOR_PER_NODE+1) + 1 ))
-#CORES=8
+CORES=$(( CORES / (EXECUTOR_PER_NODE + EXECUTOR_PER_NODE) + 1 ))
+#CORES=2
 echo $CORES
 
 NAME=a
@@ -224,13 +265,15 @@ NUM=1
 DATE=`date +"%m-%d"`
 
 echo "DATE $DATE"
-DIR=logs/$DATE/$1/$TEST_TYPE-mem$MEM_SIZE-executors$EXECUTORS-fraction$FRACTION-disagg$DISAGG_THRESHOLD-autocaching$AUTOCACHING-profiling$PROFILING-cost$COST_FUNCTION-evict$EVICT_POLICY-slack$SLACK-mOverhead-$MEM_OVERHEAD-promote$PROMOTE-$NUM
+timestamp=$(date +%s)
+
+DIR=logs/$DATE/$1/$TEST_TYPE-mem$MEM_SIZE-disk$DISK_THRESHOLD-executors$EXECUTORS-fraction$FRACTION-memfrac-$MEM_FRACTION-disagg$DISAGG_THRESHOLD-autocaching$AUTOCACHING-profiling$PROFILING-cost$COST_FUNCTION-evict$EVICT_POLICY-slack$SLACK-mOverhead-$MEM_OVERHEAD-promote$PROMOTE-core$CORES-$timestamp-$NUM
 
 while [ -d "$DIR" ]
 do
   # Control will enter here if $DIRECTORY exists.
   NUM=$(( NUM + 1 ))
-  DIR=logs/$DATE/$1/$TEST_TYPE-mem$MEM_SIZE-executors$EXECUTORS-fraction$FRACTION-disagg$DISAGG_THRESHOLD-autocaching$AUTOCACHING-profiling$PROFILING-cost$COST_FUNCTION-evict$EVICT_POLICY-slack$SLACK-mOverhead-$MEM_OVERHEAD-promote$PROMOTE-$NUM
+DIR=logs/$DATE/$1/$TEST_TYPE-mem$MEM_SIZE-disk$DISK_THRESHOLD-executors$EXECUTORS-fraction$FRACTION-memfrac-$MEM_FRACTION-disagg$DISAGG_THRESHOLD-autocaching$AUTOCACHING-profiling$PROFILING-cost$COST_FUNCTION-evict$EVICT_POLICY-slack$SLACK-mOverhead-$MEM_OVERHEAD-promote$PROMOTE-core$CORES-$timestamp-$NUM
 
 done
 
@@ -246,6 +289,8 @@ rm spark_log.txt
 rm completed.txt
 
 
+EXTRA_PATH=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:/home/ubuntu/hadoop/share/hadoop/common/lib/*:$CRAIL_JAR/*
+
 sampling_start="$(date -u +%s)"
 FULLY=false
 
@@ -260,6 +305,8 @@ rm killed.txt
 SAMPLING_TIME=$PROFILE_TIMEOUT
 sampling_killer.sh $SAMPLING_TIME &
 
+#--conf "spark.driver.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:/home/ubuntu/hadoop/share/hadoop/common/lib/hadoop-aws-2.7.2.jar:/home/ubuntu/hadoop/share/hadoop/common/lib/aws-java-sdk-1.7.4.jar" \
+
 
 
 if [[ $TEST_NAME == *"LGR"* ]]; then
@@ -270,10 +317,10 @@ if [[ $TEST_NAME == *"LGR"* ]]; then
 --master yarn --class $CLASS \
 --conf "spark.yarn.am.memory=4000m" \
 --conf "spark.yarn.am.cores=2" \
---conf "spark.driver.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+--conf "spark.driver.extraClassPath=$EXTRA_PATH" \
 --conf "spark.driver.memory=32000m" \
 --conf "spark.driver.cores=6" \
---conf "spark.executor.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+--conf "spark.executor.extraClassPath=$EXTRA_PATH" \
 --conf "spark.rpc.lookupTimeout=300s" \
 --conf "spark.memory.memoryManager=Unified" \
 --conf "spark.disagg.threshold=$DISAGG_THRESHOLD" \
@@ -292,10 +339,10 @@ else
 --master yarn --class $CLASS \
 --conf "spark.yarn.am.memory=4000m" \
 --conf "spark.yarn.am.cores=2" \
---conf "spark.driver.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+--conf "spark.driver.extraClassPath=$EXTRA_PATH" \
 --conf "spark.driver.memory=32000m" \
 --conf "spark.driver.cores=6" \
---conf "spark.executor.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+--conf "spark.executor.extraClassPath=$EXTRA_PATH" \
 --conf "spark.rpc.lookupTimeout=300s" \
 --conf "spark.memory.memoryManager=Unified" \
 --conf "spark.disagg.threshold=$DISAGG_THRESHOLD" \
@@ -315,6 +362,7 @@ sampling_end="$(date -u +%s)"
 # get dag path 
 APP_ID=`cat sampled_log.txt | grep -oP "application_[0-9]*_[0-9]*" | tail -n 1`
 echo "Getting sampled lineage... $APP_ID"
+sleep 5
 hdfs dfs -get /spark_history/$APP_ID sampled_lineage.txt
 
 
@@ -322,13 +370,15 @@ if [ ! -f "sampled_lineage.txt" ]; then
 	hdfs dfs -get /spark_history/"${APP_ID}.inprogress" sampled_lineage.txt
 fi
 
-wait
+#echo "Waiting.."
+#wait
+#echo "Wait done"
 
 
 DAG_PATH=sampled_lineage.txt
 #rm $DIR/sampled_log.txt
 
-sleep 2
+sleep 5
 
 if [ -f "killed.txt" ]; then
 FULLY=false
@@ -340,52 +390,69 @@ fi
 
 mv blaze.log sampled_blaze.log
 rm blaze.log
+rm disk_log.txt
 
+parallel-ssh -i -h $HOME/compute-hosts.txt 'rm -rf /home/ubuntu/spark_cache/*'	
+
+echo "Remove spark shuffle dir"
+parallel-ssh -i -h $HOME/compute-hosts.txt 'rm -rf /home/ubuntu/spark_shuffle/*'	
 
 
 echo "FULLY $FULLY"
 
 echo "Actual Execution!!"
 
-if [ "$TEST_TYPE" != "Spark-Disk" ]; then
 echo "Start exception observer and killer.."
 python exception_killer.py &
-fi
 
 
 start_time="$(date -u +%s)"
 
+echo "Start iostat"
+parallel-ssh -h ../compute-hosts.txt "nohup ./run_iostat.sh > /dev/null 2>&1 &"
+
+sleep 5
+
+LOCALITY_WAIT=3s
 
 if [[ $TEST_NAME == *"LGR"* ]]; then
 ./bin/spark-submit -v \
 	--packages com.microsoft.ml.spark:mmlspark_2.11:1.0.0-rc1 \
 	--num-executors $EXECUTORS --executor-cores $CORES --executor-memory $MEM_SIZE \
 	--master yarn --class $CLASS \
-	--conf "spark.yarn.am.memory=6000m" \
+	--conf "spark.yarn.am.memory=4000m" \
 	--conf "spark.yarn.am.cores=2" \
-	--conf "spark.driver.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+	--conf "spark.driver.extraClassPath=$EXTRA_PATH" \
 	--conf "spark.driver.memory=48000m" \
 	--conf "spark.driver.cores=8" \
-	--conf "spark.executor.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+	--conf "spark.executor.extraClassPath=$EXTRA_PATH" \
 	--conf "spark.rpc.lookupTimeout=300s" \
 	--conf "spark.memory.memoryManager=$MEMORY_MANAGER" \
 	--conf "spark.disagg.cachingpolicy=$CACHING_POLICY" \
 	--conf "spark.disagg.threshold=$DISAGG_THRESHOLD" \
-	--conf "spark.memory.fraction=0.6" \
+	--conf "spark.memory.fraction=$MEM_FRACTION" \
 	--conf "spark.memory.storageFraction=$FRACTION" \
 	--conf "spark.disagg.dagpath=$DAG_PATH" \
-	--conf "spark.disagg.disableLocalCaching=$DISAGG_ONLY" \
+	--conf "spark.disagg.disableLocalCaching=$DISABLE_LOCAL" \
 	--conf "spark.disagg.costfunction=$COST_FUNCTION" \
 	--conf "spark.disagg.evictionpolicy=$EVICT_POLICY" \
 	--conf "spark.disagg.autocaching=$AUTOCACHING" \
+	--conf "spark.locality.wait=$LOCALITY_WAIT" \
 	--conf "spark.disagg.sampledRun=false" \
 	--conf "spark.disagg.memoryslack=$SLACK" \
 	--conf "spark.disagg.first=$DISAGG_FIRST" \
 	--conf "spark.disagg.promote=$PROMOTE" \
 	--conf "spark.disagg.fullyProfiled=$FULLY" \
 	--conf "spark.executor.memoryOverhead=$MEM_OVERHEAD" \
-	--conf "spark.rpc.netty.dispatcher.numThreads=22" \
+	--conf "spark.rpc.netty.dispatcher.numThreads=160" \
 	--conf "spark.driver.maxResultSize=2g" \
+	--conf "spark.storage.threshold=$DISAGG_THRESHOLD" \
+	--conf "spark.disagg.useLocalDisk=$USE_DISK" \
+	--conf "spark.disagg.zigzag=$ZIGZAG_RATIO" \
+	--conf "spark.disagg.isspark=$IS_SPARK" \
+	--conf "spark.disagg.disk.threshold=$DISK_THRESHOLD" \
+	--conf "spark.disagg.diskLocalityUnaware=$LOC_UNAWARE" \
+	--conf "spark.disagg.cachingUnconditionally=$CACHING_UNCONDITIONAL" \
 	$JAR $ARGS \
 	2>&1 | tee spark_log.txt
 
@@ -394,20 +461,22 @@ else
 ./bin/spark-submit -v \
 	--num-executors $EXECUTORS --executor-cores $CORES --executor-memory $MEM_SIZE \
 	--master yarn --class $CLASS \
-	--conf "spark.yarn.am.memory=6000m" \
+	--conf "spark.yarn.am.memory=4000m" \
 	--conf "spark.yarn.am.cores=2" \
-	--conf "spark.driver.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
-	--conf "spark.driver.memory=48000m" \
+	--conf "spark.driver.extraClassPath=$EXTRA_PATH" \
+	--conf "spark.driver.memory=50000m" \
 	--conf "spark.driver.cores=8" \
-	--conf "spark.executor.extraClassPath=/home/ubuntu/.m2/repository/com/google/guava/guava/14.0.1/guava-14.0.1.jar:$CRAIL_JAR/*:." \
+	--conf "spark.executor.extraClassPath=$EXTRA_PATH" \
+	--conf "spark.locality.wait=$LOCALITY_WAIT" \
 	--conf "spark.rpc.lookupTimeout=300s" \
+	--conf "spark.rpc.askTimeout=600s" \
 	--conf "spark.memory.memoryManager=$MEMORY_MANAGER" \
 	--conf "spark.disagg.cachingpolicy=$CACHING_POLICY" \
 	--conf "spark.disagg.threshold=$DISAGG_THRESHOLD" \
-	--conf "spark.memory.fraction=0.6" \
+	--conf "spark.memory.fraction=$MEM_FRACTION" \
 	--conf "spark.memory.storageFraction=$FRACTION" \
 	--conf "spark.disagg.dagpath=$DAG_PATH" \
-	--conf "spark.disagg.disableLocalCaching=$DISAGG_ONLY" \
+	--conf "spark.disagg.disableLocalCaching=$DISABLE_LOCAL" \
 	--conf "spark.disagg.costfunction=$COST_FUNCTION" \
 	--conf "spark.disagg.evictionpolicy=$EVICT_POLICY" \
 	--conf "spark.disagg.autocaching=$AUTOCACHING" \
@@ -417,13 +486,32 @@ else
 	--conf "spark.disagg.fullyProfiled=$FULLY" \
 	--conf "spark.disagg.promote=$PROMOTE" \
 	--conf "spark.executor.memoryOverhead=$MEM_OVERHEAD" \
-	--conf "spark.rpc.netty.dispatcher.numThreads=22" \
+	--conf "spark.rpc.netty.dispatcher.numThreads=160" \
+	--conf "spark.storage.threshold=$DISAGG_THRESHOLD" \
+	--conf "spark.disagg.useLocalDisk=$USE_DISK" \
+	--conf "spark.disagg.zigzag=$ZIGZAG_RATIO" \
+	--conf "spark.disagg.isspark=$IS_SPARK" \
+	--conf "spark.disagg.disk.threshold=$DISK_THRESHOLD" \
+	--conf "spark.disagg.diskLocalityUnaware=$LOC_UNAWARE" \
+	--conf "spark.disagg.cachingUnconditionally=$CACHING_UNCONDITIONAL" \
 	$JAR $ARGS \
 	2>&1 | tee spark_log.txt
 fi
 
 echo "Creating $DIR"
 mkdir -p $DIR
+
+echo "Stopping iostats ..."
+parallel-ssh -h /home/ubuntu/compute-hosts.txt pkill iostat
+
+sleep 1
+
+for i in {1..10}
+do
+scp w$i:/home/ubuntu/iostat_log.txt $DIR/iostat_log_w$i.txt
+python3 disk_time_range.py $DIR/iostat_log_w$i.txt > $DIR/parsed_iostat_w$i.txt
+rm $DIR/iostat_log_w$i.txt
+done
 
 mv sampled_lineage.txt $DIR/
 mv sampled_log.txt $DIR/
@@ -437,17 +525,20 @@ elapsed="$(($end_time-$start_time))"
 sampling_time="$(($sampling_end-$sampling_start))"
 
 
-# wait exception killer
+# wait exception killer and disk logger
 wait
+
+if [ -f "disk_log.txt" ]; then
+mv disk_log.txt $DIR/
+fi
 
 
 # extract app id
 APP_ID=`cat $DIR/log.txt | grep -oP "application_[0-9]*_[0-9]*" | tail -n 1`
-~/get_log.sh $APP_ID
-mv log_$APP_ID $DIR/executor_logs.txt
 
-EXCEPTION=`cat $DIR/log.txt | grep Exception | head -10`
-CANCEL=`cat $DIR/log.txt | grep cancelled as part of`
+EXCEPTION=`cat $DIR/log.txt | grep Exception | head -3`
+CANCEL=`cat $DIR/log.txt | grep cancelled because | head -3`
+ABORT=`cat $DIR/log.txt | grep aborted | head -3`
 
 if [ -z "${EXCEPTION// }" ]; then
 echo "haha"
@@ -458,18 +549,32 @@ fi
 if [ -z "${CANCEL// }" ]; then
 echo "hoho"
 else
-	message="Job cancelled!!!!!\n"
+	message="Job cancelled!!!!! $CANCEL\n"
 fi
 
+if [ -z "${ABORT// }" ]; then
+echo "hihi"
+else
+	message="Job aborted!!!!! $ABORT\n"
+
+fi
+
+COMMIT=`git log --pretty=format:'%h' -n 1`
+BRANCH=`git rev-parse --abbrev-ref HEAD`
+
+message=$message"Commit $COMMIT\n"
+message=$message"Branch $BRANCH\n"
 message=$message"App $APP_ID\n"
 message=$message"Local memory $MEM_SIZE\n"
 message=$message"Profiling timeout $PROFILE_TIMEOUT\n"
+message=$message"Disk $DISK_THRESHOLD\n"
 message=$message"Disagg memory $DISAGG_THRESHOLD\n"
 message=$message"Time $elapsed seconds\n"
 message=$message"Sampling $sampling_time seconds\n"
 message=$message"Executors $EXECUTORS\n"
-message=$message"Log $DIR\n"
+message=$message"$DIR\n"
 message=$message"Args $ARGS\n"
+message=$message"--conf spark.locality.wait=$LOCALITY_WAIT\n" 
 message=$message"--conf spark.disagg.promote=$PROMOTE\n"
 message=$message"--conf spark.memory.memoryManager=$MEMORY_MANAGER\n"
 message=$message"--conf spark.disagg.cachingpolicy=$CACHING_POLICY\n"
@@ -478,17 +583,32 @@ message=$message"--conf spark.disagg.costfunction=$COST_FUNCTION\n"
 message=$message"--conf spark.disagg.evictionpolicy=$EVICT_POLICY\n"
 message=$message"--conf spark.disagg.autocaching=$AUTOCACHING\n"
 
+./send_slack.sh  $message
+
+sleep 20
+
+~/get_log.sh $APP_ID
+mv log_$APP_ID $DIR/executor_logs.txt
+touch $DIR/commit-$COMMIT
+touch $DIR/branch-$BRANCH
+touch $DIR/appid-$APP_ID
+
 # history parsing 
-hdfs dfs -get /spark_history/$APP_ID $DIR/history.txt
-python3 parsing_history.py $DIR/history.txt > $DIR/total_gc_time.txt
+if [[ ${#APP_ID} -gt 5 ]]; then
+	hdfs dfs -get /spark_history/$APP_ID $DIR/history.txt
+fi
 
 GCTIME=`cat $DIR/total_gc_time.txt`
 
 message=$message"GC time: $GCTIME\n"
 
-send_slack.sh  $message
 
 mv blaze.log $DIR/
+
+# rsync
+echo "rsyncing..."
+rsync -rzavh -e  'ssh -p 2222' logs/ jyeo@147.46.216.122:/home/jyeo/atc21/tg-m/logs
+
 
 # disagg size 
 cat $DIR/log.txt |  grep -oP "Disagg total size: [0-9]* \(MB\)" > $DIR/disagg_mem.txt
