@@ -736,7 +736,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 }
 
                 if (sizeSum >= evictSize + 5 * 1024 * 1024) {
-                  logInfo(s"CostSum: $sum, block: $blockId")
+                  logInfo(s"CostSum: $sum, block: $blockId, $evictionList")
                   return evictionList.toList
                 }
               }
