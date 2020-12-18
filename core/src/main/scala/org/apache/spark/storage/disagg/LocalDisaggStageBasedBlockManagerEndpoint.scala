@@ -588,7 +588,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           || !BLAZE_COST_FUNC || cachingUnconditionally ||
           !metricTracker.sizePredictionMap.containsKey(blockId.get)) {
           // Spilling
-          return iter.map(m => m.blockId)
+          return iter.toList.map(m => m.blockId)
               .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
 
           /*
@@ -641,20 +641,83 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
             recentlyEvictFailBlocksFromLocal
           }
 
-          val storingCost = costAnalyzer.compDisaggCost(executorId, blockId.get)
+          iter.synchronized {
+            val storingCost = costAnalyzer.compDisaggCost(executorId, blockId.get)
 
-          val arrayList = iter.filter(m => metricTracker
-            .localMemStoredBlocksMap
-            .get(executorId).contains(m.blockId)).foreach {
-            discardingBlock =>
-              if (!prevEvicted.contains(discardingBlock.blockId)
-                && discardingBlock.cost <= storingCost.cost
-                && discardingBlock.blockId != blockId.get) {
-                val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
-                val createdTime = metricTracker
-                  .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
-                if (elapsed > 5000 && timeToRemove(createdTime, System.currentTimeMillis())) {
+            val tobeEvictList =
+              new mutable.HashMap[Int, mutable.ListBuffer[(BlockId, CompDisaggCost)]]()
+
+            for (i <- 0 until iter.length) {
+              var discardingBlock = iter(i)
+
+              if (metricTracker.localMemStoredBlocksMap
+                .get(executorId).contains(discardingBlock.blockId)) {
+
+                // If block needs to be updated, we sort it again
+                // UPDATE BLOCK COST !!!!!!!
+                // UPDATE BLOCK COST !!!!!!!
+                val discardingIndex = discardingBlock.blockId.name.split("_")(2).toInt
+                if (tobeEvictList.contains(discardingIndex)) {
+                  val evictDependentPartitions = tobeEvictList(discardingIndex)
+
+                  if (discardingBlock.updatedBlocks.isEmpty) {
+                    discardingBlock.updatedBlocks = Some(new mutable.HashSet[BlockId]())
+                  }
+
+                  if (!discardingBlock.updatedBlocks.get.equals(
+                    evictDependentPartitions.map(a => a._1).toSet)) {
+
+                    logInfo(s"Updating ${discardingBlock.blockId} for ${evictDependentPartitions}")
+                    evictDependentPartitions.foreach {
+                      entry =>
+                        val alreadyEvict = entry._1
+                        val alreadyEvictCost = entry._2
+
+                        if (!discardingBlock.updatedBlocks.get.contains(alreadyEvict)) {
+                          discardingBlock.updatedBlocks.get.add(alreadyEvict)
+
+                          if (alreadyEvict.asRDDId.get.rddId <
+                            discardingBlock.blockId.asRDDId.get.rddId) {
+                            // this is parent
+                            // we should add the recomp/or read time
+                            if (alreadyEvictCost.compCost < alreadyEvictCost.disaggCost) {
+                              // This will be discarded, so we add the time
+                              discardingBlock.addRecomp(alreadyEvictCost.recompTime)
+                            }
+                          } else {
+                            // this is child
+                            // we increase future use
+                            if (alreadyEvictCost.compCost < alreadyEvictCost.disaggCost) {
+                              discardingBlock.increaseFutureUse(alreadyEvictCost.futureUse.toInt)
+                            }
+                          }
+                        }
+                    }
+                  }
+                }
+                // UPDATE BLOCK COST END !!!!!!!
+                // UPDATE BLOCK COST END !!!!!!!
+
+                if (discardingBlock.updated) {
+                  if (i < iter.length - 1 && discardingBlock.cost > iter(i + 1).cost) {
+                    // just discard
+                    // bubble-sorting
+                    val temp = iter(i + 1)
+                    iter(i) = temp
+                    discardingBlock = temp
+                    iter(i + 1) = discardingBlock
+                  }
+                }
+
+                if (!prevEvicted.contains(discardingBlock.blockId)
+                  && discardingBlock.cost <= storingCost.cost
+                  && discardingBlock.blockId != blockId.get) {
+                  val elapsed = currTime - map.getOrElse(discardingBlock.blockId, 0L)
+                  val createdTime = metricTracker
+                    .recentlyBlockCreatedTimeMap.get(discardingBlock.blockId)
+
                   map.remove(discardingBlock.blockId)
+
                   if (blockManagerInfo.blocks.contains(discardingBlock.blockId)) {
                     if (onDisk &&
                       blockManagerInfo.blocks(discardingBlock.blockId).diskSize > 0 &&
@@ -671,24 +734,25 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     }
                   }
                 }
-              }
 
-            if (sizeSum >= evictSize + 5 * 1024 * 1024) {
+                if (sizeSum >= evictSize + 5 * 1024 * 1024) {
+                  logInfo(s"CostSum: $sum, block: $blockId")
+                  return evictionList.toList
+                }
+              }
+            }
+
+            if (sizeSum >= evictSize) {
               logInfo(s"CostSum: $sum, block: $blockId")
               return evictionList.toList
+            } else {
+              logWarning(s"Size sum $sizeSum < eviction Size $evictSize, " +
+                s"for caching ${blockId} selected list: $evictionList")
+              List.empty
             }
           }
-
-          if (sizeSum >= evictSize) {
-            logInfo(s"CostSum: $sum, block: $blockId")
-            return evictionList.toList
-          } else {
-            logWarning(s"Size sum $sizeSum < eviction Size $evictSize, " +
-              s"for caching ${blockId} selected list: $evictionList")
-            List.empty
-          }
         } else {
-          return iter.map(m => m.blockId)
+          return iter.toList.map(m => m.blockId)
             .filter(bid => metricTracker.localMemStoredBlocksMap.get(executorId).contains(bid))
         }
     }

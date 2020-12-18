@@ -21,6 +21,8 @@ import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
+import scala.collection.mutable.ListBuffer
+
 private[spark] class CostSizeRatioBased2EvictionPolicy(
            val costAnalyzer: CostAnalyzer,
            val metricTracker: MetricTracker,
@@ -79,7 +81,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
                            executorId: String,
                            blockSize: Long,
                            onDisk: Boolean)
-                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId] = {
+                          (func: ListBuffer[CompDisaggCost] => List[BlockId]): List[BlockId] = {
     val blocks = if (onDisk) {
       costAnalyzer.sortedBlockByCompCostInDiskLocal
     } else {
@@ -103,7 +105,7 @@ private[spark] class CostSizeRatioBased2EvictionPolicy(
           })
       func(l)
     } else {
-      func(List.empty)
+      func(List.empty.to[ListBuffer])
     }
   }
 

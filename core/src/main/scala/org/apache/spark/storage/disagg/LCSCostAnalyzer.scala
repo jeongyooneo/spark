@@ -47,6 +47,9 @@ private[spark] class LCSCostAnalyzer(val rddJobDag: RDDJobDag,
       recompTime * refCnt,
       refCnt,
       numShuffle,
+      recompTime,
+      writeTime,
+      readTime,
       false)
   }
 }

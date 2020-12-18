@@ -25,16 +25,19 @@ import org.apache.spark.storage.BlockId
 import org.apache.spark.storage.disagg.RDDJobDag.StageDistance
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) extends Logging {
 
   @volatile
-  var sortedBlockByCompCostInLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
-    new AtomicReference[Map[String, List[CompDisaggCost]]](null)
+  var sortedBlockByCompCostInLocal: AtomicReference[Map[String,
+    mutable.ListBuffer[CompDisaggCost]]] =
+    new AtomicReference[Map[String, mutable.ListBuffer[CompDisaggCost]]](null)
 
   @volatile
-  var sortedBlockByCompCostInDiskLocal: AtomicReference[Map[String, List[CompDisaggCost]]] =
-    new AtomicReference[Map[String, List[CompDisaggCost]]](null)
+  var sortedBlockByCompCostInDiskLocal: AtomicReference[Map[String,
+    mutable.ListBuffer[CompDisaggCost]]] =
+    new AtomicReference[Map[String, mutable.ListBuffer[CompDisaggCost]]](null)
 
   @volatile
   var sortedBlockByCompCostInDisagg: Option[List[CompDisaggCost]] = None
@@ -86,7 +89,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
-        (entry._1, l.sortWith(_.cost < _.cost))
+        (entry._1, l.sortWith(_.cost < _.cost).to[ListBuffer])
       }))
 
     elapsed = System.currentTimeMillis() - start
@@ -96,7 +99,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     sortedBlockByCompCostInDiskLocal.set(
       localDiskMap.map(entry => {
         val l = entry._2
-        (entry._1, l.sortWith(_.cost < _.cost))
+        (entry._1, l.sortWith(_.cost < _.cost).to[ListBuffer])
       }))
 
     elapsed = System.currentTimeMillis() - start
@@ -204,14 +207,36 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 }
 
 class CompDisaggCost(val blockId: BlockId,
-                     val cost: Double,
-                     val disaggCost: Long = 0,
-                     val compCost: Long = 0,
-                     val futureUse: Double = 0,
+                     var cost: Double,
+                     var disaggCost: Long = 0,
+                     var compCost: Long = 0,
+                     var futureUse: Double = 0,
                      val numShuffle: Int = 0,
-                     val onDisk: Boolean = false) {
+                     var recompTime: Long = 0L,
+                     var writeTime: Long = 0L,
+                     val readTime: Long = 0L,
+                     val onDisk: Boolean = false,
+                     var updated: Boolean = false) extends Logging {
 
   var stages: Option[List[StageDistance]] = None
+  var updatedBlocks: Option[mutable.HashSet[BlockId]] = None
+
+  def addRecomp(t: Long): Unit = {
+    logInfo(s"Updating ${blockId} recomp with ${t}")
+    recompTime += t
+    compCost = (recompTime * futureUse).toLong
+    cost = Math.min(compCost, disaggCost)
+    updated = true
+  }
+
+  def increaseFutureUse(u: Int): Unit = {
+    logInfo(s"Updating ${blockId} future use with ${u}")
+    futureUse += u
+    compCost = (recompTime * futureUse).toLong
+    disaggCost = (writeTime + readTime * futureUse).toLong
+    cost = Math.min(compCost, disaggCost)
+    updated = true
+  }
 
   def setStageInfo(s: List[StageDistance], time: Long): Unit = {
     stages = Some(s)

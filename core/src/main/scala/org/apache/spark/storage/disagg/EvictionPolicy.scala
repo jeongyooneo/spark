@@ -20,6 +20,8 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.BlockId
 
+import scala.collection.mutable
+
 private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
 
   val promoteRatio = sparkConf.get(BlazeParameters.PROMOTE_RATIO)
@@ -40,7 +42,7 @@ private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
                            executorId: String,
                            evictSize: Long,
                            onDisk: Boolean)
-                          (func: List[CompDisaggCost] => List[BlockId]): List[BlockId]
+                          (func: mutable.ListBuffer[CompDisaggCost] => List[BlockId]): List[BlockId]
 
   def selectEvictFromDisagg(storingCost: CompDisaggCost,
                             blockId: BlockId)
