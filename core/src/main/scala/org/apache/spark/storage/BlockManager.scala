@@ -1498,7 +1498,7 @@ private[spark] class BlockManager(
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
       var blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
-      if (blockWasSuccessfullyStored) {
+      if (blockWasSuccessfullyStored && size > 0) {
         // Now that the block is in either the memory or disk store, tell the master about it.
         info.size = size
         if (tellMaster && info.tellMaster) {
@@ -1610,6 +1610,7 @@ private[spark] class BlockManager(
                 // The memory store put() failed, so it returned the iterator back to us:
                 iter
               case Right(_) =>
+                reportBlockStatus(blockId, getCurrentBlockStatus(blockId, blockInfo))
                 // The put() succeeded, so we can read the values back:
                 memoryStore.getValues(blockId).get
             }

@@ -662,7 +662,19 @@ private[spark] class BlockManagerInfo(
        * They can be both larger than 0, when a block is dropped from memory to disk.
        * Therefore, a safe way to set BlockStatus is to set its info in accurate modes. */
       var blockStatus: BlockStatus = null
-      if (storageLevel.useMemory) {
+      if (storageLevel.useMemory && storageLevel.useDisk) {
+        // it happens in promotion
+        blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = diskSize)
+        _blocks.put(blockId, blockStatus)
+        _remainingMem -= memSize
+        if (blockExists) {
+          logInfo(s"Updated $blockId in memory on " +
+            s"${blockManagerId.host}:executor${blockManagerId.executorId}" +
+            s" (current size: ${Utils.bytesToString(memSize)}," +
+            s" original size: ${Utils.bytesToString(originalMemSize)}," +
+            s" free: ${Utils.bytesToString(_remainingMem)})")
+        }
+      } else if (storageLevel.useMemory) {
         blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = 0)
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
@@ -679,8 +691,7 @@ private[spark] class BlockManagerInfo(
             s" free: ${Utils.bytesToString(_remainingMem)})")
         }
 
-      }
-      if (storageLevel.useDisk) {
+      } else if (storageLevel.useDisk) {
         blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
