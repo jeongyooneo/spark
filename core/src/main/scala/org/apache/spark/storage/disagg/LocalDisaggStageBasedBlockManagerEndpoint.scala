@@ -779,12 +779,18 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private val recentlyRecachedBlocks = new ConcurrentHashMap[BlockId, Boolean]().asScala
 
+  private val disablePromote = conf.get(BlazeParameters.DISABLE_PROMOTE)
+
   def promoteToMemory(blockId: BlockId, size: Long,
                       executorId: String,
                       enoughSpace: Boolean): Boolean = {
 
     // We only recache the block if the block was stored in the executor
     if (disableLocalCaching || metricTracker.storedBlockInLocalMemory(blockId) ) {
+      return false
+    }
+
+    if (disablePromote) {
       return false
     }
 
