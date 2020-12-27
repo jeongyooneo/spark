@@ -50,6 +50,10 @@ private[spark] object BlazeParameters extends Logging {
     .booleanConf
     .createWithDefault(true)
 
+  private[spark] val AUTOUNPERSIST = ConfigBuilder("spark.disagg.autounpersist")
+    .booleanConf
+    .createWithDefault(true)
+
   private[spark] val USE_DISK = ConfigBuilder("spark.disagg.useLocalDisk")
     .booleanConf
     .createWithDefault(false)

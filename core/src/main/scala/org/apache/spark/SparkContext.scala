@@ -85,7 +85,7 @@ class SparkContext(config: SparkConf) extends Logging {
   // NOTE: this must be placed at the beginning of the SparkContext constructor.
   SparkContext.markPartiallyConstructed(this, allowMultipleContexts)
 
-  val autocaching = config.get(BlazeParameters.AUTOCACHING)
+  val autounpersist = config.get(BlazeParameters.AUTOUNPERSIST)
 
   val startTime = System.currentTimeMillis()
 
@@ -1831,7 +1831,7 @@ class SparkContext(config: SparkConf) extends Logging {
    * Unpersist an RDD from memory and/or disk storage
    */
   private[spark] def unpersistRDD(rddId: Int, blocking: Boolean = true) {
-    if (!autocaching) {
+    if (!autounpersist) {
       env.blockManager.master.removeRdd(rddId, blocking)
       listenerBus.post(SparkListenerUnpersistRDD(rddId))
     }
