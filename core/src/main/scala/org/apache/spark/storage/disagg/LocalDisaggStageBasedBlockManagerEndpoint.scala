@@ -244,7 +244,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           zeroRDDs.foreach {
             rdd =>
-              logInfo(s"Remove zero cost rdd $rdd from memory")
+              logInfo(s"Remove zero cost rdd $rdd from memory...")
               // remove from local executors
               removedZeroRdds.synchronized {
                 removedZeroRdds.add(rdd)
@@ -252,6 +252,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               // scalastyle:off awaitresult
               Await.result(blockManagerMaster.removeRdd(rdd), Duration.create(10,
                 duration.SECONDS))
+
               // scalastyle:on awaitresult
             // remove local info
           }
@@ -1030,11 +1031,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 if (rdds.contains(bid.asRDDId.get.rddId)) {
                   removeSet.add((bid, executorId))
                 }
-                removeSet.foreach(pair => {
-                  BlazeLogger.removeZeroBlocks(pair._1, pair._2)
-                  removeFromLocal(pair._1, pair._2, false)
-                })
+
             }
+            removeSet.foreach(pair => {
+              BlazeLogger.removeZeroBlocks(pair._1, pair._2)
+              removeFromLocal(pair._1, pair._2, false)
+            })
           }
       }
     }

@@ -31,7 +31,7 @@ private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
     val node = rddJobDag.getRDDNode(blockId)
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
-    val futureUse = rddJobDag.getUnpersistCnt(blockId)
+    val futureUse = rddJobDag.getLRCRefCnt(blockId)
 
     val c = new CompDisaggCost(blockId,
       futureUse,
