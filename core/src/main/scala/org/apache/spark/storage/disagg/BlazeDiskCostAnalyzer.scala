@@ -34,7 +34,7 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
 
-    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+    val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     val futureUse = realStages.size
