@@ -786,6 +786,11 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                       executorId: String,
                       enoughSpace: Boolean): Boolean = {
 
+    if (!BLAZE_COST_FUNC || cachingUnconditionally) {
+      // Promotion in LRC and MRD
+      return true
+    }
+
     // We only recache the block if the block was stored in the executor
     if (disableLocalCaching || metricTracker.storedBlockInLocalMemory(blockId) ) {
       return false
@@ -795,10 +800,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       return false
     }
 
-    if (!BLAZE_COST_FUNC || cachingUnconditionally) {
-      // Promotion in LRC and MRD
-      return true
-    }
 
     if (recentlyRecachedBlocks.contains(blockId)) {
       return false
