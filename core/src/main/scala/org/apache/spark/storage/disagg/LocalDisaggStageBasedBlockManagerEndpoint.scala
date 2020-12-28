@@ -201,7 +201,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
-    metricTracker.stageCompleted(stageId)
 
     if (autounpersist) {
       // removeDupRDDsFromDisagg
@@ -259,6 +258,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         }
       }
     }
+
+
+    metricTracker.stageCompleted(stageId)
   }
 
   private val stagePartitionMap = new ConcurrentHashMap[Int, Int]()
