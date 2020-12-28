@@ -319,7 +319,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     metricTracker.recentlyBlockCreatedTimeMap.put(blockId, t)
     val storingCost = costAnalyzer.compDisaggCostWithTaskAttemp(executorId, blockId, taskAttemp)
 
-
     if (!putDisagg) {
 
       if (!BLAZE_COST_FUNC || cachingUnconditionally) {

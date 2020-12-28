@@ -427,7 +427,6 @@ private[spark] class MemoryStore(
         Right(entry.size)
       } else {
 
-
         if (blockId.isRDD && decisionByMaster) {
           disaggManager.cachingFail(blockId, size, executorId, false, true, false)
         }
