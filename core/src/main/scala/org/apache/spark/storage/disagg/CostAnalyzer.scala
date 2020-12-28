@@ -262,8 +262,8 @@ object CostAnalyzer {
         new MRDBasedAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("No")) {
         new NoCostAnalyzer(metricTracker)
-      }  else if (costType.equals("Spark-Autocaching")) {
-        new SparkAutocachingAnalyzer(metricTracker)
+      } else if (costType.equals("Spark-Autocaching")) {
+        new SparkAutocachingAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("LRC")) {
         new LRCCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("LCS")) {
