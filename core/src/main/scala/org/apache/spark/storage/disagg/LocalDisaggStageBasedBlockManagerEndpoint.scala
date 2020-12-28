@@ -249,8 +249,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               removedZeroRdds.synchronized {
                 removedZeroRdds.add(rdd)
               }
+              // scalastyle:off awaitresult
               Await.result(blockManagerMaster.removeRdd(rdd), Duration.create(10,
                 duration.SECONDS))
+              // scalastyle:on awaitresult
             // remove local info
           }
 
