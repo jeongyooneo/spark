@@ -202,10 +202,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
 
+
     if (autounpersist) {
       // removeDupRDDsFromDisagg
       autounpersist.synchronized {
         if (!metricTracker.completedStages.contains(stageId)) {
+          metricTracker.stageCompleted(stageId)
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
             .filter {
@@ -257,10 +259,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           prevCleanupTime = System.currentTimeMillis()
         }
       }
+    } else {
+      metricTracker.stageCompleted(stageId)
     }
 
-
-    metricTracker.stageCompleted(stageId)
   }
 
   private val stagePartitionMap = new ConcurrentHashMap[Int, Int]()
