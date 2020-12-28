@@ -206,7 +206,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
     if (autounpersist) {
       // removeDupRDDsFromDisagg
       autounpersist.synchronized {
-        if (System.currentTimeMillis() - prevCleanupTime >= 10000) {
+        if (!metricTracker.completedStages.contains(stageId)) {
           // unpersist rdds
           val zeroRDDs = costAnalyzer.findZeroCostRDDs
             .filter {
