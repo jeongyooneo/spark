@@ -1403,14 +1403,12 @@ private[spark] class BlockManager(
       val out = disaggManager.createFileOutputStream(blockId)
       val channel = new CountingWritableChannel(Channels.newChannel(out))
       writeFunc(channel)
-      logInfo(s"putAlluxio $blockId finished writing")
       size = channel.getCount
       channel.close()
-      logInfo(s"putAlluxio $blockId finished writing, closed channel")
       out.close()
       logInfo(s"putAlluxio $blockId finished writing, closed channel and stream")
     } catch {
-      case e: Exception => e.printStackTrace()
+      case e: IOException => e.printStackTrace()
         logInfo(s"Exception in createFileOutputStream $blockId " +
           s"executor $executorId, stage ${TaskContext.get().stageId()} " +
           s"task ${TaskContext.get().partitionId()}")
@@ -2094,4 +2092,5 @@ private[spark] class BlockManager(
       }
     }
   }
+
 
