@@ -31,7 +31,8 @@ import org.apache.spark.util.ThreadUtils
 import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
 import scala.collection.{mutable, _}
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, duration}
+import scala.concurrent.duration.Duration
 
 /**
  */
@@ -248,7 +249,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               removedZeroRdds.synchronized {
                 removedZeroRdds.add(rdd)
               }
-              blockManagerMaster.removeRdd(rdd)
+              blockManagerMaster.removeRdd(rdd).result(Duration.create(10,
+                duration.SECONDS))
             // remove local info
           }
 
