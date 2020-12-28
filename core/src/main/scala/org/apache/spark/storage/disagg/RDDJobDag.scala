@@ -356,6 +356,29 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     edges.size
   }
 
+  def getUnpersistCnt(blockId: BlockId): Int = {
+    val rddId = blockIdToRDDId(blockId)
+    val rddNode = vertices(rddId)
+
+    val refStage = rddNode.getStages.filter(s => !metricTracker.completedStages.contains(s))
+    var cnt = refStage.size
+
+    try {
+      for (childnode <- dag(rddNode)) {
+        if (!metricTracker.completedStages.contains(childnode.rootStage)
+        && !refStage.contains(childnode.rootStage)) {
+          cnt += 1
+        }
+      }
+      cnt
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+        logWarning(s"Exception happend !! for finding rdd node ${rddNode.rddId}")
+        throw new RuntimeException(e)
+    }
+  }
+
   def getLRCRefCnt(blockId: BlockId): Int = {
 
     var cnt = 0
@@ -613,6 +636,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       return List.empty
     }
 
+
     collectUncachedChildBlocks(rddNode, blockId,
       new mutable.HashSet[Int](), new mutable.HashSet[Int](), 0, 0, 0).values.toList
   }
@@ -834,6 +858,7 @@ object RDDJobDag extends Logging {
 
           logInfo(s"rdds: $rdds")
           val stageId = stageInfo("Stage ID").asInstanceOf[Long].toInt
+          val parentStages = stageInfo("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
           // add vertices
           for (rdd_ <- rdds) {

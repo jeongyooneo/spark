@@ -166,7 +166,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
                 if (!nonzeros.contains(cost.blockId.asRDDId.get.rddId)) {
                   nonzeros.add(cost.blockId.asRDDId.get.rddId)
                   logInfo(s"Nonzero RDD in LocalMem: ${cost.blockId.asRDDId.get.rddId}, " +
-                    s"${cost.blockId}")
+                    s"${cost.blockId}, futureuse: ${cost.futureUse}")
                 }
               }
           }
