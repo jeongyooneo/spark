@@ -31,7 +31,7 @@ import org.apache.spark.util.ThreadUtils
 import scala.collection.convert.decorateAsScala._
 import scala.collection.mutable.ListBuffer
 import scala.collection.{mutable, _}
-import scala.concurrent.{ExecutionContext, duration}
+import scala.concurrent.{Await, ExecutionContext, duration}
 import scala.concurrent.duration.Duration
 
 /**
@@ -249,7 +249,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               removedZeroRdds.synchronized {
                 removedZeroRdds.add(rdd)
               }
-              blockManagerMaster.removeRdd(rdd).result(Duration.create(10,
+              Await.result(blockManagerMaster.removeRdd(rdd), Duration.create(10,
                 duration.SECONDS))
             // remove local info
           }
@@ -271,12 +271,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val rddDiscardMap = new ConcurrentHashMap[Int, ConcurrentHashMap[Int, Boolean]]()
 
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
-    stagePartitionMap.put(stageId, partition)
-    metricTracker.stageJobMap.put(stageId, jobId)
-    logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
-      s"partition: ${partition}, jobMap: ${metricTracker.stageJobMap}")
-    currJob.set(jobId)
-    metricTracker.stageSubmitted(stageId)
+    autounpersist.synchronized {
+      stagePartitionMap.put(stageId, partition)
+      metricTracker.stageJobMap.put(stageId, jobId)
+      logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
+        s"partition: ${partition}, jobMap: ${metricTracker.stageJobMap}")
+      currJob.set(jobId)
+      metricTracker.stageSubmitted(stageId)
+    }
   }
 
   def removeFromLocal(blockId: BlockId, executorId: String,
