@@ -708,6 +708,7 @@ private[spark] class BlockManager(
   }
 
   private val IS_BLAZE = conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
+  private val CACHING_ALWAYS = conf.get(BlazeParameters.CACHING_UNCONDITONALLY)
   /**
    * Get block from local block manager as an iterator of Java objects.
    */
@@ -753,7 +754,7 @@ private[spark] class BlockManager(
               val et = System.currentTimeMillis()
               disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
 
-              if (readAfterCache && IS_BLAZE) {
+              if (readAfterCache && IS_BLAZE && !CACHING_ALWAYS) {
                 diskValues
               } else {
                 maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
