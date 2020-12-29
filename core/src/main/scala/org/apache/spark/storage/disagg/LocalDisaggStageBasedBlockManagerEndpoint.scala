@@ -274,14 +274,12 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val rddDiscardMap = new ConcurrentHashMap[Int, ConcurrentHashMap[Int, Boolean]]()
 
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
-    autounpersist.synchronized {
       stagePartitionMap.put(stageId, partition)
       metricTracker.stageJobMap.put(stageId, jobId)
       logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
         s"partition: ${partition}, jobMap: ${metricTracker.stageJobMap}")
       currJob.set(jobId)
       metricTracker.stageSubmitted(stageId)
-    }
   }
 
   def removeFromLocal(blockId: BlockId, executorId: String,
@@ -335,19 +333,21 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       if (!BLAZE_COST_FUNC || cachingUnconditionally) {
         // We just cache  if it is not blaze cost function !!
         // (if it is LRC or MRD)
-        if (conf.get(BlazeParameters.COST_FUNCTION).contains("LCS")
-          && onDisk
-        && storingCost.compCost < storingCost.disaggCost) {
-          BlazeLogger.discardLocal(blockId, executorId,
-            storingCost.cost, storingCost.disaggCost, estimateSize, "LCS", onDisk)
-          recentlyRecachedBlocks.remove(blockId)
-          return false
-        } else {
-          // addToLocal(blockId, executorId, estimateSize, onDisk)
-          // BlazeLogger.logLocalCaching(blockId, executorId,
-          //  estimateSize, storingCost.cost, 0,
-          //  "1", onDisk)
-          return true
+        if (!(BLAZE_COST_FUNC && onDisk)) {
+          if (conf.get(BlazeParameters.COST_FUNCTION).contains("LCS")
+            && onDisk
+            && storingCost.compCost < storingCost.disaggCost) {
+            BlazeLogger.discardLocal(blockId, executorId,
+              storingCost.cost, storingCost.disaggCost, estimateSize, "LCS", onDisk)
+            recentlyRecachedBlocks.remove(blockId)
+            return false
+          } else {
+            // addToLocal(blockId, executorId, estimateSize, onDisk)
+            // BlazeLogger.logLocalCaching(blockId, executorId,
+            //  estimateSize, storingCost.cost, 0,
+            //  "1", onDisk)
+            return true
+          }
         }
       }
 
