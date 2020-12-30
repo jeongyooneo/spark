@@ -848,15 +848,15 @@ private[spark] class BlockManager(
         // metadata for the block to read exists
         disaggManager.createFileInputStream(blockId, executorId) match {
           case Some(in) =>
+            val startDeser = System.currentTimeMillis
             logInfo(s"start deser $blockId from alluxio: " +
               s"executor $executorId, stage ${TaskContext.get().stageId()} " +
               s"task ${TaskContext.get().taskAttemptId()}")
 
             val alluxioIter = serializerManager.dataDeserializeStream(blockId,
               in)(implicitly[ClassTag[T]])
-            logInfo(s"done deser $blockId from alluxio: " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
+            val deserTime = System.currentTimeMillis - startDeser
+            logInfo(s"getAlluxio $blockId deserTime $deserTime")
             in.close()
             logInfo(s"closed inputStream for $blockId from alluxio: " +
               s"executor $executorId, stage ${TaskContext.get().stageId()} " +
@@ -1406,7 +1406,6 @@ private[spark] class BlockManager(
       size = channel.getCount
       channel.close()
       out.close()
-      logInfo(s"putAlluxio $blockId finished writing, closed channel and stream")
     } catch {
       case e: IOException => e.printStackTrace()
         logInfo(s"Exception in createFileOutputStream $blockId " +
@@ -1427,11 +1426,15 @@ private[spark] class BlockManager(
       s"executor $executorId, stage ${TaskContext.get().stageId()} " +
       s"task ${TaskContext.get().partitionId()}")
     var size = 0L
+    val startSer = System.currentTimeMillis
 
     size = putAlluxio(blockId) { channel =>
       val out = Channels.newOutputStream(channel)
       serializerManager.dataSerializeStream(blockId, out, values)(classTag)
     }
+
+    val serTime = System.currentTimeMillis - startSer
+    logInfo(s"putAlluxio $blockId serTime $serTime")
 
     size
   }
