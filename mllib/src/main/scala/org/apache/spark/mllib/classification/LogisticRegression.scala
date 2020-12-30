@@ -448,7 +448,7 @@ class LogisticRegressionWithLBFGS
         val spark = SparkSession.builder().sparkContext(input.context).getOrCreate()
         val df = spark.createDataFrame(input.map(_.asML))
         // Determine if we should cache the DF
-        val handlePersistence = input.getStorageLevel == StorageLevel.NONE
+        val handlePersistence = true
         // Train our model
         val mlLogisticRegressionModel = lr.train(df, handlePersistence)
         // convert the model

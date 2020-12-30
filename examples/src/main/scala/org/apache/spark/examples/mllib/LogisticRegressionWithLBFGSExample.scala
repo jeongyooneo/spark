@@ -32,9 +32,15 @@ object LogisticRegressionWithLBFGSExample {
     val conf = new SparkConf().setAppName("LogisticRegressionWithLBFGSExample")
     val sc = new SparkContext(conf)
 
+    var input = "/HiBench/LR/Input"
+    if (args.length > 0) {
+      input = args(0)
+    }
+
     // $example on$
-    // Load training data in LIBSVM format.
-    val data = MLUtils.loadLibSVMFile(sc, "data/mllib/sample_libsvm_data.txt")
+    // Load training data in RDD[LabeledPoint] format.
+    // val data = MLUtils.loadLibSVMFile(sc, "data/mllib/sample_libsvm_data.txt")
+    val data = MLUtils.loadLabeledPoints(sc, input)
 
     // Split data into training (60%) and test (40%).
     val splits = data.randomSplit(Array(0.6, 0.4), seed = 11L)
@@ -58,12 +64,13 @@ object LogisticRegressionWithLBFGSExample {
     println(s"Accuracy = $accuracy")
 
     // Save and load model
-    model.save(sc, "target/tmp/scalaLogisticRegressionWithLBFGSModel")
-    val sameModel = LogisticRegressionModel.load(sc,
-      "target/tmp/scalaLogisticRegressionWithLBFGSModel")
+    // model.save(sc, "target/tmp/scalaLogisticRegressionWithLBFGSModel")
+    // val sameModel = LogisticRegressionModel.load(sc,
+    //   "target/tmp/scalaLogisticRegressionWithLBFGSModel")
     // $example off$
 
     sc.stop()
   }
 }
 // scalastyle:on println
+

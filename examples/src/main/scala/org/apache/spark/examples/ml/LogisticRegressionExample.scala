@@ -20,12 +20,16 @@ package org.apache.spark.examples.ml
 
 import scala.collection.mutable
 
-import scopt.OptionParser
-
-import org.apache.spark.examples.mllib.AbstractParams
+import org.apache.spark.SparkContext
 import org.apache.spark.ml.{Pipeline, PipelineStage}
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
 import org.apache.spark.ml.feature.StringIndexer
+import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
+import org.apache.spark.mllib.linalg.Vector
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 /**
@@ -43,82 +47,84 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
  * If you use it as a template to create your own app, please use `spark-submit` to submit your app.
  */
 object LogisticRegressionExample {
+  /** Load a dataset from the given path, using the given format */
+  def loadData(spark: SparkSession,
+               path: String,
+               format: String,
+               expectedNumFeatures: Option[Int] = None): DataFrame = {
+    import spark.implicits._
 
-  case class Params(
-      input: String = "criteo-train",
-      testInput: String = "criteo-test",
-      dataFormat: String = "libsvm",
-      regParam: Double = 0.0,
-      elasticNetParam: Double = 0.0,
-      maxIter: Int = 100,
-      fitIntercept: Boolean = true,
-      tol: Double = 1E-6,
-      fracTest: Double = 0.2) extends AbstractParams[Params]
-
-  def main(args: Array[String]) {
-    val defaultParams = Params()
-
-    val parser = new OptionParser[Params]("LogisticRegressionExample") {
-      head("LogisticRegressionExample: an example Logistic Regression with Elastic-Net app.")
-      opt[Double]("regParam")
-        .text(s"regularization parameter, default: ${defaultParams.regParam}")
-        .action((x, c) => c.copy(regParam = x))
-      opt[Double]("elasticNetParam")
-        .text(s"ElasticNet mixing parameter. For alpha = 0, the penalty is an L2 penalty. " +
-        s"For alpha = 1, it is an L1 penalty. For 0 < alpha < 1, the penalty is a combination of " +
-        s"L1 and L2, default: ${defaultParams.elasticNetParam}")
-        .action((x, c) => c.copy(elasticNetParam = x))
-      opt[Int]("maxIter")
-        .text(s"maximum number of iterations, default: ${defaultParams.maxIter}")
-        .action((x, c) => c.copy(maxIter = x))
-      opt[Boolean]("fitIntercept")
-        .text(s"whether to fit an intercept term, default: ${defaultParams.fitIntercept}")
-        .action((x, c) => c.copy(fitIntercept = x))
-      opt[Double]("tol")
-        .text(s"the convergence tolerance of iterations, Smaller value will lead " +
-        s"to higher accuracy with the cost of more iterations, default: ${defaultParams.tol}")
-        .action((x, c) => c.copy(tol = x))
-      opt[Double]("fracTest")
-        .text(s"fraction of data to hold out for testing. If given option testInput, " +
-        s"this option is ignored. default: ${defaultParams.fracTest}")
-        .action((x, c) => c.copy(fracTest = x))
-      opt[String]("testInput")
-        .text(s"input path to test dataset. If given, option fracTest is ignored." +
-        s" default: ${defaultParams.testInput}")
-        .action((x, c) => c.copy(testInput = x))
-      opt[String]("dataFormat")
-        .text("data format: libsvm (default), dense (deprecated in Spark v1.1)")
-        .action((x, c) => c.copy(dataFormat = x))
-      arg[String]("<input>")
-        .text("input path to labeled examples")
-        .required()
-        .action((x, c) => c.copy(input = x))
-      checkConfig { params =>
-        if (params.fracTest < 0 || params.fracTest >= 1) {
-          failure(s"fracTest ${params.fracTest} value incorrect; should be in [0,1).")
-        } else {
-          success
-        }
+    format match {
+      case "dense" => MLUtils.loadLabeledPoints(spark.sparkContext, path).toDF()
+      case "libsvm" => expectedNumFeatures match {
+        case Some(numFeatures) => spark.read.option("numFeatures", numFeatures.toString)
+          .format("libsvm").load(path)
+        case None => spark.read.format("libsvm").load(path)
       }
-    }
-
-    parser.parse(args, defaultParams) match {
-      case Some(params) => run(params)
-      case _ => sys.exit(1)
+      case _ => throw new IllegalArgumentException(s"Bad data format: $format")
     }
   }
 
-  def run(params: Params): Unit = {
+  def loadDatasets(input: String,
+                   dataFormat: String,
+                   testInput: String,
+                   fracTest: Double): (DataFrame, DataFrame) = {
+
     val spark = SparkSession
       .builder
-      .appName(s"LogisticRegressionExample with $params")
       .getOrCreate()
 
-    println(s"LogisticRegressionExample with parameters:\n$params")
+    // Load training data
+    val origExamples: DataFrame = loadData(spark, input, dataFormat)
+
+    // Load or create test set
+    val dataframes: Array[DataFrame] = if (testInput != "") {
+      // Load testInput.
+      val numFeatures = origExamples.first().getAs[Vector](1).size
+      val origTestExamples: DataFrame =
+        loadData(spark, testInput, dataFormat, Some(numFeatures))
+      Array(origExamples, origTestExamples)
+    } else {
+      // Split input into training, test.
+      origExamples.randomSplit(Array(1.0 - fracTest, fracTest), seed = 12345)
+    }
+
+    val training = dataframes(0).cache()
+    val test = dataframes(1).cache()
+
+    val numTraining = training.count()
+    val numTest = test.count()
+    val numFeatures = training.select("features").first().getAs[Vector](0).size
+    println("Loaded data:")
+    println(s"  numTraining = $numTraining, numTest = $numTest")
+    println(s"  numFeatures = $numFeatures")
+
+    (training, test)
+  }
+
+  def main(args: Array[String]) {
+    val spark = SparkSession
+      .builder
+      .appName(s"LogisticRegressionExample")
+      .getOrCreate()
+
+    var input = "/HiBench/LR/Input"
+    if (args.length > 0) {
+      input = args(0)
+    }
 
     // Load training and test data and cache it.
-    val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
-      params.dataFormat, params.testInput, "classification", params.fracTest)
+    val dataFormat = "dense"
+    val testInput = ""
+    val fracTest = 0.2
+    val regParam = 0.0
+    val elasticNetParam = 0.0
+    val maxIter = 100
+    val fitIntercept = true
+    val tol = 1E-6
+
+    val (training: DataFrame, test: DataFrame) =
+      loadDatasets(input, dataFormat, testInput, fracTest)
 
     // Set up Pipeline.
     val stages = new mutable.ArrayBuffer[PipelineStage]()
@@ -131,11 +137,11 @@ object LogisticRegressionExample {
     val lor = new LogisticRegression()
       .setFeaturesCol("features")
       .setLabelCol("indexedLabel")
-      .setRegParam(params.regParam)
-      .setElasticNetParam(params.elasticNetParam)
-      .setMaxIter(params.maxIter)
-      .setTol(params.tol)
-      .setFitIntercept(params.fitIntercept)
+      .setRegParam(regParam)
+      .setElasticNetParam(elasticNetParam)
+      .setMaxIter(maxIter)
+      .setTol(tol)
+      .setFitIntercept(fitIntercept)
 
     stages += lor
     val pipeline = new Pipeline().setStages(stages.toArray)
@@ -159,3 +165,4 @@ object LogisticRegressionExample {
   }
 }
 // scalastyle:on println
+
