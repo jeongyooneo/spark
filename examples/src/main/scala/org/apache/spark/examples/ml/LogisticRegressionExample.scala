@@ -83,11 +83,11 @@ object LogisticRegressionExample {
     val lor = new LogisticRegression()
       .setFeaturesCol("features")
       .setLabelCol("indexedLabel")
-      .setRegParam(params.regParam)
-      .setElasticNetParam(params.elasticNetParam)
-      .setMaxIter(params.maxIter)
-      .setTol(params.tol)
-      .setFitIntercept(params.fitIntercept)
+      .setRegParam(0.1)
+      .setElasticNetParam(0.3)
+      .setMaxIter(10)
+      .setTol(0.1)
+      .setFitIntercept(true)
 
     stages += lor
     val pipeline = new Pipeline().setStages(stages.toArray)
