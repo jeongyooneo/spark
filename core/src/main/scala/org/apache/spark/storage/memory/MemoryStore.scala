@@ -629,17 +629,17 @@ private[spark] class MemoryStore(
           val iterator = entries.entrySet().iterator()
           while (freedMemory < space && iterator.hasNext) {
             val pair = iterator.next()
-            val blockId = pair.getKey
+            val bid = pair.getKey
             val entry = pair.getValue
-            if (blockIsEvictable(blockId, entry)) {
+            if (blockIsEvictable(bid, entry)) {
               // We don't want to evict blocks which are currently being read, so we need to obtain
               // an exclusive write lock on blocks which are candidates for eviction. We perform a
               // non-blocking "tryLock" here in order to ignore blocks which are locked for reading:
-              if (blockInfoManager.lockForWriting(blockId, blocking = false).isDefined) {
+              if (blockInfoManager.lockForWriting(bid, blocking = false).isDefined) {
                 logInfo(s"LocalDecision] Trying to evict blocks for ${blockId}: " +
-                  s"$blockId " +
+                  s"$bid " +
                   s"from executor $executorId, freeMemory: $freedMemory, space: $space")
-                selectedBlocks += blockId
+                selectedBlocks += bid
                 freedMemory += pair.getValue.size
               }
             }
