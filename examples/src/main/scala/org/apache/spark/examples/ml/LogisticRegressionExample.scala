@@ -67,7 +67,8 @@ object LogisticRegressionExample {
     // val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
     //  params.dataFormat, params.testInput, "classification", params.fracTest)
 
-    val triazines = spark.read.format("libsvm").load(args(0))
+    val triazines = spark.read.format("libsvm")
+      .option("numFeatures", 1000000).load(args(0))
 
     // Split the data into training and test sets (30% held out for testing).
     val Array(training, test) = triazines.randomSplit(Array(0.85, 0.15), seed = 1)
