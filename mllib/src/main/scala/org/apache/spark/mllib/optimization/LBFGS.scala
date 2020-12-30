@@ -41,9 +41,9 @@ class LBFGS(private var gradient: Gradient, private var updater: Updater)
   extends Optimizer with Logging {
 
   private var numCorrections = 10
-  private var convergenceTol = 0.1
+  private var convergenceTol = 0.2
   private var maxNumIterations = 10
-  private var regParam = 0.2
+  private var regParam = 0.3
 
   /**
    * Set the number of corrections used in the LBFGS update. Default 10.
