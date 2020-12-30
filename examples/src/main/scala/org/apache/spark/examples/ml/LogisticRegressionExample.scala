@@ -18,15 +18,14 @@
 // scalastyle:off println
 package org.apache.spark.examples.ml
 
-import scala.collection.mutable
-
-import scopt.OptionParser
-
 import org.apache.spark.examples.mllib.AbstractParams
-import org.apache.spark.ml.{Pipeline, PipelineStage}
 import org.apache.spark.ml.classification.{LogisticRegression, LogisticRegressionModel}
 import org.apache.spark.ml.feature.StringIndexer
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.ml.{Pipeline, PipelineStage}
+import org.apache.spark.sql.SparkSession
+import scopt.OptionParser
+
+import scala.collection.mutable
 
 /**
  * An example runner for logistic regression with elastic-net (mixing L1/L2) regularization.
@@ -117,8 +116,13 @@ object LogisticRegressionExample {
     println(s"LogisticRegressionExample with parameters:\n$params")
 
     // Load training and test data and cache it.
-    val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
-      params.dataFormat, params.testInput, "classification", params.fracTest)
+    // val (training: DataFrame, test: DataFrame) = DecisionTreeExample.loadDatasets(params.input,
+    //  params.dataFormat, params.testInput, "classification", params.fracTest)
+
+    val triazines = spark.read.format("libsvm").load(params.input)
+
+    // Split the data into training and test sets (30% held out for testing).
+    val Array(training, test) = triazines.randomSplit(Array(0.85, 0.15), seed = 1)
 
     // Set up Pipeline.
     val stages = new mutable.ArrayBuffer[PipelineStage]()
