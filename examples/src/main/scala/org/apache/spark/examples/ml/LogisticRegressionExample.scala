@@ -48,11 +48,11 @@ object LogisticRegressionExample {
       input: String = null,
       testInput: String = "",
       dataFormat: String = "libsvm",
-      regParam: Double = 0.0,
-      elasticNetParam: Double = 0.0,
-      maxIter: Int = 100,
+      regParam: Double = 0.1,
+      elasticNetParam: Double = 0.3,
+      maxIter: Int = 10,
       fitIntercept: Boolean = true,
-      tol: Double = 1E-6,
+      tol: Double = 0.1,
       fracTest: Double = 0.2) extends AbstractParams[Params]
 
   def main(args: Array[String]) {

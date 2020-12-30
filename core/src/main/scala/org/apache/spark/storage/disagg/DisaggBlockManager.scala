@@ -167,7 +167,12 @@ class DisaggBlockManager(
       // Diable disagg
       false
     } else {
-      val attemp = TaskContext.get().taskAttemptId()
+      val attemp = if (TaskContext.get() != null) {
+        TaskContext.get().taskAttemptId()
+      } else {
+        0
+      }
+
       driverEndpoint.askSync[Boolean](
         StoreBlockOrNot(blockId, estimateSize, executorId, putDisagg,
           localFull, onDisk, promote, attemp))
