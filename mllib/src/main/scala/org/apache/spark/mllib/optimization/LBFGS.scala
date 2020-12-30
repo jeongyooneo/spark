@@ -42,7 +42,7 @@ class LBFGS(private var gradient: Gradient, private var updater: Updater)
 
   private var numCorrections = 10
   private var convergenceTol = 0.1
-  private var maxNumIterations = 100
+  private var maxNumIterations = 10
   private var regParam = 0.2
 
   /**
