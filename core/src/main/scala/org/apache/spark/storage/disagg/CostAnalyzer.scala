@@ -265,6 +265,8 @@ object CostAnalyzer {
         new NoCostAnalyzer(metricTracker)
       } else if (costType.equals("Spark-Autocaching")) {
         new SparkAutocachingAnalyzer(rDDJobDag.get, metricTracker)
+      } else if (costType.equals("Spark-Autocaching-CC")) {
+        new SparkAutocachingAnalyzerCC(rDDJobDag.get, metricTracker)
       } else if (costType.equals("LRC")) {
         new LRCCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("LCS")) {
