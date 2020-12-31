@@ -1461,7 +1461,7 @@ private[spark] class BlockManager(
                 }
                 val et = System.currentTimeMillis()
 
-                logInfo(s"TGLOG PutDisk ${blockId} ${et - st}")
+                logInfo(s"TGLOG PutDisk ${blockId} ${et - st} ${TaskContext.get().taskAttemptId()}")
 
                 if (diskStore.contains(blockId)) {
                   size = diskStore.getSize(blockId)
