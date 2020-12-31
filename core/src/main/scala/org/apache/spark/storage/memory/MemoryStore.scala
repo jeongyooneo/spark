@@ -467,7 +467,9 @@ private[spark] class MemoryStore(
 
     val valuesHolder = new DeserializedValuesHolder[T](classTag)
 
-    putIterator(blockId, values, classTag, MemoryMode.ON_HEAP, valuesHolder, promote) match {
+    val st = System.currentTimeMillis()
+    val result =
+      putIterator(blockId, values, classTag, MemoryMode.ON_HEAP, valuesHolder, promote) match {
       case Right(storedSize) => Right(storedSize)
       case Left(unrollMemoryUsedByThisBlock) =>
         val unrolledIterator = if (valuesHolder.vector != null) {
@@ -483,6 +485,11 @@ private[spark] class MemoryStore(
           unrolled = unrolledIterator,
           rest = values))
     }
+
+    val et = System.currentTimeMillis()
+    logInfo(s"TGLOGPutIterator ${blockId} ${et - st}")
+
+    result
   }
 
   /**
@@ -545,8 +552,9 @@ private[spark] class MemoryStore(
   }
 
   def getValues(blockId: BlockId): Option[Iterator[_]] = {
+    val st = System.currentTimeMillis()
     val entry = entries.synchronized { entries.get(blockId) }
-    entry match {
+    val result = entry match {
       case null => None
       case e: SerializedMemoryEntry[_] =>
         throw new IllegalArgumentException("should only call getValues on deserialized blocks")
@@ -554,6 +562,9 @@ private[spark] class MemoryStore(
         val x = Some(values)
         x.map(_.iterator)
     }
+    val et = System.currentTimeMillis()
+    logInfo(s"TGLOGGetValue ${blockId} ${et - st}")
+    result
   }
 
   def remove(blockId: BlockId): Boolean = memoryManager.synchronized {
@@ -609,6 +620,9 @@ private[spark] class MemoryStore(
       spaceToEvict: Long,
       memoryMode: MemoryMode): Long = {
     assert(spaceToEvict > 0)
+
+    val st = System.currentTimeMillis()
+
     memoryManager.synchronized {
       var freedMemory = 0L
       val rddToAdd = blockId.flatMap(getRddId)
@@ -769,6 +783,8 @@ private[spark] class MemoryStore(
           }
           logInfo(s"After dropping ${selectedBlocks.size} blocks, " +
             s"free memory is ${Utils.bytesToString(maxMemory - blocksMemoryUsed)}")
+          val et = System.currentTimeMillis()
+          logInfo(s"TGLOGEvictBlock ${blockId} ${et - st}")
           freedMemory
         } finally {
           // like BlockManager.doPut, we use a finally rather than a catch to avoid having to deal
@@ -788,6 +804,8 @@ private[spark] class MemoryStore(
         selectedBlocks.foreach { id =>
           blockInfoManager.unlock(id)
         }
+        val et = System.currentTimeMillis()
+        logInfo(s"TGLOGEvictBlock ${blockId} ${et - st}")
         0L
       }
     }
