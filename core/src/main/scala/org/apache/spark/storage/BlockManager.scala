@@ -1442,14 +1442,11 @@ private[spark] class BlockManager(
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         if (level.deserialized) {
-          val st = System.currentTimeMillis()
            memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
-              val et = System.currentTimeMillis()
               // disaggManager.sendRecompTime(blockId, et - st)
               size = s
             case Left(iter) =>
-              val et = System.currentTimeMillis()
               // disaggManager.sendRecompTime(blockId, et - st)
 
 
@@ -1457,10 +1454,14 @@ private[spark] class BlockManager(
               if (USE_DISK) {
                 val estimateSize = memoryStore.sizeEstimationMap.get(blockId)
                 logWarning(s"Persisting block $blockId to disk instead.")
+                val st = System.currentTimeMillis()
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
+                val et = System.currentTimeMillis()
+
+                logInfo(s"TGLOG PutDisk ${blockId} ${et - st}")
 
                 if (diskStore.contains(blockId)) {
                   size = diskStore.getSize(blockId)

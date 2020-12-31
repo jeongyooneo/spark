@@ -487,7 +487,7 @@ private[spark] class MemoryStore(
     }
 
     val et = System.currentTimeMillis()
-    logInfo(s"TGLOGPutIterator ${blockId} ${et - st}")
+    logInfo(s"TGLOG PutIterator ${blockId} ${et - st}")
 
     result
   }
@@ -563,7 +563,7 @@ private[spark] class MemoryStore(
         x.map(_.iterator)
     }
     val et = System.currentTimeMillis()
-    logInfo(s"TGLOGGetValue ${blockId} ${et - st}")
+    logInfo(s"TGLOG GetValue ${blockId} ${et - st}")
     result
   }
 
@@ -784,7 +784,7 @@ private[spark] class MemoryStore(
           logInfo(s"After dropping ${selectedBlocks.size} blocks, " +
             s"free memory is ${Utils.bytesToString(maxMemory - blocksMemoryUsed)}")
           val et = System.currentTimeMillis()
-          logInfo(s"TGLOGEvictBlock ${blockId} ${et - st}")
+          logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
           freedMemory
         } finally {
           // like BlockManager.doPut, we use a finally rather than a catch to avoid having to deal
@@ -805,7 +805,7 @@ private[spark] class MemoryStore(
           blockInfoManager.unlock(id)
         }
         val et = System.currentTimeMillis()
-        logInfo(s"TGLOGEvictBlock ${blockId} ${et - st}")
+        logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
         0L
       }
     }
