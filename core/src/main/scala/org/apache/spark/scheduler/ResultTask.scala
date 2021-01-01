@@ -24,6 +24,7 @@ import java.util.Properties
 
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 
 /**
@@ -66,7 +67,7 @@ private[spark] class ResultTask[T, U](
     isBarrier: Boolean = false)
   extends Task[U](stageId, stageAttemptId, partition.index, localProperties, serializedTaskMetrics,
     jobId, appId, appAttemptId, isBarrier)
-  with Serializable {
+  with Logging with Serializable {
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
@@ -89,7 +90,10 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
+    val st = System.currentTimeMillis()
     val ret = func(context, rdd.iterator(partition, context))
+    val et = System.currentTimeMillis()
+    logInfo(s"TGLOG ResultFunc None ${et - st}")
     val tct = System.nanoTime() - startTime
     mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()
       + " " + tct + " ns")
