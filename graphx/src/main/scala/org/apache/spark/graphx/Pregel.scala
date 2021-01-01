@@ -113,14 +113,14 @@ object Pregel extends Logging {
    *
    */
   def apply[VD: ClassTag, ED: ClassTag, A: ClassTag]
-     (graph: Graph[VD, ED],
-      initialMsg: A,
-      maxIterations: Int = Int.MaxValue,
-      activeDirection: EdgeDirection = EdgeDirection.Either)
-     (vprog: (VertexId, VD, A) => VD,
-      sendMsg: EdgeTriplet[VD, ED] => Iterator[(VertexId, A)],
-      mergeMsg: (A, A) => A)
-    : Graph[VD, ED] =
+  (graph: Graph[VD, ED],
+   initialMsg: A,
+   maxIterations: Int = Int.MaxValue,
+   activeDirection: EdgeDirection = EdgeDirection.Either)
+  (vprog: (VertexId, VD, A) => VD,
+   sendMsg: EdgeTriplet[VD, ED] => Iterator[(VertexId, A)],
+   mergeMsg: (A, A) => A)
+  : Graph[VD, ED] =
   {
     require(maxIterations > 0, s"Maximum number of iterations must be greater than 0," +
       s" but got ${maxIterations}")
@@ -163,9 +163,9 @@ object Pregel extends Logging {
       logInfo("Pregel finished iteration " + i)
 
       // Unpersist the RDDs hidden by newly-materialized RDDs
-      // oldMessages.unpersist(blocking = false)
-      // prevG.unpersistVertices(blocking = false)
-      // prevG.edges.unpersist(blocking = false)
+      oldMessages.unpersist(blocking = false)
+      prevG.unpersistVertices(blocking = false)
+      prevG.edges.unpersist(blocking = false)
       // count the iteration
       i += 1
     }
