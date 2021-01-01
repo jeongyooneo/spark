@@ -664,7 +664,7 @@ private[spark] class MemoryStore(
       // can lead to exceptions.
       entries.synchronized {
         val syncEnd = System.currentTimeMillis()
-        logInfo(s"TGLOG Sync ${blockId}")
+        logInfo(s"TGLOG Sync ${blockId} ${syncEnd - st}")
         if (isSpark) {
           val iterator = entries.entrySet().iterator()
           while (freedMemory < space && iterator.hasNext) {
