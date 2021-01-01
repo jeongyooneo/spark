@@ -90,9 +90,14 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    val st = System.currentTimeMillis()
-    val ret = func(context, rdd.iterator(partition, context))
-    val et = System.currentTimeMillis()
+    var st = System.currentTimeMillis()
+    val iter = rdd.iterator(partition, context)
+    var et = System.currentTimeMillis()
+    logInfo(s"TGLOG ResultIter None ${et - st}")
+
+    st = System.currentTimeMillis()
+    val ret = func(context, iter)
+    et = System.currentTimeMillis()
     logInfo(s"TGLOG ResultFunc None ${et - st}")
     val tct = System.nanoTime() - startTime
     mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()
