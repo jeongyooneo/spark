@@ -281,6 +281,8 @@ private[spark] class MemoryStore(
 
     val taskAttempId = currentTaskAttemptId()
 
+    val iteratorPutStart = System.currentTimeMillis()
+
     // check whether to cache it into memory or disagg
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)
@@ -645,6 +647,7 @@ private[spark] class MemoryStore(
     val st = System.currentTimeMillis()
 
     memoryManager.synchronized {
+
       var freedMemory = 0L
       val rddToAdd = blockId.flatMap(getRddId)
       val selectedBlocks = new ArrayBuffer[BlockId]
@@ -660,6 +663,8 @@ private[spark] class MemoryStore(
       // (because of getValue or getBytes) while traversing the iterator, as that
       // can lead to exceptions.
       entries.synchronized {
+        val syncEnd = System.currentTimeMillis()
+        logInfo(s"TGLOG Sync ${blockId}")
         if (isSpark) {
           val iterator = entries.entrySet().iterator()
           while (freedMemory < space && iterator.hasNext) {
@@ -805,13 +810,11 @@ private[spark] class MemoryStore(
           logInfo(s"After dropping ${selectedBlocks.size} blocks, " +
             s"free memory is ${Utils.bytesToString(maxMemory - blocksMemoryUsed)}")
           val et = System.currentTimeMillis()
-          if (blockId.isEmpty) {
-            if (TaskContext.get() != null) {
-              logInfo(s"TGLOG EvictBlock ${blockId} " +
-                s"${et - st} ${TaskContext.get().taskAttemptId()}")
-            } else {
-              logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
-            }
+          if (TaskContext.get() != null) {
+            logInfo(s"TGLOG EvictBlock ${blockId} " +
+              s"${et - st} ${TaskContext.get().taskAttemptId()}")
+          } else {
+            logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
           }
           freedMemory
         } finally {
@@ -833,13 +836,11 @@ private[spark] class MemoryStore(
           blockInfoManager.unlock(id)
         }
         val et = System.currentTimeMillis()
-        if (blockId.isEmpty) {
-          if (TaskContext.get() != null) {
-            logInfo(s"TGLOG EvictBlock ${blockId}" +
-              s" ${et - st} ${TaskContext.get().taskAttemptId()}")
-          } else {
-            logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
-          }
+        if (TaskContext.get() != null) {
+          logInfo(s"TGLOG EvictBlock ${blockId}" +
+            s" ${et - st} ${TaskContext.get().taskAttemptId()}")
+        } else {
+          logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
         }
         0L
       }

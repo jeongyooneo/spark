@@ -594,6 +594,9 @@ abstract class RDD[T: ClassTag](
         if (readCachedBlock) {
           val existingMetrics = context.taskMetrics().inputMetrics
           existingMetrics.incBytesRead(blockResult.bytes)
+          val et = System.currentTimeMillis()
+          SparkEnv.get.blockManager.disaggManager
+            .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
           new InterruptibleIterator[T](context, blockResult.data.asInstanceOf[Iterator[T]]) {
             override def next(): T = {
               try {
@@ -608,12 +611,15 @@ abstract class RDD[T: ClassTag](
             }
           }
         } else {
+          val et = System.currentTimeMillis()
+          SparkEnv.get.blockManager.disaggManager
+            .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
       case Right(iter) =>
         val et = System.currentTimeMillis()
         SparkEnv.get.blockManager.disaggManager
-          .sendRDDElapsedTime("Elapsed", blockId.name, "InRDD", et - st)
+          .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }
   }
