@@ -354,7 +354,9 @@ private[spark] class MemoryStore(
       unrollMemoryUsedByThisBlock += initMem
     }
 
-    var unrollSum = 0L
+
+    val unrollStart = System.currentTimeMillis()
+    var unrollEvictSum = 0L
 
     // Unroll this block safely, checking whether we have exceeded our threshold periodically
     while (newValues.hasNext && keepUnrolling) {
@@ -366,8 +368,11 @@ private[spark] class MemoryStore(
         // If our vector's size has exceeded the threshold, request more memory
         if (currentSize >= memoryThreshold) {
           val amountToRequest = (currentSize * memoryGrowthFactor - memoryThreshold).toLong
+          val unrollEvictStart = System.currentTimeMillis()
           keepUnrolling =
             reserveUnrollMemoryForThisTask(blockId, amountToRequest, memoryMode)
+          val unrollEvictEnd = System.currentTimeMillis()
+          unrollEvictSum += (unrollEvictEnd - unrollEvictStart)
           if (keepUnrolling) {
             unrollMemoryUsedByThisBlock += amountToRequest
           }
@@ -376,6 +381,14 @@ private[spark] class MemoryStore(
         }
       }
       elementsUnrolled += 1
+    }
+
+    val unrollEnd = System.currentTimeMillis()
+    val unrollTime = unrollEnd - unrollStart - unrollEvictSum
+    if (TaskContext.get() != null) {
+      logInfo(s"TGLOG Unroll ${blockId} $unrollTime ${TaskContext.get().taskAttemptId()}")
+    } else {
+      logInfo(s"TGLOG Unroll ${blockId} $unrollTime")
     }
 
     // Make sure that we have enough memory to store the block. By this point, it is possible that
@@ -792,10 +805,13 @@ private[spark] class MemoryStore(
           logInfo(s"After dropping ${selectedBlocks.size} blocks, " +
             s"free memory is ${Utils.bytesToString(maxMemory - blocksMemoryUsed)}")
           val et = System.currentTimeMillis()
-          if (TaskContext.get() != null) {
-            logInfo(s"TGLOG EvictBlock ${blockId} ${et - st} ${TaskContext.get().taskAttemptId()}")
-          } else {
-            logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
+          if (blockId.isEmpty) {
+            if (TaskContext.get() != null) {
+              logInfo(s"TGLOG EvictBlock ${blockId} " +
+                s"${et - st} ${TaskContext.get().taskAttemptId()}")
+            } else {
+              logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
+            }
           }
           freedMemory
         } finally {
@@ -817,10 +833,13 @@ private[spark] class MemoryStore(
           blockInfoManager.unlock(id)
         }
         val et = System.currentTimeMillis()
-        if (TaskContext.get() != null) {
-          logInfo(s"TGLOG EvictBlock ${blockId} ${et - st} ${TaskContext.get().taskAttemptId()}")
-        } else {
-          logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
+        if (blockId.isEmpty) {
+          if (TaskContext.get() != null) {
+            logInfo(s"TGLOG EvictBlock ${blockId}" +
+              s" ${et - st} ${TaskContext.get().taskAttemptId()}")
+          } else {
+            logInfo(s"TGLOG EvictBlock ${blockId} ${et - st}")
+          }
         }
         0L
       }
