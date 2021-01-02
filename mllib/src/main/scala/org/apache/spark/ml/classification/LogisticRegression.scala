@@ -499,7 +499,7 @@ class LogisticRegression @Since("1.2.0") (
           Instance(label, weight, features)
       }
 
-    if (handlePersistence) instances.persist(StorageLevel.MEMORY_ONLY)
+    instances.persist(StorageLevel.MEMORY_AND_DISK)
 
     instr.logPipelineStage(this)
     instr.logDataset(dataset)
@@ -883,7 +883,7 @@ class LogisticRegression @Since("1.2.0") (
       }
     }
 
-    if (handlePersistence) instances.unpersist()
+    instances.unpersist()
 
     val model = copyValues(new LogisticRegressionModel(uid, coefficientMatrix, interceptVector,
       numClasses, isMultinomial))

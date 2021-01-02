@@ -87,7 +87,7 @@ object LogisticRegressionExample {
       // .setRegParam(0.1)
       // .setElasticNetParam(0.3)
       .setMaxIter(10)
-      .setTol(0.2)
+      // .setTol(0.2)
       .setFitIntercept(true)
 
     stages += lor
