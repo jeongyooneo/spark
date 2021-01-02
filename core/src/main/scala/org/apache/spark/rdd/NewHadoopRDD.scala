@@ -118,6 +118,8 @@ class NewHadoopRDD[K, V](
     }
   }
 
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
   override def getPartitions: Array[Partition] = {
     val inputFormat = inputFormatClass.newInstance
     inputFormat match {
@@ -132,12 +134,22 @@ class NewHadoopRDD[K, V](
       } else {
         allRowSplits
       }
-      val result = new Array[Partition](rawSplits.size)
-      for (i <- 0 until rawSplits.size) {
-        result(i) =
+
+      if (sampledRun) {
+        val result = new Array[Partition](10)
+        for (i <- 0 until 10) {
+          result(i) =
             new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])
+        }
+        result
+      } else {
+        val result = new Array[Partition](rawSplits.size)
+        for (i <- 0 until rawSplits.size) {
+          result(i) =
+            new NewHadoopPartition(id, i, rawSplits(i).asInstanceOf[InputSplit with Writable])
+        }
+        result
       }
-      result
     } catch {
       case e: InvalidInputException if ignoreMissingFiles =>
         logWarning(s"${_conf.get(FileInputFormat.INPUT_DIR)} doesn't exist and no" +
@@ -223,7 +235,6 @@ class NewHadoopRDD[K, V](
       private var havePair = false
       private var recordsSinceMetricsUpdate = 0
 
-      private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
 
       logInfo(s"Sampled run  in NewHadoopRDD $sampledRun")
 
