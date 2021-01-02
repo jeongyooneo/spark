@@ -19,18 +19,18 @@ package org.apache.spark.sql.execution.datasources
 
 import java.io.{FileNotFoundException, IOException}
 
-import scala.collection.mutable
-
 import org.apache.parquet.io.ParquetDecodingException
-
-import org.apache.spark.{Partition => RDDPartition, TaskContext, TaskKilledException}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.{InputFileBlockHolder, RDD}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.QueryExecutionException
 import org.apache.spark.sql.vectorized.ColumnarBatch
+import org.apache.spark.storage.disagg.BlazeParameters
 import org.apache.spark.util.NextIterator
+import org.apache.spark.{SparkEnv, TaskContext, Partition => RDDPartition}
+
+import scala.collection.mutable
 
 /**
  * A part (i.e. "block") of a single file that should be read, along with partition column values
@@ -213,7 +213,19 @@ class FileScanRDD(
     iterator.asInstanceOf[Iterator[InternalRow]] // This is an erasure hack.
   }
 
-  override protected def getPartitions: Array[RDDPartition] = filePartitions.toArray
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
+  override protected def getPartitions: Array[RDDPartition] = {
+    if (sampledRun) {
+      filePartitions.zipWithIndex.map {
+        case (filePartition, index) => (filePartition, index)
+      }.filter { p => p._2 < 10 }
+        .map { p => p._1 }
+        .toArray
+    } else {
+      filePartitions.toArray
+    }
+  }
 
   override protected def getPreferredLocations(split: RDDPartition): Seq[String] = {
     val files = split.asInstanceOf[FilePartition].files

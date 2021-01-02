@@ -18,10 +18,10 @@
 package org.apache.spark.sql.execution.datasources.v2
 
 import scala.reflect.ClassTag
-
-import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
+import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.sources.v2.reader.InputPartition
+import org.apache.spark.storage.disagg.BlazeParameters
 
 class DataSourceRDDPartition[T : ClassTag](val index: Int, val inputPartition: InputPartition[T])
   extends Partition with Serializable
@@ -31,10 +31,20 @@ class DataSourceRDD[T: ClassTag](
     @transient private val inputPartitions: Seq[InputPartition[T]])
   extends RDD[T](sc, Nil) {
 
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
   override protected def getPartitions: Array[Partition] = {
-    inputPartitions.zipWithIndex.map {
-      case (inputPartition, index) => new DataSourceRDDPartition(index, inputPartition)
-    }.toArray
+    if (sampledRun) {
+      inputPartitions.zipWithIndex.map {
+        case (inputPartition, index) => new DataSourceRDDPartition(index, inputPartition)
+      }.filter {
+        p => p.index < 10
+      }.toArray
+    } else {
+      inputPartitions.zipWithIndex.map {
+        case (inputPartition, index) => new DataSourceRDDPartition(index, inputPartition)
+      }.toArray
+    }
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[T] = {
