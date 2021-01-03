@@ -44,13 +44,12 @@ private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
           val crossJobRef = rddJobDag.numCrossJobReference(rnode)
           if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
             futureUse = crossJobRef
-            logDebug(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
               s"currJob ${metricTracker.currJob}" +
               s"add $crossJobRef")
           }
         case None =>
           // If this rdd is reference consequently in the previous jobs
-
           var result =
             rddJobDag.getReferencedJobs(node)
               .contains(metricTracker.currJob.get()) &&
@@ -62,7 +61,7 @@ private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
             result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
           }
 
-          logDebug(s"No repeatedNode for ${node.rddId}, " +
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
             s"refJob ${rddJobDag.getReferencedJobs(node)}, " +

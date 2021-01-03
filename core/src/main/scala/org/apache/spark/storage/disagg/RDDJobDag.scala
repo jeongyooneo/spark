@@ -1023,6 +1023,7 @@ object RDDJobDag extends Logging {
       Option(new RDDJobDag(dag, mutable.Map(), metricTracker))
     } else {
       var currentJob = 0
+      var finalStage = 0
 
       for (line <- Source.fromFile(dagPath).getLines) {
         val l = line.stripLineEnd
@@ -1039,6 +1040,10 @@ object RDDJobDag extends Logging {
 
           logInfo(s"rdds: $rdds")
           val stageId = stageInfo("Stage ID").asInstanceOf[Long].toInt
+          if (finalStage < stageId) {
+            finalStage = stageId
+          }
+
           val parentStages = stageInfo("Parent IDs").asInstanceOf[Array[Object]].toIterator
 
           // add vertices
