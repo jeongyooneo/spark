@@ -26,6 +26,7 @@ private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
     if (rddJobDag.containsRDD(rddId)) {
       val refcnt = rddJobDag.getRefCntRDD(rddId)
       // logInfo(s"Reference count of RDD $rddId: $refcnt")
+
       Some(refcnt > 1)
     } else {
       None

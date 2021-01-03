@@ -430,9 +430,21 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddNode = vertices(rddId)
     val edges = dag(rddNode)
 
+    val repeat = findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+    repeat match {
+      case Some(rnode) =>
+        // consider repeated pattern
+        if (edges.size != dag(rnode).size) {
+          dag(rnode).size
+        } else {
+          edges.size
+        }
+      case None =>
+        edges.size
+    }
+
     // logInfo(s"Edges for rdd $rddId ${edges}")
     // edges.map(p => p.rootStage).size
-    edges.size
   }
 
   def getUnpersistCnt(blockId: BlockId): Int = {
