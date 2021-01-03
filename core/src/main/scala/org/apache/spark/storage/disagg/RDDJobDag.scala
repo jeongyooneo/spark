@@ -86,11 +86,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
       // We should rebuild the DAG
       // 1) Remove the stages > stageId and nodes
-      val minStage = diffNodes.map(n => n.stageId).min
+      val minStage = diffNodes.map(n => n.rootStage).min
 
       logInfo(s"Min stage for diff nodes ${minStage}")
 
-      val removableNodes = dag.keys.filter(node => node.stageId >= minStage
+      val removableNodes = dag.keys.filter(node => node.rootStage >= minStage
       || newDagNodeIds.contains(node.rddId))
 
       logInfo(s"Removable nodes ${removableNodes.map { n => n.rddId }}")
@@ -98,7 +98,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       // Remove nodes
       removableNodes.foreach {
         removableNode =>
-          logInfo(s"Remove existing node ${removableNode.rddId} stage ${removableNode.stageId}")
+          logInfo(s"Remove existing node ${removableNode.rddId} stage ${removableNode.rootStage}")
           dag.remove(removableNode)
           reverseDag.remove(removableNode)
       }
@@ -122,7 +122,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           edges.foreach {
             child => dag(newNode).add(child)
               reverseDag(child).add(newNode)
-              logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.stageId}")
+              logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.rootStage}")
           }
       }
     }
