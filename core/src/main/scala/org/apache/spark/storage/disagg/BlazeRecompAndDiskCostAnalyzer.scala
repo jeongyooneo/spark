@@ -186,7 +186,6 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           }
         case None =>
           // If this rdd is reference consequently in the previous jobs
-
           val result =
             node.refJobs.contains(metricTracker.currJob.get()) &&
               node.refJobs.contains(metricTracker.currJob.get() - 1)
