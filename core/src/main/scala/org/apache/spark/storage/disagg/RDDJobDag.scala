@@ -52,7 +52,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   private val updatedStage = new mutable.HashSet[Int]()
 
   def onlineUpdate(stageId: Int,
-                   newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
+                   newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = synchronized {
 
     if (updatedStage.contains(stageId)) {
       return
@@ -60,6 +60,71 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     updatedStage.add(stageId)
 
+    logInfo(s"Online update stage for ${stageId}")
+
+    // find RDD node different from existing nodes
+    val diffNodes = newDag.keys.filter(newNode => {
+      if (vertices.contains(newNode.rddId)) {
+        val originNode = getRDDNode(newNode.rddId)
+        logInfo(s"New Node ${newNode.rddId} different from existing node," +
+          s" new callsite: ${newNode.callsite}, existing callsite: ${originNode.callsite}")
+        originNode.callsite != newNode.callsite
+      } else {
+        true
+      }
+    })
+
+    val newDagNodeIds = newDag.keys.map { n => n.rddId }.toSet
+
+    logInfo(s"New DAG Nodes for stage ${stageId}: ${newDagNodeIds}")
+
+    if (diffNodes.nonEmpty) {
+      logInfo(s"Detected different nodes ${diffNodes}")
+
+      // We should rebuild the DAG
+      // 1) Remove the stages > stageId and nodes
+      val minStage = diffNodes.map(n => n.stageId).min
+
+      logInfo(s"Min stage for diff nodes ${minStage}")
+
+      val removableNodes = dag.keys.filter(node => node.stageId >= minStage
+      || newDagNodeIds.contains(node.rddId))
+
+      logInfo(s"Removable nodes ${removableNodes.map { n => n.rddId }}")
+
+      // Remove nodes
+      removableNodes.foreach {
+        removableNode =>
+          logInfo(s"Remove existing node ${removableNode.rddId} stage ${removableNode.stageId}")
+          dag.remove(removableNode)
+          reverseDag.remove(removableNode)
+      }
+
+      // Add the nodes
+      newDag.keys.foreach {
+        newNode =>
+          if (!dag.contains(newNode)) {
+            dag(newNode) = new mutable.HashSet[RDDNode]()
+            reverseDag(newNode) = new mutable.HashSet[RDDNode]()
+          } else {
+            dag.keys.filter(p => p.rddId == newNode.rddId).foreach {
+              p => p.addRefStage(stageId)
+            }
+          }
+      }
+
+      // Add edges
+      newDag.keys.foreach {
+        newNode => val edges = newDag(newNode)
+          edges.foreach {
+            child => dag(newNode).add(child)
+              reverseDag(child).add(newNode)
+              logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.stageId}")
+          }
+      }
+    }
+
+    /*
     // update dag
     newDag.foreach { pair =>
       val parent = pair._1
@@ -131,6 +196,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
         dagChanged.set(true)
       }
+      */
 
       logInfo(s"DAG after update: $dag")
       logInfo(s"ReverseDAG after update: $reverseDag")
