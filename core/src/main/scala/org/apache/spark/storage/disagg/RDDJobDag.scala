@@ -132,7 +132,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 dag.filterKeys(p => p.rddId == newNode.rddId)
                   .foreach(p => {
                     logInfo(s"Add stage reference for ${p._1.rddId} -> ${child}")
-                    p._1.addRefStage(child.stageId)
+                    p._1.addRefStage(child.rootStage)
                   })
 
                 reverseDag(child).add(newNode)
@@ -147,7 +147,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
               dag.filterKeys(p => p.rddId == parent.rddId)
                   .foreach(p => {
                     logInfo(s"Add reverse stage reference for ${p._1.rddId} -> ${newNode}")
-                    p._1.addRefStage(newNode.stageId)
+                    p._1.addRefStage(newNode.rootStage)
                   })
 
               reverseDag(newNode).add(parent)
