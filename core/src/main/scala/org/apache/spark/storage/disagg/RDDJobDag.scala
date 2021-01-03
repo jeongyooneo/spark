@@ -118,12 +118,20 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
 
       // Add edges
+      val newReverse = RDDJobDag.buildReverseDag(newDag)
       newDagNodes.foreach {
         newNode => val edges = newDag(newNode)
           edges.foreach {
             child => dag(newNode).add(child)
               reverseDag(child).add(newNode)
               logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.rootStage}")
+          }
+        val reverseEdges = newReverse(newNode)
+          reverseEdges.foreach {
+            parent =>
+              dag(parent).add(newNode)
+              reverseDag(newNode).add(parent)
+              logInfo(s"Add new reverse edge ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
           }
       }
     }
