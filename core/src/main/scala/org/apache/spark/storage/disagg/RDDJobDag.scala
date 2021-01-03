@@ -144,21 +144,24 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 reverseDag(child).add(newNode)
                 logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.rootStage}")
             }
-        val reverseEdges = newReverse(newNode)
-          reverseEdges.flatten { child => dag.keys.filter(p => p.rddId == child.rddId) }
-          .foreach {
-            parent =>
-              dag(parent).add(newNode)
 
-              dag.filterKeys(p => p.rddId == parent.rddId)
-                  .foreach(p => {
-                    logInfo(s"Add reverse stage reference for ${p._1.rddId} -> ${newNode}")
-                    p._1.addRefStage(newNode.rootStage, jobId)
-                  })
+          if (newReverse.contains(newNode)) {
+            val reverseEdges = newReverse(newNode)
+            reverseEdges.flatten { child => dag.keys.filter(p => p.rddId == child.rddId) }
+              .foreach {
+                parent =>
+                  dag(parent).add(newNode)
 
-              reverseDag(newNode).add(parent)
-              logInfo(s"Add new reverse edge" +
-                s" ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
+                  dag.filterKeys(p => p.rddId == parent.rddId)
+                    .foreach(p => {
+                      logInfo(s"Add reverse stage reference for ${p._1.rddId} -> ${newNode}")
+                      p._1.addRefStage(newNode.rootStage, jobId)
+                    })
+
+                  reverseDag(newNode).add(parent)
+                  logInfo(s"Add new reverse edge" +
+                    s" ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
+              }
           }
       }
     }
