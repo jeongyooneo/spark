@@ -537,7 +537,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   def numCrossJobReference(node: RDDNode): Int = {
     val result = dag(node).filter(p => node.jobId != p.jobId)
-    logInfo(s"CrossJobReference of RDD ${node.rddId}: result: ${result.size}")
+    logInfo(s"crossJobReference of RDD ${node.rddId}: " +
+      s"result: ${result.map {p => (p.rddId, p.jobId)}}")
     result.size
   }
 
