@@ -57,7 +57,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
       metricTracker.blockCreatedTimeMap.get(blockId))
 
-    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+    val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
       // .filter(p => p.stageId != node.rootStage)
 
     val currentUsage = rddJobDag.getCurrentStageUsage(node, blockId, taskAttemp)
@@ -137,7 +137,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
      metricTracker.blockCreatedTimeMap.get(blockId))
 
     // val realStages = stages.filter(p => node.getStages.contains(p.stageId))
-    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+    val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
 
      val containDisk = if (metricTracker
       .localDiskStoredBlocksMap.containsKey(executorId)
