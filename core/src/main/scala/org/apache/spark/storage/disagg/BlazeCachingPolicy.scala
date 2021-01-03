@@ -52,6 +52,7 @@ private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
 
       Some(refcnt > 1)
     } else {
+      logInfo(s"Caching decision for rdd $rddId no contains...!!")
       None
     }
   }

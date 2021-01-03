@@ -43,6 +43,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val start = System.currentTimeMillis()
     if (dagChanged.get()) {
       dagChanged.set(false)
+      prevVertices = dag.keySet.map(node => (node.rddId, node)).toMap
     }
     val elapsed = System.currentTimeMillis() - start
     // logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
@@ -86,6 +87,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (diffNodes.nonEmpty) {
       logInfo(s"Detected different nodes ${diffNodes}")
+      dagChanged.set(true)
 
       // We should rebuild the DAG
       // 1) Remove the stages > stageId and nodes
@@ -453,7 +455,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   }
 
   def containsRDD(rddId: Int): Boolean = {
-    vertices.contains(rddId)
+    // vertices.contains(rddId)
+    dag.keys.filter(p => p.rddId == rddId).nonEmpty
   }
 
   def getRefCntRDD(rddId: Int): Int = {
