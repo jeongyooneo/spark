@@ -95,12 +95,18 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           }
         case None =>
           // If this rdd is reference consequently in the previous jobs
+
+          val result =
+            node.refJobs.contains(metricTracker.currJob.get()) &&
+              node.refJobs.contains(metricTracker.currJob.get() - 1)
+
           logInfo(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
-            s"refJob ${node.refJobs}")
-          if (node.refJobs.contains(metricTracker.currJob.get()) &&
-            node.refJobs.contains(metricTracker.currJob.get() - 1)) {
+            s"refJob ${node.refJobs}, " +
+            s"consecutive: ${result}")
+
+          if (result) {
             futureUse += 2
           }
       }
