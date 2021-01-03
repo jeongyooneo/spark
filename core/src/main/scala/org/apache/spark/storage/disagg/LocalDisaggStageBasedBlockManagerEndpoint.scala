@@ -254,7 +254,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                   val crossJobRef = rddJobDag.get.numCrossJobReference(rnode)
                   logInfo(s"TG try to remove RDD ${rdd},  rddjob ${rddNode.jobId}, " +
                     s"currjob: ${currJob} " +
-                    s"repeated RDD ${rnode.jobId}, crossRef: ${crossJobRef}")
+                    s"repeated RDD ${rnode.rddId} job ${rnode.jobId}, crossRef: ${crossJobRef}")
                   if (rddNode.jobId == currJob.get() && crossJobRef > 0) {
                     // Do not remove this RDD node
                     false

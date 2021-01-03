@@ -553,7 +553,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
     if (reverseDag.contains(currNode) && reverseDag(currNode).nonEmpty) {
       for (parent <- reverseDag(currNode)) {
-        if (parent.callsite.equals(findNode.callsite)) {
+        if (parent.callsite.equals(findNode.callsite)
+          && parent.jobId != findNode.jobId) {
           logInfo(s"Recursive finding done repeated node for " +
             s"${findNode.rddId}: ${parent.rddId}")
           result = Some(parent)
