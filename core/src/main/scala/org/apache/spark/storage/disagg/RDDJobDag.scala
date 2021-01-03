@@ -61,9 +61,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     updatedStage.add(stageId)
 
     logInfo(s"Online update stage for ${stageId}")
+    val newDagNodes = newDag.keys
+      .filter(newNode => newNode.rootStage == stageId)
 
     // find RDD node different from existing nodes
-    val diffNodes = newDag.keys.filter(newNode => {
+    val diffNodes = newDagNodes
+      .filter(newNode => {
       if (vertices.contains(newNode.rddId)) {
         val originNode = getRDDNode(newNode.rddId)
         val result = !originNode.callsite.equals(newNode.callsite)
@@ -77,7 +80,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
     })
 
-    val newDagNodeIds = newDag.keys.map { n => n.rddId }.toSet
+    val newDagNodeIds = newDagNodes.map { n => n.rddId }.toSet
 
     logInfo(s"New DAG Nodes for stage ${stageId}: ${newDagNodeIds}")
 
@@ -102,7 +105,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
 
       // Add the nodes
-      newDag.keys.foreach {
+      newDagNodes.foreach {
         newNode =>
           if (!dag.contains(newNode)) {
             dag(newNode) = new mutable.HashSet[RDDNode]()
@@ -115,7 +118,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
 
       // Add edges
-      newDag.keys.foreach {
+      newDagNodes.foreach {
         newNode => val edges = newDag(newNode)
           edges.foreach {
             child => dag(newNode).add(child)
