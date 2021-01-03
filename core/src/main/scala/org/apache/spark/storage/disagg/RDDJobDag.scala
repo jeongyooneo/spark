@@ -652,7 +652,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     if (repeateNodeCacheMap.containsKey(findNode)) {
-      logInfo(s"Recursive finding done cached repeated node for " +
+      logDebug(s"Recursive finding done cached repeated node for " +
         s"${findNode.rddId}: ${repeateNodeCacheMap.get(findNode)}")
       return repeateNodeCacheMap.get(findNode)
     }
@@ -664,13 +664,13 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       for (parent <- reverseDag(currNode)) {
         if (parent.callsite.equals(findNode.callsite)
           && parent.jobId != findNode.jobId) {
-          logInfo(s"Recursive finding done repeated node for " +
+          logDebug(s"Recursive finding done repeated node for " +
             s"${findNode.rddId}: ${parent.rddId}")
           result = Some(parent)
           repeateNodeCacheMap.put(findNode, result)
           return result
         } else if (result.isEmpty) {
-          logInfo(s"Recursive finding repeated node for " +
+          logDebug(s"Recursive finding repeated node for " +
             s"${findNode.rddId}: ${parent.rddId}")
           result = findRepeatedNode(findNode, parent, traversed)
           if (result.isDefined) {
@@ -899,6 +899,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     } else {
       visitedRdds.add(rddNode.rddId)
     }
+
+    logInfo(s"Compute cost find child node of ${rddNode}: ${dag(rddNode)}")
 
     try {
       for (childnode <- dag(rddNode)) {
