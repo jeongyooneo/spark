@@ -219,7 +219,7 @@ class FileScanRDD(
     if (sampledRun) {
       filePartitions.zipWithIndex.map {
         case (filePartition, index) => (filePartition, index)
-      }.filter { p => p._2 < 10 }
+      }.filter { p => p._2 < 3 }
         .map { p => p._1 }
         .toArray
     } else {

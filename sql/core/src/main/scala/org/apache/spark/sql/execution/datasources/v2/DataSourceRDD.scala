@@ -38,7 +38,7 @@ class DataSourceRDD[T: ClassTag](
       inputPartitions.zipWithIndex.map {
         case (inputPartition, index) => new DataSourceRDDPartition(index, inputPartition)
       }.filter {
-        p => p.index < 10
+        p => p.index < 3
       }.toArray
     } else {
       inputPartitions.zipWithIndex.map {
