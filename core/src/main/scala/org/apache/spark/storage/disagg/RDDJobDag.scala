@@ -70,10 +70,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       .filter(newNode => {
       if (vertices.contains(newNode.rddId)) {
         val originNode = getRDDNode(newNode.rddId)
-        val result = !originNode.callsite.equals(newNode.callsite)
+        val result = !originNode.callsite.equals(newNode.callsite) ||
+          !newDag(newNode).equals(dag(originNode))
         if (result) {
           logInfo(s"New Node ${newNode.rddId} different from existing node," +
-            s" new callsite: ${newNode.callsite}, existing callsite: ${originNode.callsite}")
+            s" new callsite: ${newNode.callsite}, existing callsite: ${originNode.callsite}, " +
+            s" newDagEdge: ${newDag(newNode)}, originEdge: ${dag(originNode)}")
         }
         result
       } else {
