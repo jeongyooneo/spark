@@ -554,8 +554,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       for (parent <- reverseDag(currNode)) {
         if (parent.callsite.equals(findNode.callsite)) {
           result = Some(parent)
+          return result
         } else if (result.isEmpty) {
           result = findRepeatedNode(findNode, parent, traversed)
+          if (result.isDefined) {
+            return result
+          }
         }
       }
     }
