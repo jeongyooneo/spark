@@ -60,7 +60,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
       // .filter(p => p.stageId != node.rootStage)
 
-    logInfo(s"Compute RDD ${node.rddId} stages ${node.getStages}")
+    // logInfo(s"Compute RDD ${node.rddId} stages ${node.getStages}")
 
     val currentUsage = rddJobDag.getCurrentStageUsage(node, blockId, taskAttemp)
 
@@ -185,6 +185,21 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
               s"add $crossJobRef")
           }
         case None =>
+          // If this rdd is reference consequently in the previous jobs
+
+          val result =
+            node.refJobs.contains(metricTracker.currJob.get()) &&
+              node.refJobs.contains(metricTracker.currJob.get() - 1)
+
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
+            s"check conseuctive job reference, " +
+            s"currjob ${metricTracker.currJob.get()}, " +
+            s"refJob ${node.refJobs}, " +
+            s"consecutive: ${result}")
+
+          if (result) {
+            futureUse += 2
+          }
       }
     }
 
