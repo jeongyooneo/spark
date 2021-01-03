@@ -118,6 +118,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       // Add the nodes
       newDagNodes.filter(node => node.rootStage >= minStage).foreach {
         newNode =>
+          logInfo(s"Add Cross referenced node ${newNode.rddId}")
           newNode.crossReferenced = crossRefJobNodes.contains(newNode.jobId)
           if (!dag.contains(newNode)) {
             dag(newNode) = new mutable.HashSet[RDDNode]()
