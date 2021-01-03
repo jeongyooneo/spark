@@ -97,18 +97,20 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           // If this rdd is reference consequently in the previous jobs
 
           var result =
-            node.refJobs.contains(metricTracker.currJob.get()) &&
-              node.refJobs.contains(metricTracker.currJob.get() - 1)
+            rddJobDag.getReferencedJobs(node)
+              .contains(metricTracker.currJob.get()) &&
+              rddJobDag.getReferencedJobs(node)
+                .contains(metricTracker.currJob.get() - 1)
 
           if (!result) {
             // This means that this node will be referenced in the future
             result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
           }
 
-          logDebug(s"No repeatedNode for ${node.rddId}, " +
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
-            s"refJob ${node.refJobs}, " +
+            s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
             s"consecutive: ${result}, " +
             s"crossReference: ${node.crossReferenced} " +
             s"jobId: ${node.jobId}")
@@ -177,7 +179,6 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     var futureUse = realStages.size
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
-
     // Check repeated pattern if the usage is zero
     if (futureUse == 0) {
       val repeatedNode = rddJobDag
@@ -193,15 +194,25 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           }
         case None =>
           // If this rdd is reference consequently in the previous jobs
-          val result =
-            node.refJobs.contains(metricTracker.currJob.get()) &&
-              node.refJobs.contains(metricTracker.currJob.get() - 1)
 
-          logDebug(s"No repeatedNode for ${node.rddId}, " +
+          var result =
+            rddJobDag.getReferencedJobs(node)
+              .contains(metricTracker.currJob.get()) &&
+              rddJobDag.getReferencedJobs(node)
+                .contains(metricTracker.currJob.get() - 1)
+
+          if (!result) {
+            // This means that this node will be referenced in the future
+            result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
+          }
+
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
-            s"refJob ${node.refJobs}, " +
-            s"consecutive: ${result}")
+            s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
+            s"consecutive: ${result}, " +
+            s"crossReference: ${node.crossReferenced} " +
+            s"jobId: ${node.jobId}")
 
           if (result) {
             futureUse += 2
