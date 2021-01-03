@@ -112,7 +112,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             reverseDag(newNode) = new mutable.HashSet[RDDNode]()
           } else {
             dag.keys.filter(p => p.rddId == newNode.rddId).foreach {
-              p => p.addRefStage(stageId)
+              p => {
+                logInfo(s" Add reference stage for rdd ${p.rddId}, stage ${stageId}")
+                p.addRefStage(stageId)
+              }
             }
           }
       }
