@@ -1100,13 +1100,6 @@ private[spark] class DAGScheduler(
   private def onlineUpdateStages(stage: Stage): Unit = {
     logInfo(s"TG: submitting stage ${stage.id}, jobid: ${stage.jobIds}")
 
-    rddJobDag match {
-      case None =>
-      case Some(dag) =>
-        logInfo(s"Online update dag for stage ${stage.id}")
-        dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
-    }
-
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logInfo("submitStage(" + stage + ")")
@@ -1115,6 +1108,13 @@ private[spark] class DAGScheduler(
         logInfo("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
+
+          rddJobDag match {
+            case None =>
+            case Some(dag) =>
+              logInfo(s"Online update dag for stage ${stage.id}")
+              dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+          }
 
         } else {
           for (parent <- missing) {
