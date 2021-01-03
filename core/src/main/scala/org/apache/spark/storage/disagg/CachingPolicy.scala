@@ -26,13 +26,14 @@ private[spark] trait CachingPolicy {
 
 object CachingPolicy {
   def apply(rddJobDag: Option[RDDJobDag],
-            sparkConf: SparkConf): CachingPolicy = {
+            sparkConf: SparkConf,
+            metricTracker: MetricTracker): CachingPolicy = {
 
     val policy = sparkConf.get(BlazeParameters.CACHING_POLICY)
 
     if (policy.equals("Blaze")) {
       if (rddJobDag.isDefined) {
-        new BlazeCachingPolicy(rddJobDag.get)
+        new BlazeCachingPolicy(rddJobDag.get, metricTracker)
       } else {
         new RandomCachingPolicy(sparkConf.get(BlazeParameters.RAND_CACHING_POLICY_PARAM))
       }

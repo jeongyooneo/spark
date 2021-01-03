@@ -21,36 +21,44 @@ import org.apache.spark.internal.Logging
 
 import scala.collection.mutable
 
-private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
+private[spark] class BlazeCachingPolicy(
+                                         val rddJobDag: RDDJobDag,
+                                         val metricTracker: MetricTracker)
   extends CachingPolicy with Logging {
 
   def isRDDNodeCached(rddId: Int): Option[Boolean] = {
     if (rddJobDag.containsRDD(rddId)) {
       val ref = rddJobDag.getRefCntRDD(rddId)
 
-      val rddNode = rddJobDag.getRDDNode(rddId)
-      val repeat = rddJobDag.findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+      if (rddJobDag.profiledJob <= metricTracker.currJob.get()) {
+        val rddNode = rddJobDag.getRDDNode(rddId)
+        val repeat = rddJobDag.findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
 
-      logInfo(s"Caching decision for ${rddNode}")
-      val refcnt = repeat match {
-        case Some(rnode) =>
-          // consider repeated pattern
-          logInfo(s"Caching decision for ${rddNode} rnode ${rnode}")
-          val rnodeCnt = rddJobDag.dag(rnode).size
-          if (ref != rnodeCnt) {
-            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${ref}, " +
-              s" different size ${rddJobDag.dag(rnode)}")
-            rnodeCnt
-          } else {
-            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${ref}")
+        logInfo(s"Caching decision for ${rddNode}")
+        val refcnt = repeat match {
+          case Some(rnode) =>
+            // consider repeated pattern
+            logInfo(s"Caching decision for ${rddNode} rnode ${rnode}")
+            val rnodeCnt = rddJobDag.dag(rnode).size
+            if (ref < rnodeCnt) {
+              logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${ref}, " +
+                s" different size ${rddJobDag.dag(rnode)}")
+              rnodeCnt
+            } else {
+              logInfo(s"Caching decision for ${rddNode}, rnode " +
+                s"${rnode} edge size ${ref}, rnodecnt ${rnodeCnt}")
+              ref
+            }
+          case None =>
+            logInfo(s"Caching decision for ${rddNode}, edge size ${ref}")
             ref
-          }
-        case None =>
-          logInfo(s"Caching decision for ${rddNode}, edge size ${ref}")
-          ref
-      }      // logInfo(s"Reference count of RDD $rddId: $refcnt")
-
-      Some(refcnt > 1)
+        }      // logInfo(s"Reference count of RDD $rddId: $refcnt")
+        Some(refcnt > 1)
+      } else {
+        logInfo(s"Caching decision for rdd $rddId" +
+          s" profiled job ${rddJobDag.profiledJob} currJob ${metricTracker.currJob}")
+        Some(ref > 1)
+      }
     } else {
       logInfo(s"Caching decision for rdd $rddId no contains...!!")
       None

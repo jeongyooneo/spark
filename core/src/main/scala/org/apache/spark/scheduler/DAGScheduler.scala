@@ -1050,6 +1050,9 @@ private[spark] class DAGScheduler(
     val stack = new mutable.ListBuffer[Stage]
     onlineUpdateStages(finalStage, stack)
 
+    // update job id
+    disaggBlockManagerEndpoint.jobSubmitted(jobId)
+
     rddJobDag match {
       case None =>
       case Some(dag) =>
@@ -1060,9 +1063,6 @@ private[spark] class DAGScheduler(
               stage.rdd.extractStageDag(stage.id, stage.firstJobId, prevUpdatedNodes))
         }
     }
-
-    // update job id
-    disaggBlockManagerEndpoint.jobSubmitted(jobId)
     submitStage(finalStage)
   }
 

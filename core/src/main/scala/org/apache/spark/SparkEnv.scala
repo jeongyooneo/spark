@@ -362,7 +362,7 @@ object SparkEnv extends Logging {
       rddJobDag = RDDJobDag(dagPath, conf, metricTracker)
       val costAnalyzer: CostAnalyzer = CostAnalyzer(conf, rddJobDag, metricTracker)
 
-      val cachingPolicy: CachingPolicy = CachingPolicy(rddJobDag, conf)
+      val cachingPolicy: CachingPolicy = CachingPolicy(rddJobDag, conf, metricTracker)
 
       val blockManagerMasterEndpoint =
         new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)

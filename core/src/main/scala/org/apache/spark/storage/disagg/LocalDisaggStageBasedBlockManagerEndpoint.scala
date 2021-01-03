@@ -237,6 +237,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               val repeatedNode = rddJobDag.get
                 .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
 
+              /*
               val remove = repeatedNode match {
                 case Some(rnode) =>
                   val crossJobRef = rddJobDag.get.numCrossJobReference(rnode)
@@ -255,6 +256,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     s"No repeated RDD")
                   true
               }
+              */
 
               if (remove) {
                 logInfo(s"Remove zero cost rdd $rdd from memory...")

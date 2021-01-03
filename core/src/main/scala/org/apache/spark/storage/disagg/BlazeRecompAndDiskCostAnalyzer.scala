@@ -80,8 +80,9 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
+
     // Check repeated pattern if the usage is zero
-    if (futureUse == 0) {
+    if (futureUse == 0 && rddJobDag.profiledJob <= metricTracker.currJob.get()) {
       val repeatedNode = rddJobDag
         .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
       repeatedNode match {
@@ -89,13 +90,12 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           val crossJobRef = rddJobDag.numCrossJobReference(rnode)
           if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
             futureUse = crossJobRef
-            logDebug(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
               s"currJob ${metricTracker.currJob}" +
               s"add $crossJobRef")
           }
         case None =>
           // If this rdd is reference consequently in the previous jobs
-
           var result =
             rddJobDag.getReferencedJobs(node)
               .contains(metricTracker.currJob.get()) &&
@@ -107,7 +107,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
             result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
           }
 
-          logDebug(s"No repeatedNode for ${node.rddId}, " +
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
             s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
