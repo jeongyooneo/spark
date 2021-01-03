@@ -26,28 +26,28 @@ private[spark] class BlazeCachingPolicy(val rddJobDag: RDDJobDag)
 
   def isRDDNodeCached(rddId: Int): Option[Boolean] = {
     if (rddJobDag.containsRDD(rddId)) {
-      val refcnt = rddJobDag.getRefCntRDD(rddId)
+      val ref = rddJobDag.getRefCntRDD(rddId)
 
       val rddNode = rddJobDag.getRDDNode(rddId)
       val repeat = rddJobDag.findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
 
       logInfo(s"Caching decision for ${rddNode}")
-
-      repeat match {
+      val refcnt = repeat match {
         case Some(rnode) =>
           // consider repeated pattern
           logInfo(s"Caching decision for ${rddNode} rnode ${rnode}")
-          if (refcnt != rddJobDag.dag(rnode).size) {
-            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${refcnt}, " +
+          val rnodeCnt = rddJobDag.dag(rnode).size
+          if (ref != rnodeCnt) {
+            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${ref}, " +
               s" different size ${rddJobDag.dag(rnode)}")
-            rddJobDag.dag(rnode).size
+            rnodeCnt
           } else {
-            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${refcnt}")
-            refcnt
+            logInfo(s"Caching decision for ${rddNode}, rnode ${rnode} edge size ${ref}")
+            ref
           }
         case None =>
-          logInfo(s"Caching decision for ${rddNode}, edge size ${refcnt}")
-          refcnt
+          logInfo(s"Caching decision for ${rddNode}, edge size ${ref}")
+          ref
       }      // logInfo(s"Reference count of RDD $rddId: $refcnt")
 
       Some(refcnt > 1)
