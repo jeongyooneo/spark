@@ -20,6 +20,8 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
+import scala.collection.mutable
+
 private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
                                                 metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
@@ -31,7 +33,37 @@ private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
     val node = rddJobDag.getRDDNode(blockId)
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
-    val futureUse = rddJobDag.getReferenceStages(blockId).size
+    var futureUse = rddJobDag.getReferenceStages(blockId).size
+
+    if (futureUse == 0) {
+      val repeatedNode = rddJobDag
+        .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
+      repeatedNode match {
+        case Some(rnode) =>
+          val crossJobRef = rddJobDag.numCrossJobReference(rnode)
+          if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
+            futureUse = crossJobRef
+            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+              s"currJob ${metricTracker.currJob}" +
+              s"add $crossJobRef")
+          }
+        case None =>
+          // If this rdd is reference consequently in the previous jobs
+          val result =
+            node.refJobs.contains(metricTracker.currJob.get()) &&
+              node.refJobs.contains(metricTracker.currJob.get() - 1)
+
+          logInfo(s"No repeatedNode for ${node.rddId}, " +
+            s"check conseuctive job reference, " +
+            s"currjob ${metricTracker.currJob.get()}, " +
+            s"refJob ${node.refJobs}, " +
+            s"consecutive: ${result}")
+
+          if (result) {
+            futureUse += 2
+          }
+      }
+    }
 
     val c = new CompDisaggCost(blockId,
       futureUse,
