@@ -123,6 +123,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
         newNode => val edges = newDag(newNode)
           edges.foreach {
             child => dag(newNode).add(child)
+
+              vertices(newNode.rddId).addRefStage(child.stageId)
+
               reverseDag(child).add(newNode)
               logInfo(s"Add new edge ${newNode.rddId}->${child.rddId} stage ${newNode.rootStage}")
           }
@@ -130,6 +133,9 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           reverseEdges.foreach {
             parent =>
               dag(parent).add(newNode)
+
+              vertices(parent.rddId).addRefStage(newNode.stageId)
+
               reverseDag(newNode).add(parent)
               logInfo(s"Add new reverse edge" +
                 s" ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
@@ -899,8 +905,6 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     } else {
       visitedRdds.add(rddNode.rddId)
     }
-
-    logInfo(s"Compute cost find child node of ${rddNode}: ${dag(rddNode)}")
 
     try {
       for (childnode <- dag(rddNode)) {
