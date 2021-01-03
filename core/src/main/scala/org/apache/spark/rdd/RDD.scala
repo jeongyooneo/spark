@@ -428,7 +428,7 @@ abstract class RDD[T: ClassTag](
     def visit(rdd: RDD[_]) {
       if (!visited(rdd)) {
         visited += rdd
-        val node = if (prevNodes.contains(rdd.id) && prevNodes(rdd.id).rootStage != 100000) {
+        val node = if (prevNodes.contains(rdd.id)) {
           prevNodes(rdd.id)
         } else {
           val n = new RDDNode(
@@ -449,12 +449,16 @@ abstract class RDD[T: ClassTag](
         for (dep <- rdd.dependencies) {
           // add edges
           val parent = dep.rdd
+
           val parentNode =
             if (prevNodes.contains(parent.id) && prevNodes(parent.id).rootStage != 100000) {
               prevNodes(parent.id)
             } else {
-              throw new RuntimeException(s"Cannot find parent RDD ${parent.id}" +
-                s" for rdd ${rdd.id}, job ${jobId}, stage: ${stageId}")
+              val n = new RDDNode(parent.id, -1,
+                jobId, parent.isInstanceOf[ShuffledRDD[_, _, _]],
+                parent.creationSite.shortForm, rdd.name)
+              prevNodes(parent.id) = n
+              n
             }
 
           if (!dag.contains(parentNode)) {
