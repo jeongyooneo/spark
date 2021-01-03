@@ -428,12 +428,14 @@ abstract class RDD[T: ClassTag](
     def visit(rdd: RDD[_]) {
       if (!visited(rdd)) {
         visited += rdd
-        val node = if (prevNodes.contains(rdd.id) && prevNodes(rdd.id).rootStage > 0) {
+        val node = if (prevNodes.contains(rdd.id) && prevNodes(rdd.id).rootStage != 100000) {
           prevNodes(rdd.id)
         } else {
-          new RDDNode(
+          val n = new RDDNode(
             rdd.id, stageId, jobId, rdd.isInstanceOf[ShuffledRDD[_, _, _]],
             rdd.creationSite.shortForm, rdd.name)
+          prevNodes(rdd.id) = n
+          n
         }
 
         // update stage id
