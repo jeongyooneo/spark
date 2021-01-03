@@ -576,14 +576,14 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           logInfo(s"Recursive finding done repeated node for " +
             s"${findNode.rddId}: ${parent.rddId}")
           result = Some(parent)
-          repeateNodeCacheMap(findNode) = result
+          repeateNodeCacheMap.put(findNode, result)
           return result
         } else if (result.isEmpty) {
           logInfo(s"Recursive finding repeated node for " +
             s"${findNode.rddId}: ${parent.rddId}")
           result = findRepeatedNode(findNode, parent, traversed)
           if (result.isDefined) {
-            repeateNodeCacheMap(findNode) = result
+            repeateNodeCacheMap.put(findNode, result)
             return result
           }
         }
@@ -591,7 +591,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     }
 
     if (!repeateNodeCacheMap.containsKey(findNode)) {
-      repeateNodeCacheMap(findNode) = result
+      repeateNodeCacheMap.put(findNode, result)
     }
     result
   }
