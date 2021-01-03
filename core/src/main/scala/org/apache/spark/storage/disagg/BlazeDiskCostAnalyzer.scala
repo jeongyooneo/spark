@@ -62,6 +62,7 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
             futureUse = crossJobRef
             logInfo(s"Added crossJobRef for rdd ${node.rddId}, add ${crossJobRef}")
           }
+        case None =>
       }
     }
 

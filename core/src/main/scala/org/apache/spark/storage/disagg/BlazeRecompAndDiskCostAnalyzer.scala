@@ -91,6 +91,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
               s"currJob ${metricTracker.currJob}" +
               s"add $crossJobRef")
           }
+        case None =>
       }
     }
 
