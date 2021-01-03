@@ -107,7 +107,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
             result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
           }
 
-          logInfo(s"No repeatedNode for ${node.rddId}, " +
+          logDebug(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
             s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
