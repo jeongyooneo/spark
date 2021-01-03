@@ -49,7 +49,17 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     prevVertices
   }
 
-  def onlineUpdate(newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
+  private val updatedStage = new mutable.HashSet[Int]()
+
+  def onlineUpdate(stageId: Int,
+                   newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = {
+
+    if (updatedStage.contains(stageId)) {
+      return
+    }
+
+    updatedStage.add(stageId)
+
     // update dag
     newDag.foreach { pair =>
       val parent = pair._1
@@ -535,6 +545,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   private val callsiteCacheMap = new ConcurrentHashMap[BlockId, Option[RDDNode]]()
 
+  private val repeateNodeCacheMap = new ConcurrentHashMap[RDDNode, Option[RDDNode]]()
+
   def numCrossJobReference(node: RDDNode): Int = {
     val result = dag(node).filter(p => node.jobId != p.jobId)
     logInfo(s"crossJobReference of RDD ${node.rddId}: " +
@@ -546,6 +558,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                              traversed: mutable.HashSet[RDDNode]): Option[RDDNode] = {
     if (traversed.contains(currNode)) {
       return None
+    }
+
+    if (repeateNodeCacheMap.containsKey(findNode)) {
+      return repeateNodeCacheMap.get(findNode)
     }
 
     traversed.add(currNode)

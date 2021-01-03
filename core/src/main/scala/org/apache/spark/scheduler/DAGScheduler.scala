@@ -990,8 +990,6 @@ private[spark] class DAGScheduler(
       properties: Properties) {
     var finalStage: ResultStage = null
 
-    disaggBlockManagerEndpoint.jobSubmitted(jobId)
-
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
@@ -1046,6 +1044,11 @@ private[spark] class DAGScheduler(
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
+
+    // Here, we first update the stages
+    onlineUpdateStages(finalStage)
+    // update job id
+    disaggBlockManagerEndpoint.jobSubmitted(jobId)
     submitStage(finalStage)
   }
 
@@ -1093,10 +1096,15 @@ private[spark] class DAGScheduler(
     }
   }
 
-  /** Submits stage, but first recursively submits any missing parents. */
-  private def submitStage(stage: Stage) {
-    // update dag
+  private def onlineUpdateStages(stage: Stage): Unit = {
     logInfo(s"TG: submitting stage ${stage.id}, jobid: ${stage.jobIds}")
+
+    rddJobDag match {
+      case None =>
+      case Some(dag) =>
+        logInfo(s"Online update dag for stage ${stage.id}")
+        dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+    }
 
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
@@ -1107,12 +1115,32 @@ private[spark] class DAGScheduler(
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
-          rddJobDag match {
-            case None =>
-            case Some(dag) =>
-              logInfo(s"Online update dag for stage ${stage.id}")
-              dag.onlineUpdate(stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+        } else {
+          for (parent <- missing) {
+            onlineUpdateStages(parent)
           }
+          waitingStages += stage
+        }
+      }
+
+    } else {
+      abortStage(stage, "No active job for stage " + stage.id, None)
+    }
+  }
+
+  /** Submits stage, but first recursively submits any missing parents. */
+  private def submitStage(stage: Stage) {
+    // update dag
+    logInfo(s"TG: submitting stage ${stage.id}, jobid: ${stage.jobIds}")
+
+    val jobId = activeJobForStage(stage)
+    if (jobId.isDefined) {
+      // logInfo("submitStage(" + stage + ")")
+      if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
+        val missing = getMissingParentStages(stage).sortBy(_.id)
+        // logInfo("missing: " + missing)
+        if (missing.isEmpty) {
+          // logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
           disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
             stage.rdd.partitions.length)
