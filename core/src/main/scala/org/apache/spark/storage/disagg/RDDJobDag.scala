@@ -131,7 +131,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             parent =>
               dag(parent).add(newNode)
               reverseDag(newNode).add(parent)
-              logInfo(s"Add new reverse edge ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
+              logInfo(s"Add new reverse edge" +
+                s" ${parent.rddId}->${newNode.rddId} stage ${newNode.rootStage}")
           }
       }
     }
