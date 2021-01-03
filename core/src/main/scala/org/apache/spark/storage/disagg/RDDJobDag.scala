@@ -90,9 +90,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
       logInfo(s"Min stage for diff nodes ${minStage}")
 
-      val removableNodes = dag.keys.filter(node => node.rootStage >= minStage
-      || newDagNodeIds.contains(node.rddId))
-
+      val removableNodes = dag.keys.filter(node => node.rootStage >= minStage)
       logInfo(s"Removable nodes ${removableNodes.map { n => n.rddId }}")
 
       // Remove nodes

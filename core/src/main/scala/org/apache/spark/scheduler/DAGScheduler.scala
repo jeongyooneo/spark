@@ -42,7 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
-import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManagerEndpoint, MetricTracker, RDDJobDag}
+import org.apache.spark.storage.disagg._
 import org.apache.spark.util._
 
 /**
@@ -1056,7 +1056,8 @@ private[spark] class DAGScheduler(
         val sortedStack = stack.sortBy(s => s.id)
         sortedStack.foreach {
           stage => logInfo(s"Online update dag for stage ${stage.id} job ${jobId}")
-            dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+            dag.onlineUpdate(stage.id,
+              stage.rdd.extractStageDag(stage.id, stage.firstJobId, prevUpdatedNodes))
         }
     }
 
@@ -1064,6 +1065,8 @@ private[spark] class DAGScheduler(
     disaggBlockManagerEndpoint.jobSubmitted(jobId)
     submitStage(finalStage)
   }
+
+  private val prevUpdatedNodes = new mutable.HashMap[Int, RDDNode]()
 
   private[scheduler] def handleMapStageSubmitted(jobId: Int,
       dependency: ShuffleDependency[_, _, _],
@@ -1108,6 +1111,7 @@ private[spark] class DAGScheduler(
       markMapStageJobAsFinished(job, mapOutputTracker.getStatistics(dependency))
     }
   }
+
 
   private def onlineUpdateStages(stage: Stage,
                                  stack: mutable.ListBuffer[Stage]): Unit = {
