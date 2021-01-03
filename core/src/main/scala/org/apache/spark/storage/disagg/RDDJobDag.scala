@@ -105,7 +105,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       }
 
       // Add the nodes
-      newDagNodes.foreach {
+      newDagNodes.filter(node => node.rootStage >= minStage).foreach {
         newNode =>
           if (!dag.contains(newNode)) {
             dag(newNode) = new mutable.HashSet[RDDNode]()
@@ -119,7 +119,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
       // Add edges
       val newReverse = RDDJobDag.buildReverseDag(newDag)
-      newDagNodes.foreach {
+      newDagNodes.filter(node => node.rootStage >= minStage).foreach {
         newNode => val edges = newDag(newNode)
           edges.foreach {
             child => dag(newNode).add(child)
