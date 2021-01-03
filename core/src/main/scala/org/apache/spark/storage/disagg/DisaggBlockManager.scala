@@ -37,14 +37,12 @@ class DisaggBlockManager(
     driverEndpoint.askSync[Boolean](DiscardBlocksIfNecessary(estimateSize))
   }
 
-  // private val isRddCacheMap = new ConcurrentHashMap[Int, Boolean]().asScala
+  private val isRddCacheMap = new ConcurrentHashMap[Int, Boolean]().asScala
   private var prevUpdate = System.currentTimeMillis()
-  private val expiredPeriod = 2000
+  private val expiredPeriod = 1000
 
   def isRDDCache(rddId: Int): Boolean = {
-    driverEndpoint.askSync[Boolean](IsRddCache(rddId))
-
-    /*
+    // driverEndpoint.askSync[Boolean](IsRddCache(rddId))
     val curr = System.currentTimeMillis()
     if (curr - prevUpdate >= expiredPeriod) {
       isRddCacheMap.clear()
@@ -58,7 +56,6 @@ class DisaggBlockManager(
       isRddCacheMap(rddId) = result
       result
     }
-    */
   }
 
   private var localEvictionTime = System.currentTimeMillis()
