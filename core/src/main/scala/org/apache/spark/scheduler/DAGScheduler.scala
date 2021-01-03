@@ -1053,8 +1053,9 @@ private[spark] class DAGScheduler(
     rddJobDag match {
       case None =>
       case Some(dag) =>
-        stack.reverse.foreach {
-          stage => logInfo(s"Online update dag for stage ${stage.id}")
+        val sortedStack = stack.sortBy(s => s.id)
+        sortedStack.foreach {
+          stage => logInfo(s"Online update dag for stage ${stage.id} job ${jobId}")
             dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
         }
     }
