@@ -58,6 +58,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   // Remove nodes
   val crossRefJobNodes = new mutable.ListBuffer[Int]()
 
+  def getReferencedJobs(node: RDDNode): Set[Int] = {
+    dag(node).map { p => p.jobId }.toSet
+  }
+
   def onlineUpdate(jobId: Int, stageId: Int,
                    newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = synchronized {
 
@@ -107,7 +111,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       removableNodes.foreach {
         removableNode =>
           logInfo(s"Remove existing node ${removableNode.rddId} stage ${removableNode.rootStage}")
-          if (removableNode.refJobs.size >= 2) {
+          if (dag(removableNode).map { n => n.jobId}.toSet.size >= 2) {
             logInfo(s"Cross referenced node ${removableNode.rddId}")
             crossRefJobNodes.append(removableNode.rddId)
           }

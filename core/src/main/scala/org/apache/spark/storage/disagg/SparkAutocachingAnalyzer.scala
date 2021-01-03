@@ -52,8 +52,10 @@ private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
           // If this rdd is reference consequently in the previous jobs
 
           var result =
-            node.refJobs.contains(metricTracker.currJob.get()) &&
-              node.refJobs.contains(metricTracker.currJob.get() - 1)
+            rddJobDag.getReferencedJobs(node)
+              .contains(metricTracker.currJob.get()) &&
+              rddJobDag.getReferencedJobs(node)
+                .contains(metricTracker.currJob.get() - 1)
 
           if (!result) {
             // This means that this node will be referenced in the future
@@ -63,7 +65,7 @@ private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
           logDebug(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
-            s"refJob ${node.refJobs}, " +
+            s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
             s"consecutive: ${result}, " +
             s"crossReference: ${node.crossReferenced} " +
             s"jobId: ${node.jobId}")
