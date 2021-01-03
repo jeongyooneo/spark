@@ -148,9 +148,26 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
      }
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
-    val futureUse = realStages.size
+    var futureUse = realStages.size
     val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
     var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
+
+    // Check repeated pattern if the usage is zero
+    if (futureUse == 0) {
+      val repeatedNode = rddJobDag
+        .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
+      repeatedNode match {
+        case Some(rnode) =>
+          val crossJobRef = rddJobDag.numCrossJobReference(rnode)
+          if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
+            futureUse = crossJobRef
+            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+              s"currJob ${metricTracker.currJob}" +
+              s"add $crossJobRef")
+          }
+        case None =>
+      }
+    }
 
     /*
     if (metricTracker.blockElapsedTimeMap.contains(s"unroll-${blockId.name}")) {
