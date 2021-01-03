@@ -91,6 +91,7 @@ class RDDNode(val rddId: Int,
 
   override def toString: String = {
     // s"(rdd: $rddId, stage: $stageIds)"
-    s"(rdd: $rddId, job: ${jobId}, stage: ${rootStage}, callsite: ${callsite})"
+    s"(rdd: $rddId, job: ${jobId}, stage: ${rootStage}, " +
+      s"cf: ${crossReferenced}, callsite: ${callsite})"
   }
 }

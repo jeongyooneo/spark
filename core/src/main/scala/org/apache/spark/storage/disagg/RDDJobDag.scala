@@ -121,6 +121,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
           logInfo(s"Add Cross referenced node ${newNode.rddId}")
           newNode.crossReferenced = crossRefJobNodes.contains(newNode.jobId)
           if (!dag.contains(newNode)) {
+            logInfo(s"Add New node ${newNode}")
             dag(newNode) = new mutable.HashSet[RDDNode]()
             reverseDag(newNode) = new mutable.HashSet[RDDNode]()
           } else {
