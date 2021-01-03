@@ -989,6 +989,9 @@ private[spark] class DAGScheduler(
       listener: JobListener,
       properties: Properties) {
     var finalStage: ResultStage = null
+
+    disaggBlockManagerEndpoint.jobSubmitted(jobId)
+
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
@@ -1094,24 +1097,26 @@ private[spark] class DAGScheduler(
   private def submitStage(stage: Stage) {
     // update dag
     logInfo(s"TG: submitting stage ${stage.id}, jobid: ${stage.jobIds}")
-    rddJobDag match {
-      case None =>
-      case Some(dag) =>
-        logInfo(s"Online update dag for stage ${stage.id}")
-        dag.onlineUpdate(stage.rdd.extractStageDag(stage.id, stage.firstJobId))
-    }
-
-    disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
-      stage.rdd.partitions.length)
 
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
-      logDebug("submitStage(" + stage + ")")
+      logInfo("submitStage(" + stage + ")")
       if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
         val missing = getMissingParentStages(stage).sortBy(_.id)
-        logDebug("missing: " + missing)
+        logInfo("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
+
+          rddJobDag match {
+            case None =>
+            case Some(dag) =>
+              logInfo(s"Online update dag for stage ${stage.id}")
+              dag.onlineUpdate(stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+          }
+
+          disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
+            stage.rdd.partitions.length)
+
           submitMissingTasks(stage, jobId.get)
         } else {
           for (parent <- missing) {

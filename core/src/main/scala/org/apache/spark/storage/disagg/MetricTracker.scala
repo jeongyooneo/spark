@@ -44,6 +44,8 @@ private[spark] class MetricTracker extends Logging {
 
   val blockElapsedTimeMap = new ConcurrentHashMap[String, Long]()
 
+  val currJob = new AtomicInteger(-1)
+
   // Public values
   // disagg total size
   val disaggTotalSize: AtomicLong = new AtomicLong(0)

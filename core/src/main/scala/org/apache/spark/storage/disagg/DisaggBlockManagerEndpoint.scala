@@ -36,6 +36,7 @@ private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolea
   def taskStarted(taskId: String): Unit
   def taskFinished(taskId: String): Unit
 
+  def jobSubmitted(jobId: Int): Unit
   def stageCompleted(stageId: Int): Unit
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit
   def removeFromLocal(blockId: BlockId, executorId: String, onDisk: Boolean): Unit

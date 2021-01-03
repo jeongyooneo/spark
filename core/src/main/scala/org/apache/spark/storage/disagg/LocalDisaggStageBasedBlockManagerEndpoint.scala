@@ -196,9 +196,10 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
   private var prevCleanupTime = System.currentTimeMillis()
   private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
-  private val currJob = new AtomicInteger(-1)
 
   private val removedZeroRdds = new mutable.HashSet[Int]()
+
+  private val currJob = metricTracker.currJob
 
   def stageCompleted(stageId: Int): Unit = {
     logInfo(s"Handling stage ${stageId} completed in disagg manager")
@@ -244,14 +245,39 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
 
           zeroRDDs.foreach {
             rdd =>
-              logInfo(s"Remove zero cost rdd $rdd from memory...")
-              // remove from local executors
-              removedZeroRdds.synchronized {
-                removedZeroRdds.add(rdd)
+              val rddNode = rddJobDag.get.getRDDNode(rdd)
+              val repeatedNode = rddJobDag.get
+                .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+
+              val remove = repeatedNode match {
+                case Some(rnode) =>
+                  val crossJobRef = rddJobDag.get.numCrossJobReference(rnode)
+                  logInfo(s"TG try to remove RDD ${rdd},  rddjob ${rddNode.jobId}, " +
+                    s"currjob: ${currJob}" +
+                    s"repeated RDD ${rnode.jobId}, crossRef: ${crossJobRef}")
+                  if (rddNode.jobId == currJob.get() && crossJobRef > 0) {
+                    // Do not remove this RDD node
+                    false
+                  } else {
+                    true
+                  }
+                case None =>
+                  logInfo(s"TG try to remove RDD ${rdd},  rddjob ${rddNode.jobId}, " +
+                    s"currjob: ${currJob}" +
+                    s"No repeated RDD")
+                  true
               }
-              // scalastyle:off awaitresult
-              Await.result(blockManagerMaster.removeRdd(rdd), Duration.create(10,
-                duration.SECONDS))
+
+              if (remove) {
+                logInfo(s"Remove zero cost rdd $rdd from memory...")
+                // remove from local executors
+                removedZeroRdds.synchronized {
+                  removedZeroRdds.add(rdd)
+                }
+                // scalastyle:off awaitresult
+                Await.result(blockManagerMaster.removeRdd(rdd), Duration.create(10,
+                  duration.SECONDS))
+              }
 
               // scalastyle:on awaitresult
             // remove local info
@@ -273,12 +299,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   private val stagePartitionMap = new ConcurrentHashMap[Int, Int]()
   private val rddDiscardMap = new ConcurrentHashMap[Int, ConcurrentHashMap[Int, Boolean]]()
 
+  def jobSubmitted(jobId: Int): Unit = {
+    currJob.set(jobId)
+  }
+
   def stageSubmitted(stageId: Int, jobId: Int, partition: Int): Unit = synchronized {
       stagePartitionMap.put(stageId, partition)
       metricTracker.stageJobMap.put(stageId, jobId)
       logInfo(s"Stage submitted ${stageId}, jobId: $jobId, " +
         s"partition: ${partition}, jobMap: ${metricTracker.stageJobMap}")
-      currJob.set(jobId)
       metricTracker.stageSubmitted(stageId)
   }
 

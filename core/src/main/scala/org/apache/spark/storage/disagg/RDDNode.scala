@@ -21,8 +21,8 @@ import org.apache.spark.internal.Logging
 import scala.collection.mutable
 
 class RDDNode(val rddId: Int,
-              stageId: Int,
-              jobId: Int,
+              val stageId: Int,
+              val jobId: Int,
               val shuffled: Boolean,
               val callsite: String,
               val name: String) extends Logging {

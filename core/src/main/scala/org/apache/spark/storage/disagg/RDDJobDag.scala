@@ -535,11 +535,38 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
 
   private val callsiteCacheMap = new ConcurrentHashMap[BlockId, Option[RDDNode]]()
 
+  def numCrossJobReference(node: RDDNode): Int = {
+    val result = dag(node).filter(p => node.jobId != p.jobId)
+    logInfo(s"CrossJobReference of RDD ${node.rddId}: result: ${result.size}")
+    result.size
+  }
+
+  def findRepeatedNode(findNode: RDDNode, currNode: RDDNode,
+                             traversed: mutable.HashSet[RDDNode]): Option[RDDNode] = {
+    if (traversed.contains(currNode)) {
+      return None
+    }
+
+    traversed.add(currNode)
+    var result: Option[RDDNode] = None
+
+    if (reverseDag.contains(currNode) && reverseDag(currNode).nonEmpty) {
+      for (parent <- reverseDag(currNode)) {
+        if (parent.callsite.equals(findNode.callsite)) {
+          result = Some(parent)
+        } else if (result.isEmpty) {
+          result = findRepeatedNode(findNode, parent, traversed)
+        }
+      }
+    }
+
+    result
+  }
+
   def findSameCallsiteParent(findNode: RDDNode, currNode: RDDNode,
                              traversed: mutable.HashSet[RDDNode],
                              index: Int,
                              blockId: BlockId): Option[RDDNode] = {
-
     if (callsiteCacheMap.containsKey(blockId)) {
       return callsiteCacheMap.get(blockId)
     }
