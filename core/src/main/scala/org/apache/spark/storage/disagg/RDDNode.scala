@@ -58,8 +58,11 @@ class RDDNode(val rddId: Int,
     s.foreach { ss => stageIds.add(ss) }
   }
 
-  def addRefStage(stageId: Int): Unit = synchronized {
+  val refJobs = new mutable.HashSet[Int]()
+
+  def addRefStage(stageId: Int, jid: Int): Unit = synchronized {
     stageIds.add(stageId)
+    refJobs.add(jid)
     if (root > stageId) {
       root = stageId
     }

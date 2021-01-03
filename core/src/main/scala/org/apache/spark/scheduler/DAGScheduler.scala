@@ -1056,7 +1056,7 @@ private[spark] class DAGScheduler(
         val sortedStack = stack.sortBy(s => s.id)
         sortedStack.foreach {
           stage => logInfo(s"Online update dag for stage ${stage.id} job ${jobId}")
-            dag.onlineUpdate(stage.id,
+            dag.onlineUpdate(jobId, stage.id,
               stage.rdd.extractStageDag(stage.id, stage.firstJobId, prevUpdatedNodes))
         }
     }

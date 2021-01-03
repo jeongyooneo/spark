@@ -39,7 +39,10 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
   private var  prevVertices: Map[Int, RDDNode] = dag.keySet.map(node => (node.rddId, node)).toMap
   val explicitCachingRDDs = new mutable.HashSet[Int]()
 
-  def vertices: Map[Int, RDDNode] = {
+  def vertices(rddId: Int): RDDNode = {
+    dag.keys.filter(p => p.rddId == rddId)
+      .toList.head
+    /*
     val start = System.currentTimeMillis()
     if (dagChanged.get()) {
       dagChanged.set(false)
@@ -48,11 +51,12 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val elapsed = System.currentTimeMillis() - start
     // logInfo(s"RDDJobDAG vertices(dagChanged=true) took $elapsed ms")
     prevVertices
+    */
   }
 
   private val updatedStage = new mutable.HashSet[Int]()
 
-  def onlineUpdate(stageId: Int,
+  def onlineUpdate(jobId: Int, stageId: Int,
                    newDag: Map[RDDNode, mutable.Set[RDDNode]]): Unit = synchronized {
 
     if (updatedStage.contains(stageId)) {
@@ -68,7 +72,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     // find RDD node different from existing nodes
     val diffNodes = newDagNodes
       .filter(newNode => {
-      if (vertices.contains(newNode.rddId)) {
+      if (containsRDD(newNode.rddId)) {
         val originNode = getRDDNode(newNode.rddId)
         val result = !originNode.callsite.equals(newNode.callsite)
         if (result) {
@@ -116,7 +120,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
             dag.keys.filter(p => p.rddId == newNode.rddId).foreach {
               p => {
                 logInfo(s" Add reference stage for rdd ${p.rddId}, stage ${stageId}")
-                p.addRefStage(stageId)
+                p.addRefStage(stageId, jobId)
               }
             }
           }
@@ -134,7 +138,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 dag.filterKeys(p => p.rddId == newNode.rddId)
                   .foreach(p => {
                     logInfo(s"Add stage reference for ${p._1.rddId} -> ${child}")
-                    p._1.addRefStage(child.rootStage)
+                    p._1.addRefStage(child.rootStage, jobId)
                   })
 
                 reverseDag(child).add(newNode)
@@ -149,7 +153,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
               dag.filterKeys(p => p.rddId == parent.rddId)
                   .foreach(p => {
                     logInfo(s"Add reverse stage reference for ${p._1.rddId} -> ${newNode}")
-                    p._1.addRefStage(newNode.rootStage)
+                    p._1.addRefStage(newNode.rootStage, jobId)
                   })
 
               reverseDag(newNode).add(parent)
@@ -1049,7 +1053,7 @@ object RDDJobDag extends Logging {
               }
             } else {
               dag.keys.filter(p => p.rddId == rdd_object.rddId).foreach {
-                p => p.addRefStage(stageId)
+                p => p.addRefStage(stageId, currentJob)
               }
             }
           }
