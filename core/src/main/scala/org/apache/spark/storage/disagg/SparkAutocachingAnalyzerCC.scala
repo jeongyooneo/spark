@@ -36,7 +36,7 @@ private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
     var futureUse = rddJobDag.getReferenceStages(blockId).size
 
     // Check repeated pattern if the usage is zero
-    if (futureUse == 0) {
+    if (futureUse == 0 && rddJobDag.profiledJob <= metricTracker.currJob.get()) {
       val repeatedNode = rddJobDag
         .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
       repeatedNode match {

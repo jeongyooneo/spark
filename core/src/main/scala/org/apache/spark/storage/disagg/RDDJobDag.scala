@@ -33,7 +33,8 @@ import scala.io.Source
 
 class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
                 val reverseDag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
-                val metricTracker: MetricTracker) extends Logging {
+                val metricTracker: MetricTracker,
+                var profiledJob: Int) extends Logging {
 
   val dagChanged = new AtomicBoolean(false)
   private var  prevVertices: Map[Int, RDDNode] = dag.keySet.map(node => (node.rddId, node)).toMap
@@ -98,6 +99,7 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     if (diffNodes.nonEmpty) {
       logInfo(s"Detected different nodes ${diffNodes}")
       dagChanged.set(true)
+      profiledJob = jobId
 
       // We should rebuild the DAG
       // 1) Remove the stages > stageId and nodes
@@ -1020,7 +1022,7 @@ object RDDJobDag extends Logging {
     if (sampling) {
       None
     } else if (dagPath.equals("None")) {
-      Option(new RDDJobDag(dag, mutable.Map(), metricTracker))
+      Option(new RDDJobDag(dag, mutable.Map(), metricTracker, 0))
     } else {
       var currentJob = 0
       var finalStage = 0
@@ -1100,7 +1102,7 @@ object RDDJobDag extends Logging {
       }
 
       val rddjobdag = new RDDJobDag(dag, buildReverseDag(dag),
-        metricTracker)
+        metricTracker, currentJob)
 
       val visited = new mutable.HashSet[RDDNode]()
       rddjobdag.reverseDag.keys.foreach {
