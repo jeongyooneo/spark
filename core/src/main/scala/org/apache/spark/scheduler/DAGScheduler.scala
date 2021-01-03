@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.function.BiFunction
 
 import scala.annotation.tailrec
-import scala.collection.Map
+import scala.collection.{Map, mutable}
 import scala.collection.mutable.{ArrayStack, HashMap, HashSet}
 import scala.concurrent.duration._
 import scala.language.existentials
@@ -1047,7 +1047,18 @@ private[spark] class DAGScheduler(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
 
     // Here, we first update the stages
-    onlineUpdateStages(finalStage)
+    val stack = new mutable.ListBuffer[Stage]
+    onlineUpdateStages(finalStage, stack)
+
+    rddJobDag match {
+      case None =>
+      case Some(dag) =>
+        stack.reverse.foreach {
+          stage => logInfo(s"Online update dag for stage ${stage.id}")
+            dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
+        }
+    }
+
     // update job id
     disaggBlockManagerEndpoint.jobSubmitted(jobId)
     submitStage(finalStage)
@@ -1097,28 +1108,25 @@ private[spark] class DAGScheduler(
     }
   }
 
-  private def onlineUpdateStages(stage: Stage): Unit = {
+  private def onlineUpdateStages(stage: Stage,
+                                 stack: mutable.ListBuffer[Stage]): Unit = {
     logInfo(s"TG: submitting stage ${stage.id}, jobid: ${stage.jobIds}")
 
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logInfo("submitStage(" + stage + ")")
+
+      stack.append(stage)
+
       if (!waitingStages2(stage) && !runningStages(stage) && !failedStages(stage)) {
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logInfo("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
-          rddJobDag match {
-            case None =>
-            case Some(dag) =>
-              logInfo(s"Online update dag for stage ${stage.id}")
-              dag.onlineUpdate(stage.id, stage.rdd.extractStageDag(stage.id, stage.firstJobId))
-          }
-
         } else {
           for (parent <- missing) {
-            onlineUpdateStages(parent)
+            onlineUpdateStages(parent, stack)
           }
           waitingStages2 += stage
         }
