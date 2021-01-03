@@ -28,7 +28,7 @@ import org.apache.spark.{SparkConf, TaskContext}
 
 import scala.collection.convert.decorateAsScala._
 
-class DisaggBlockManager(
+private[spark] class DisaggBlockManager(
       var driverEndpoint: RpcEndpointRef,
       conf: SparkConf) extends CrailManager(false,
   false) with Logging {
