@@ -195,8 +195,6 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
   }
 
   private var prevCleanupTime = System.currentTimeMillis()
-  private val fullyProfiled = conf.get(BlazeParameters.FULLY_PROFILED)
-
   private val removedZeroRdds = new mutable.HashSet[Int]()
 
   private val currJob = metricTracker.currJob
@@ -227,19 +225,9 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                     s"jobId: ${metricTracker.stageJobMap(lastStage)}, " +
                     s"currJob: ${currJob.get()}, jobMap: ${metricTracker.stageJobMap}")
 
-                  if (!fullyProfiled) {
-                    currJob.get() > metricTracker.stageJobMap(lastStage)
-                  } else {
-                    // stageId >= lastStage
-                    true
-                  }
+                  true
                 } else {
-                  if (!fullyProfiled) {
-                    false
-                  } else {
-                    // stageId >= lastStage
-                    true
-                  }
+                  true
                 }
             }
 
