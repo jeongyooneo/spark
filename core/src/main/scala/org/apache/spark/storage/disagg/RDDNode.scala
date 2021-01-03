@@ -29,6 +29,8 @@ class RDDNode(val rddId: Int,
 
   private val stageIds = new mutable.HashSet[Int]()
 
+  var crossReferenced = false
+
   if (stageId >= 0) {
     stageIds.add(stageId)
   }

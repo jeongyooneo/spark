@@ -103,9 +103,15 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       logInfo(s"Removable nodes ${removableNodes.map { n => n.rddId }}")
 
       // Remove nodes
+      val crossRefJobNodes = new mutable.ListBuffer[Int]()
+
       removableNodes.foreach {
         removableNode =>
           logInfo(s"Remove existing node ${removableNode.rddId} stage ${removableNode.rootStage}")
+          if (removableNode.refJobs.size >= 2) {
+            logInfo(s"Cross referenced node ${removableNode.rddId}")
+            crossRefJobNodes.append(removableNode.rddId)
+          }
           dag.remove(removableNode)
           reverseDag.remove(removableNode)
       }
@@ -113,6 +119,11 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
       // Add the nodes
       newDagNodes.filter(node => node.rootStage >= minStage).foreach {
         newNode =>
+          dag.keys.filter(p => p.rddId == newNode.rddId).foreach {
+            n => n.crossReferenced = crossRefJobNodes.contains(newNode.rddId)
+              logInfo(s"Set Cross referenced node ${newNode.rddId}")
+          }
+
           if (!dag.contains(newNode)) {
             dag(newNode) = new mutable.HashSet[RDDNode]()
             reverseDag(newNode) = new mutable.HashSet[RDDNode]()
