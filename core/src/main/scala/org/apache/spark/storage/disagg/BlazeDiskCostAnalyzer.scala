@@ -60,7 +60,7 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
           val crossJobRef = rddJobDag.numCrossJobReference(rnode)
           if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
             futureUse = crossJobRef
-            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+            logDebug(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
               s"currJob ${metricTracker.currJob}" +
               s"add $crossJobRef")
           }
@@ -71,7 +71,7 @@ private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
             node.refJobs.contains(metricTracker.currJob.get()) &&
               node.refJobs.contains(metricTracker.currJob.get() - 1)
 
-          logInfo(s"No repeatedNode for ${node.rddId}, " +
+          logDebug(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
             s"currjob ${metricTracker.currJob.get()}, " +
             s"refJob ${node.refJobs}, " +
