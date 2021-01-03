@@ -451,7 +451,7 @@ abstract class RDD[T: ClassTag](
           val parent = dep.rdd
 
           val parentNode =
-            if (prevNodes.contains(parent.id) && prevNodes(parent.id).rootStage != 100000) {
+            if (prevNodes.contains(parent.id)) {
               prevNodes(parent.id)
             } else {
               val n = new RDDNode(parent.id, -1,
