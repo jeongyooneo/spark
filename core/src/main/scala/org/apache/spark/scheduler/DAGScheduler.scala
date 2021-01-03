@@ -157,6 +157,7 @@ private[spark] class DAGScheduler(
 
   // Stages we need to run whose parents aren't done
   private[scheduler] val waitingStages = new HashSet[Stage]
+  private[scheduler] val waitingStages2 = new HashSet[Stage]
 
   // Stages we are running right now
   private[scheduler] val runningStages = new HashSet[Stage]
@@ -1109,7 +1110,7 @@ private[spark] class DAGScheduler(
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logInfo("submitStage(" + stage + ")")
-      if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
+      if (!waitingStages2(stage) && !runningStages(stage) && !failedStages(stage)) {
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logInfo("missing: " + missing)
         if (missing.isEmpty) {
@@ -1119,7 +1120,7 @@ private[spark] class DAGScheduler(
           for (parent <- missing) {
             onlineUpdateStages(parent)
           }
-          waitingStages += stage
+          waitingStages2 += stage
         }
       }
 
