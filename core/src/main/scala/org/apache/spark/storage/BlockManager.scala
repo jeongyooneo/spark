@@ -607,9 +607,13 @@ private[spark] class BlockManager(
           val diskData = diskStore.getBytes(blockId)
           val iterToReturn: Iterator[Any] = {
             if (level.deserialized) {
+              val startDeser = System.currentTimeMillis()
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
+              val deserTime = System.currentTimeMillis() - startDeser
+              logInfo(s"getLocalValues $blockId deserTime $deserTime " +
+                s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
@@ -695,8 +699,12 @@ private[spark] class BlockManager(
   private def getRemoteValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     val ct = implicitly[ClassTag[T]]
     getRemoteBytes(blockId).map { data =>
+      val startDeser = System.currentTimeMillis()
       val values =
         serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))(ct)
+      val deserTime = System.currentTimeMillis() - startDeser
+      logInfo(s"getRemoteValues $blockId deserTime $deserTime " +
+        s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
   }
@@ -1198,10 +1206,14 @@ private[spark] class BlockManager(
               // Not enough space to unroll this block; drop to disk if applicable
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
+                val startSer = System.currentTimeMillis()
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
                   serializerManager.dataSerializeStream(blockId, out, iter)(classTag)
                 }
+                val serTime = System.currentTimeMillis() - startSer
+                logInfo(s"doPutIterator $blockId serTime $serTime " +
+                s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
                 size = diskStore.getSize(blockId)
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
@@ -1533,6 +1545,7 @@ private[spark] class BlockManager(
       logInfo(s"Writing block $blockId to disk")
       data() match {
         case Left(elements) =>
+          val startSer = System.currentTimeMillis()
           diskStore.put(blockId) { channel =>
             val out = Channels.newOutputStream(channel)
             serializerManager.dataSerializeStream(
@@ -1540,6 +1553,9 @@ private[spark] class BlockManager(
               out,
               elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
           }
+          val serTime = System.currentTimeMillis() - startSer
+          logInfo(s"dropFromMemory $blockId serTime $serTime " +
+            s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }
