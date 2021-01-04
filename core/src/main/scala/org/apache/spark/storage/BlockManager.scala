@@ -849,7 +849,8 @@ private[spark] class BlockManager(
               in)(implicitly[ClassTag[T]])
             val deserTime = System.currentTimeMillis - startDeser
             logInfo(s"getAlluxio $blockId deserTime $deserTime " +
-              s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+              s"stage ${TaskContext.get().stageId().toLong} " +
+              s"task ${TaskContext.get().partitionId().toLong}")
             in.close()
             val len = disaggManager.getSize(blockId, executorId)
             val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
@@ -1420,7 +1421,8 @@ private[spark] class BlockManager(
 
     val serTime = System.currentTimeMillis - startSer
     logInfo(s"putAlluxio $blockId serTime $serTime " +
-      s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+      s"stage ${TaskContext.get().stageId().toLong} " +
+      s"task ${TaskContext.get().partitionId().toLong}")
 
     size
   }
