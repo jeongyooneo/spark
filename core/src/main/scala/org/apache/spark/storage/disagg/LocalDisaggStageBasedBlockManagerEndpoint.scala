@@ -215,6 +215,15 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 val rddNode = rddJobDag.get.getRDDNode(p)
                 val lastStage = rddNode.getStages.max
 
+                val incompleteStage = rddJobDag.get.dag(rddNode).map { n => n.rootStage }
+                  .filter( s => !metricTracker.completedStages.contains(s) )
+
+                logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
+                  s"completedStage ${metricTracker.completedStages}," +
+                  s"incomplete for rdd ${incompleteStage}")
+
+                incompleteStage.isEmpty
+                /*
                 logInfo(s"StateCompleted ${stageId} LastJob of RDD " +
                   s"${rddNode.rddId}: stage $lastStage, " +
                   s"currJob: ${currJob.get()}, jobMap: ${metricTracker.stageJobMap}")
@@ -229,23 +238,16 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 } else {
                   true
                 }
+                */
             }
 
           zeroRDDs.foreach {
             rdd =>
-              val rddNode = rddJobDag.get.getRDDNode(rdd)
-              logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
-                s"completedStage ${metricTracker.completedStages}")
+              // val rddNode = rddJobDag.get.getRDDNode(rdd)
+              // logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
+              //  s"completedStage ${metricTracker.completedStages}")
 
-
-              val incompleteStage = rddJobDag.get.dag(rddNode).map { n => n.rootStage }
-                .filter( s => !metricTracker.completedStages.contains(s) )
-
-              logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
-                s"completedStage ${metricTracker.completedStages}," +
-                s"incomplete for rdd ${incompleteStage}")
-
-              val remove = incompleteStage.isEmpty
+              val remove = true
               /*
               val repeatedNode = rddJobDag.get
                 .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
