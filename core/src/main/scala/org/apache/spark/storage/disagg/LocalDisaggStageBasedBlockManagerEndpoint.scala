@@ -237,6 +237,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
               val repeatedNode = rddJobDag.get
                 .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
 
+              val remove = true
               /*
               val remove = repeatedNode match {
                 case Some(rnode) =>
