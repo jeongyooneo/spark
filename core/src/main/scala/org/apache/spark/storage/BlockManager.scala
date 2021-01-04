@@ -613,7 +613,8 @@ private[spark] class BlockManager(
                 diskData.toInputStream())(info.classTag)
               val deserTime = System.currentTimeMillis() - startDeser
               logInfo(s"getLocalValues $blockId deserTime $deserTime " +
-                s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+                s"stage ${TaskContext.get().stageId().toLong} " +
+                s"task ${TaskContext.get().partitionId().toLong}")
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
@@ -704,7 +705,8 @@ private[spark] class BlockManager(
         serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))(ct)
       val deserTime = System.currentTimeMillis() - startDeser
       logInfo(s"getRemoteValues $blockId deserTime $deserTime " +
-        s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+        s"stage ${TaskContext.get().stageId().toLong} " +
+        s"task ${TaskContext.get().partitionId().toLong}")
       new BlockResult(values, DataReadMethod.Network, data.size)
     }
   }
@@ -1213,7 +1215,8 @@ private[spark] class BlockManager(
                 }
                 val serTime = System.currentTimeMillis() - startSer
                 logInfo(s"doPutIterator $blockId serTime $serTime " +
-                s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+                  s"stage ${TaskContext.get().stageId().toLong} " +
+                  s"task ${TaskContext.get().partitionId().toLong}")
                 size = diskStore.getSize(blockId)
               } else {
                 iteratorFromFailedMemoryStorePut = Some(iter)
@@ -1555,7 +1558,8 @@ private[spark] class BlockManager(
           }
           val serTime = System.currentTimeMillis() - startSer
           logInfo(s"dropFromMemory $blockId serTime $serTime " +
-            s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
+            s"stage ${TaskContext.get().stageId().toLong} " +
+            s"task ${TaskContext.get().partitionId().toLong}")
         case Right(bytes) =>
           diskStore.putBytes(blockId, bytes)
       }
