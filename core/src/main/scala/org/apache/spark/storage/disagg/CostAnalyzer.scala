@@ -198,6 +198,54 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
     zeros.diff(nonzeros)
   }
 
+  def utilCost(use: Int,
+               rddJobDag: RDDJobDag,
+               node: RDDNode): Int = {
+
+    var futureUse = use
+
+    if (futureUse == 0 && rddJobDag.profiledJob <= metricTracker.currJob.get()) {
+      val repeatedNode = rddJobDag
+        .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
+      repeatedNode match {
+        case Some(rnode) =>
+          val crossJobRef = rddJobDag.numCrossJobReference(rnode)
+          if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
+            futureUse = crossJobRef
+            logDebug(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
+              s"currJob ${metricTracker.currJob}" +
+              s"add $crossJobRef")
+          }
+        case None =>
+          // If this rdd is reference consequently in the previous jobs
+          var result =
+            rddJobDag.getReferencedJobs(node)
+              .contains(metricTracker.currJob.get()) &&
+              rddJobDag.getReferencedJobs(node)
+                .contains(metricTracker.currJob.get() - 1)
+
+          if (!result) {
+            // This means that this node will be referenced in the future
+            result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
+          }
+
+          logDebug(s"No repeatedNode for ${node.rddId}, " +
+            s"check conseuctive job reference, " +
+            s"currjob ${metricTracker.currJob.get()}, " +
+            s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
+            s"consecutive: ${result}, " +
+            s"crossReference: ${node.crossReferenced} " +
+            s"jobId: ${node.jobId}")
+
+          if (result) {
+            futureUse += 2
+          }
+      }
+    }
+
+    futureUse
+  }
+
   class DisaggOverhead(val blockId: BlockId,
                        val cost: Long)
 
@@ -242,6 +290,8 @@ class CompDisaggCost(val blockId: BlockId,
   def setStageInfo(s: List[StageDistance], time: Long): Unit = {
     stages = Some(s)
   }
+
+
 }
 
 

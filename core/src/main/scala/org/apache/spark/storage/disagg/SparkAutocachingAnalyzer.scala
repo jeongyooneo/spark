@@ -20,8 +20,6 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-import scala.collection.mutable
-
 private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
                                               metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
@@ -35,47 +33,7 @@ private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
     var futureUse = rddJobDag.getLRCRefCnt(blockId)
 
-
-
-    // Check repeated pattern if the usage is zero
-    if (futureUse == 0 && rddJobDag.profiledJob <= metricTracker.currJob.get()) {
-      val repeatedNode = rddJobDag
-        .findRepeatedNode(node, node, new mutable.HashSet[RDDNode]())
-      repeatedNode match {
-        case Some(rnode) =>
-          val crossJobRef = rddJobDag.numCrossJobReference(rnode)
-          if (node.jobId == metricTracker.currJob.get() && crossJobRef > 0) {
-            futureUse = crossJobRef
-            logInfo(s"Added crossJobRef for rdd ${node.rddId}, job ${node.jobId}, " +
-              s"currJob ${metricTracker.currJob}" +
-              s"add $crossJobRef")
-          }
-        case None =>
-          // If this rdd is reference consequently in the previous jobs
-          var result =
-            rddJobDag.getReferencedJobs(node)
-              .contains(metricTracker.currJob.get()) &&
-              rddJobDag.getReferencedJobs(node)
-                .contains(metricTracker.currJob.get() - 1)
-
-          if (!result) {
-            // This means that this node will be referenced in the future
-            result = node.crossReferenced && node.jobId + 1 > metricTracker.currJob.get()
-          }
-
-          logInfo(s"No repeatedNode for ${node.rddId}, " +
-            s"check conseuctive job reference, " +
-            s"currjob ${metricTracker.currJob.get()}, " +
-            s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
-            s"consecutive: ${result}, " +
-            s"crossReference: ${node.crossReferenced} " +
-            s"jobId: ${node.jobId}")
-
-          if (result) {
-            futureUse += 2
-          }
-      }
-    }
+    futureUse = utilCost(futureUse, rddJobDag, node)
 
     val c = new CompDisaggCost(blockId,
       futureUse,
