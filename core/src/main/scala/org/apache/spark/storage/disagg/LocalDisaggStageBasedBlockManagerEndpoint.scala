@@ -238,7 +238,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
                 s"completedStage ${metricTracker.completedStages}")
 
 
-              val remove = true
+              val incompleteStage = rddJobDag.get.dag(rddNode).map { n => n.rootStage }
+                .filter( s => !metricTracker.completedStages.contains(s) )
+
+              logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
+                s"completedStage ${metricTracker.completedStages}," +
+                s"incomplete for rdd ${incompleteStage}")
+
+              val remove = incompleteStage.isEmpty
               /*
               val repeatedNode = rddJobDag.get
                 .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
