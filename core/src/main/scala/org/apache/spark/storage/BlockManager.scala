@@ -840,33 +840,18 @@ private[spark] class BlockManager(
   def getAlluxioValues[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
     var result = None: Option[BlockResult]
     try {
-      logInfo(s"start getAlluxioValues $blockId " +
-        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-        s"task ${TaskContext.get().taskAttemptId()}")
-
       if (disaggManager.readLock(blockId, executorId)) {
         // metadata for the block to read exists
         disaggManager.createFileInputStream(blockId, executorId) match {
           case Some(in) =>
             val startDeser = System.currentTimeMillis
-            logInfo(s"start deser $blockId from alluxio: " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
-
             val alluxioIter = serializerManager.dataDeserializeStream(blockId,
               in)(implicitly[ClassTag[T]])
             val deserTime = System.currentTimeMillis - startDeser
-            logInfo(s"getAlluxio $blockId deserTime $deserTime")
+            logInfo(s"getAlluxio $blockId deserTime $deserTime " +
+              s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
             in.close()
-            logInfo(s"closed inputStream for $blockId from alluxio: " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
             val len = disaggManager.getSize(blockId, executorId)
-
-            logInfo(s"Got $blockId from alluxio: size $len " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
-
             val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
             result = Some(new BlockResult(ci, DataReadMethod.Network, len))
           case None =>
@@ -1434,7 +1419,8 @@ private[spark] class BlockManager(
     }
 
     val serTime = System.currentTimeMillis - startSer
-    logInfo(s"putAlluxio $blockId serTime $serTime")
+    logInfo(s"putAlluxio $blockId serTime $serTime " +
+      s"stage ${TaskContext.get().stageId()} task ${TaskContext.get().partitionId()}")
 
     size
   }

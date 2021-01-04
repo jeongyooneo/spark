@@ -120,6 +120,7 @@ private[spark] class DisaggBlockManager(
     try {
       // path exists and is not lost
       val exists = fs.exists(path)
+
       val isLost = fs.getStatus(path).getPersistenceState.contains("LOST")
       if (exists && !isLost) {
         logInfo(s"createFileInputStream for $blockId: " +
