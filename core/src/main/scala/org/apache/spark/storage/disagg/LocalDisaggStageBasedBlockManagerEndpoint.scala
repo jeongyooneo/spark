@@ -234,11 +234,14 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           zeroRDDs.foreach {
             rdd =>
               val rddNode = rddJobDag.get.getRDDNode(rdd)
-              val repeatedNode = rddJobDag.get
-                .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
+              logInfo(s"Zero RDD edges ${rddJobDag.get.dag(rddNode)}, " +
+                s"completedStage ${metricTracker.completedStages}")
+
 
               val remove = true
               /*
+              val repeatedNode = rddJobDag.get
+                .findRepeatedNode(rddNode, rddNode, new mutable.HashSet[RDDNode]())
               val remove = repeatedNode match {
                 case Some(rnode) =>
                   val crossJobRef = rddJobDag.get.numCrossJobReference(rnode)
