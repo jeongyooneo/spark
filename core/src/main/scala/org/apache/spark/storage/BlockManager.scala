@@ -1397,7 +1397,7 @@ private[spark] class BlockManager(
             logInfo(s"TGLOG MakeIter ${blockId} ${makeE - makeT}")
           }
 
-           memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
+           memoryStore.putIteratorAsValues(blockId, it, classTag) match {
             case Right(s) =>
               // disaggManager.sendRecompTime(blockId, et - st)
               size = s
