@@ -884,96 +884,10 @@ private[spark] class BlockManager(
           s"task ${TaskContext.get().taskAttemptId()}")
         throw e
     } finally {
-      logInfo(s"finally in getAlluxioValues $blockId " +
-        s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-        s"task ${TaskContext.get().taskAttemptId()}")
       disaggManager.readUnlock(blockId, executorId)
     }
 
-    logInfo(s"getAlluxioValues for $blockId returns $result " +
-      s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-      s"task ${TaskContext.get().taskAttemptId()}")
-
     result
-    /*
-    blockInfoManager.lockForReading(blockId) match {
-      case None =>
-        logInfo(s"getAlluxioValues: info for $blockId was not found")
-        None
-      case Some(_) =>
-        var result = None: Option[BlockResult]
-        try {
-          logInfo(s"start getAlluxioValues $blockId " +
-            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-            s"task ${TaskContext.get().taskAttemptId()}")
-
-          if (disaggManager.readLock(blockId, executorId)) {
-            // metadata for the block to read exists
-            disaggManager.createFileInputStream(blockId, executorId) match {
-              case Some(in) =>
-                logInfo(s"start deser $blockId from alluxio: " +
-                  s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                  s"task ${TaskContext.get().taskAttemptId()}")
-
-                val alluxioIter = serializerManager.dataDeserializeStream(blockId,
-                  in)(implicitly[ClassTag[T]])
-                logInfo(s"done deser $blockId from alluxio: " +
-                  s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                  s"task ${TaskContext.get().taskAttemptId()}")
-                in.close()
-                logInfo(s"closed inputStream for $blockId from alluxio: " +
-                  s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                  s"task ${TaskContext.get().taskAttemptId()}")
-                val len = disaggManager.getSize(blockId, executorId)
-
-                logInfo(s"Got $blockId from alluxio: size $len " +
-                  s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                  s"task ${TaskContext.get().taskAttemptId()}")
-
-                val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
-                result = Some(new BlockResult(ci, DataReadMethod.Network, len))
-              case None =>
-                logInfo(s"$blockId path doesn't exist or evicted in alluxio: " +
-                  s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-                  s"task ${TaskContext.get().taskAttemptId()}")
-                handleAlluxioReadFailure(blockId)
-                disaggManager.removeFileInfo(blockId, executorId)
-                result = None
-            }
-          } else {
-            // the block and its metadata do not exist
-            logInfo(s"$blockId not in alluxio and neither its metadata: " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
-          }
-        } catch {
-          case e: UnavailableException =>
-            logInfo(s"$blockId not available (evicted) in alluxio - should recompute it " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
-            e.printStackTrace()
-            handleAlluxioReadFailure(blockId)
-            disaggManager.removeFileInfo(blockId, executorId)
-            result = None
-          case e: Exception => e.printStackTrace()
-            logInfo(s"Exception in createFileInputStream $blockId " +
-              s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-              s"task ${TaskContext.get().taskAttemptId()}")
-            throw e
-        } finally {
-          logInfo(s"finally in getAlluxioValues $blockId " +
-            s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-            s"task ${TaskContext.get().taskAttemptId()}")
-          disaggManager.readUnlock(blockId, executorId)
-        }
-
-        logInfo(s"getAlluxioValues for $blockId returns $result " +
-          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-          s"task ${TaskContext.get().taskAttemptId()}")
-
-        result
-    }
-     */
   }
 
   def removeFromAlluxio[T: ClassTag](blockId: BlockId): Boolean = {
@@ -1078,27 +992,11 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
-        // Accessed again in this executor
-        if (blockAccessHistory.contains(blockId)) {
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // Fetched from other executors
-          blockAccessHistory(blockId) = 1L
-        }
-        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
+        logInfo(s"cache hit $blockId stage ${TaskContext.get().stageId().toDouble}")
         return Left(block)
       case _ =>
-        if (blockAccessHistory.contains(blockId)) {
-          // Cache miss in this executor
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // First time generating this block *in this executor*
-          // (might have been generated and evicted in other executors)
-          blockAccessHistory(blockId) = 1L
-        }
-        logInfo(s"cache miss: $blockId, need to recompute it " +
-          s"executor $executorId, stage ${TaskContext.get().stageId()} " +
-          s"task ${TaskContext.get().partitionId()}")
+        logInfo(s"cache miss $blockId " +
+          s"stage ${TaskContext.get().stageId().toDouble}")
       // Need to compute the block.
     }
 
