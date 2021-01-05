@@ -1393,8 +1393,6 @@ private[spark] class BlockManager(
           if (TaskContext.get() != null) {
             logInfo(s"TGLOG MakeIter ${blockId} ${makeE - makeT}" +
               s" ${TaskContext.get().taskAttemptId()}")
-          } else {
-            logInfo(s"TGLOG MakeIter ${blockId} ${makeE - makeT}")
           }
 
            memoryStore.putIteratorAsValues(blockId, it, classTag) match {
@@ -1419,8 +1417,6 @@ private[spark] class BlockManager(
                 if (TaskContext.get() != null) {
                   logInfo(s"TGLOG PutDisk ${blockId} ${et - st}" +
                     s" ${TaskContext.get().taskAttemptId()}")
-                } else {
-                  logInfo(s"TGLOG PutDisk ${blockId} ${et - st}")
                 }
 
                 if (diskStore.contains(blockId)) {

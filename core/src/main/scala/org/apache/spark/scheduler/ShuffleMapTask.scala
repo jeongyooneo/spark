@@ -103,7 +103,7 @@ private[spark] class ShuffleMapTask(
       val iter = rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]]
       val et = System.currentTimeMillis()
       writer.write(iter)
-      logInfo(s"TGLOG ShuffleMapIter None ${et - st}")
+      logInfo(s"TGLOG ShuffleMapIter None ${et - st} ${context.taskAttemptId()}")
       val ret = writer.stop(success = true).get
       val tct = System.nanoTime() - startTime
       mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()

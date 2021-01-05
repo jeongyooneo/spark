@@ -93,12 +93,12 @@ private[spark] class ResultTask[T, U](
     var st = System.currentTimeMillis()
     val iter = rdd.iterator(partition, context)
     var et = System.currentTimeMillis()
-    logInfo(s"TGLOG ResultIter None ${et - st}")
+    logInfo(s"TGLOG ResultIter None ${et - st} ${context.taskAttemptId()}")
 
     st = System.currentTimeMillis()
     val ret = func(context, iter)
     et = System.currentTimeMillis()
-    logInfo(s"TGLOG ResultFunc None ${et - st}")
+    logInfo(s"TGLOG ResultFunc None ${et - st} ${context.taskAttemptId()}")
     val tct = System.nanoTime() - startTime
     mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()
       + " " + tct + " ns")
