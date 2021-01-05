@@ -903,9 +903,14 @@ private[spark] class BlockManager(
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
 
+    val gst = System.currentTimeMillis()
     val local = getLocalValues(blockId, false)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
+      val get = System.currentTimeMillis()
+      if (TaskContext.get() != null) {
+        logInfo(s"TGLOG GET ${blockId} ${get - gst} ${TaskContext.get().taskAttemptId()}")
+      }
       return local
     }
 
@@ -998,6 +1003,7 @@ private[spark] class BlockManager(
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
+        val gst = System.currentTimeMillis()
         val blockResult = getLocalValues(blockId, true).getOrElse {
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
@@ -1006,6 +1012,10 @@ private[spark] class BlockManager(
         }
 
         val et = System.currentTimeMillis()
+        if (TaskContext.get() != null) {
+          logInfo(s"TGLOG GET ${blockId} ${et - gst} ${TaskContext.get().taskAttemptId()}")
+        }
+
         val elapsed = et - st
         // logInfo(s"Recomp\t$blockId\t$et")
         disaggManager.sendRecompTime(blockId, elapsed)
@@ -1377,6 +1387,16 @@ private[spark] class BlockManager(
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
         if (level.deserialized) {
+          val makeT = System.currentTimeMillis()
+          val it = iterator()
+          val makeE = System.currentTimeMillis()
+          if (TaskContext.get() != null) {
+            logInfo(s"TGLOG MakeIter ${blockId} ${makeE - makeT}" +
+              s" ${TaskContext.get().taskAttemptId()}")
+          } else {
+            logInfo(s"TGLOG MakeIter ${blockId} ${makeE - makeT}")
+          }
+
            memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
               // disaggManager.sendRecompTime(blockId, et - st)

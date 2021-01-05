@@ -20,8 +20,6 @@ package org.apache.spark.storage.disagg
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-import scala.collection.mutable
-
 private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
                                            metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
