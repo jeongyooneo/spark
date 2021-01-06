@@ -126,7 +126,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
     // val realStages = stages.filter(p => node.getStages.contains(p.stageId))
     val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
 
-    logInfo(s"Compute RDD ${node.rddId} stages ${node.getStages}")
+    // logInfo(s"Compute RDD ${node.rddId} stages ${node.getStages}")
 
      val containDisk = if (metricTracker
       .localDiskStoredBlocksMap.containsKey(executorId)
