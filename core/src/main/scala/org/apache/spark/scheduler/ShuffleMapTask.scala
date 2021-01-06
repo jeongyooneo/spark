@@ -105,6 +105,8 @@ private[spark] class ShuffleMapTask(
       writer.write(iter)
       logInfo(s"TGLOG ShuffleMapIter None ${et - st} ${context.taskAttemptId()}")
       val ret = writer.stop(success = true).get
+      val et2 = System.currentTimeMillis()
+      logInfo(s"TGLOG ShuffleMapWrite None ${et2 - et} ${context.taskAttemptId()}")
       val tct = System.nanoTime() - startTime
       mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()
         + " " + tct + " ns")

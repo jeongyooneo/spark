@@ -48,7 +48,6 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
-    val st = System.currentTimeMillis()
     sorter = if (dep.mapSideCombine) {
       new ExternalSorter[K, V, C](
         context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
@@ -76,8 +75,6 @@ private[spark] class SortShuffleWriter[K, V, C](
         logError(s"Error while deleting temp file ${tmp.getAbsolutePath}")
       }
     }
-    val et = System.currentTimeMillis()
-    logInfo(s"TGLOG ShuffleWrite None ${et - st}")
   }
 
   /** Close this writer, passing along whether the map completed */
