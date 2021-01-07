@@ -54,7 +54,9 @@ import org.apache.spark.storage.disagg.DisaggBlockManager
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
+import org.apache.spark.util.CompletionTimeIterator
 import org.apache.spark.util.io.ChunkedByteBuffer
+
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
@@ -853,7 +855,15 @@ private[spark] class BlockManager(
               s"task ${TaskContext.get().partitionId().toDouble}")
             in.close()
             val len = disaggManager.getSize(blockId, executorId)
-            val ci = CompletionIterator[Any, Iterator[Any]](alluxioIter, {})
+            val ci = new CompletionTimeIterator[T, Iterator[T]](alluxioIter) {
+              override def completion(accTime: Long): Unit = {
+                if (TaskContext.get() != null) {
+                  logInfo(s"ReadAlluxioIter ${blockId} time ${accTime} " +
+                    s"stage ${TaskContext.get().stageId().toDouble} " +
+                    s"task ${TaskContext.get().partitionId().toDouble}")
+                }
+              }
+            }
             result = Some(new BlockResult(ci, DataReadMethod.Network, len))
           case None =>
             logInfo(s"$blockId path doesn't exist or evicted in alluxio: " +
