@@ -148,7 +148,6 @@ private[spark] class BlockManager(
 
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
-  private val blockAccessHistory = new ConcurrentHashMap[BlockId, Long]().asScala
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -1033,13 +1032,6 @@ private[spark] class BlockManager(
 
         val blockCompEndTime = System.currentTimeMillis()
         val elapsed = blockCompEndTime - blockCompStartTime
-        val accessHistory = blockAccessHistory(blockId)
-        logInfo(s"after doPutIterator and getAlluxioValues: " +
-          s"$blockId rctime $elapsed" +
-          s"executor $executorId, task ${TaskContext.get().taskAttemptId()}")
-
-        master.sendLog(s"RCTime\t$blockId\t${blockManagerId.hostPort}\t$accessHistory\t" +
-          s"stage${TaskContext.get().stageId()}\t$elapsed")
 
         Left(blockResult)
       case Some(iter) => Right(iter)
@@ -1789,8 +1781,6 @@ private[spark] class BlockManager(
         case Some(info) =>
           removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster)
           addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
-          logInfo(s"Removing $blockId " +
-            s"took ${System.currentTimeMillis() - startTime} ms")
       }
     }
 

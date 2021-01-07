@@ -39,8 +39,6 @@ private[spark] class DisaggBlockManager(
       logInfo(s"Read lock failed for $blockId: metadata and file not present in alluxio")
       false
     } else if (readSucceeded == 1) {
-      logInfo(s"Read lock succeeded for $blockId " +
-        s"executor $executorId")
       true
     } else {
       // retry... the block is being written
@@ -53,8 +51,6 @@ private[spark] class DisaggBlockManager(
 
   def readUnlock(blockId: BlockId, executorId: String): Unit = {
     driverEndpoint.ask[Unit](FileReadUnlock(blockId, executorId))
-    logInfo(s"Read unlock succeeded for $blockId " +
-    s"executor $executorId")
   }
 
   /**
@@ -78,10 +74,7 @@ private[spark] class DisaggBlockManager(
 
   def writeLock(blockId: BlockId, executorId: String): Unit = {
     val writeSucceeded = driverEndpoint.askSync[Boolean](FileWriteLock(blockId, executorId))
-    if (writeSucceeded) {
-      logInfo(s"Write lock succeeded for $blockId " +
-        s"executor $executorId")
-    } else {
+    if (!writeSucceeded) {
       // retry...
       Thread.sleep(500)
       logInfo(s"Write lock: trying to acquire lock... $blockId " +
@@ -92,8 +85,6 @@ private[spark] class DisaggBlockManager(
 
   def writeUnlock(blockId: BlockId, executorId: String, size: Long): Unit = {
     driverEndpoint.ask(FileWriteUnlock(blockId, executorId, size))
-    logInfo(s"Write finished in alluxio, unlocked: $blockId " +
-      s"executor $executorId")
   }
 
   def removeFile(blockId: BlockId): Boolean = {
@@ -115,8 +106,6 @@ private[spark] class DisaggBlockManager(
 
   def createFileInputStream(blockId: BlockId, executorId: String): Option[FileInStream] = {
     val path = new AlluxioURI("/" + blockId)
-    logInfo(s"createFileInputStream for $blockId " +
-      s"executor $executorId")
     try {
       // path exists and is not lost
       val exists = fs.exists(path)
@@ -127,8 +116,6 @@ private[spark] class DisaggBlockManager(
           s"executor $executorId")
         Some(fs.openFile(path))
       } else {
-        logInfo(s"createFileInputStream for $blockId: path doesn't exist or evicted " +
-          s"executor $executorId")
         None
       }
     } catch {
@@ -156,10 +143,8 @@ private[spark] class DisaggBlockManager(
         // the block is evicted (and UnavailableException is thrown)
         // thus we removed metadata for the block,
         // but fs.exists(path) CAN return true, so we delete it
-        logInfo(s"createFileOutputStream $blockId already exists! let's delete it")
         fs.delete(path)
       }
-      logInfo(s"createFileOutputStream $blockId starting..")
       val res = fs.createFile(path)
       logInfo(s"createFileOutputStream $blockId finished")
       res
