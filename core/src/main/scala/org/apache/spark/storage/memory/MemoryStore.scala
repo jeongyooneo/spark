@@ -508,7 +508,7 @@ private[spark] class MemoryStore(
           MemoryMode.ON_HEAP,
           unrollMemoryUsedByThisBlock,
           unrolled = if (promote) {
-            new CompletionTimeIterator(unrolledIterator) {
+            new CompletionTimeIterator[Any, Iterator[Any]](unrolledIterator) {
               override def completion(accTime: Long): Unit = {
                 if (TaskContext.get() != null) {
                   logInfo(s"TGLOG ReadDiskIter ${blockId} " +
