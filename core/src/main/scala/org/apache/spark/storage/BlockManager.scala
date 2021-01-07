@@ -1573,7 +1573,14 @@ private[spark] class BlockManager(
                 memoryStore.getValues(blockId).get
             }
           } else {
-            diskIterator
+            new CompletionTimeIterator(diskIterator) {
+              override def completion(accTime: Long): Unit = {
+                if (TaskContext.get() != null) {
+                  logInfo(s"TGLOG ReadDiskIter ${blockId} " +
+                    s"${accTime/1000} ${TaskContext.get().taskAttemptId()}")
+                }
+              }
+            }
           }
         }
       }.asInstanceOf[Iterator[T]]

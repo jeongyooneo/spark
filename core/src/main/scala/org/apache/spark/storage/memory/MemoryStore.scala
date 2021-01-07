@@ -33,7 +33,7 @@ import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.collection.SizeTrackingVector
 import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStream}
-import org.apache.spark.util.{SizeEstimator, Utils}
+import org.apache.spark.util.{CompletionTimeIterator, SizeEstimator, Utils}
 import org.apache.spark.{SparkConf, TaskContext}
 
 import scala.collection.mutable
@@ -388,9 +388,19 @@ private[spark] class MemoryStore(
     val unrollEnd = System.currentTimeMillis()
     val unrollTime = unrollEnd - unrollStart - unrollEvictSum
     if (TaskContext.get() != null) {
-      logInfo(s"TGLOG Unroll ${blockId} $unrollTime ${TaskContext.get().taskAttemptId()}")
+      if (promote) {
+        logInfo(s"TGLOG PromoteUnroll ${blockId} $unrollTime " +
+          s"${TaskContext.get().taskAttemptId()}")
+      } else {
+        logInfo(s"TGLOG Unroll ${blockId} $unrollTime " +
+          s"${TaskContext.get().taskAttemptId()}")
+      }
     } else {
-      logInfo(s"TGLOG Unroll ${blockId} $unrollTime")
+      if (promote) {
+        logInfo(s"TGLOG PromoteUnroll ${blockId} $unrollTime ")
+      } else {
+        logInfo(s"TGLOG Unroll ${blockId} $unrollTime")
+      }
     }
 
     // Make sure that we have enough memory to store the block. By this point, it is possible that
@@ -497,7 +507,17 @@ private[spark] class MemoryStore(
           this,
           MemoryMode.ON_HEAP,
           unrollMemoryUsedByThisBlock,
-          unrolled = unrolledIterator,
+          unrolled = if (promote) {
+            new CompletionTimeIterator(unrolledIterator) {
+              override def completion(accTime: Long): Unit = {
+                if (TaskContext.get() != null) {
+                  logInfo(s"TGLOG ReadDiskIter ${blockId} " +
+                    s"${accTime/1000} ${TaskContext.get().taskAttemptId()}")
+                }
+              }
+            }} else {
+            unrolledIterator
+          },
           rest = values))
     }
 
