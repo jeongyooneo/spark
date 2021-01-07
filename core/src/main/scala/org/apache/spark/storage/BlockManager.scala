@@ -1577,7 +1577,7 @@ private[spark] class BlockManager(
               override def completion(accTime: Long): Unit = {
                 if (TaskContext.get() != null) {
                   logInfo(s"TGLOG ReadDiskIter ${blockId} " +
-                    s"${accTime/1000} ${TaskContext.get().taskAttemptId()}")
+                    s"${accTime} ${TaskContext.get().taskAttemptId()}")
                 }
               }
             }

@@ -34,7 +34,7 @@ abstract class CompletionTimeIterator[ +A, +I <: Iterator[A]](sub: I) extends It
     val st = System.nanoTime()
     val v = iter.next()
     val et = System.nanoTime()
-    accTime += (et - st) / 1000
+    accTime += (et - st)
     v
   }
   def hasNext: Boolean = {
