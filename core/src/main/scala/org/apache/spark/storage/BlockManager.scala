@@ -591,6 +591,7 @@ private[spark] class BlockManager(
         val taskAttemptId = Option(TaskContext.get()).map(_.taskAttemptId())
         if (level.useMemory && memoryStore.contains(blockId)) {
           val iter: Iterator[Any] = if (level.deserialized) {
+            logInfo(s"cache hit $blockId stage ${TaskContext.get().stageId().toDouble}")
             memoryStore.getValues(blockId).get
           } else {
             serializerManager.dataDeserializeStream(
@@ -612,6 +613,7 @@ private[spark] class BlockManager(
                 blockId,
                 diskData.toInputStream())(info.classTag)
               val deserTime = System.currentTimeMillis() - startDeser
+              logInfo(s"cache miss $blockId stage ${TaskContext.get().stageId().toDouble}")
               logInfo(s"getLocalValues $blockId deserTime $deserTime " +
                 s"stage ${TaskContext.get().stageId().toDouble} " +
                 s"task ${TaskContext.get().partitionId().toDouble}")
@@ -704,6 +706,7 @@ private[spark] class BlockManager(
       val values =
         serializerManager.dataDeserializeStream(blockId, data.toInputStream(dispose = true))(ct)
       val deserTime = System.currentTimeMillis() - startDeser
+      logInfo(s"cache miss $blockId stage ${TaskContext.get().stageId().toDouble}")
       logInfo(s"getRemoteValues $blockId deserTime $deserTime " +
         s"stage ${TaskContext.get().stageId().toDouble} " +
         s"task ${TaskContext.get().partitionId().toDouble}")
@@ -885,25 +888,9 @@ private[spark] class BlockManager(
     // to go through the local-get-or-put path.
     get[T](blockId)(classTag) match {
       case Some(block) =>
-        // Accessed again in this executor
-        if (blockAccessHistory.contains(blockId)) {
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // Fetched from other executors
-          blockAccessHistory(blockId) = 1L
-        }
-        logInfo(s"cache hit: $blockId ${TaskContext.get().stageId()}")
         return Left(block)
       case _ =>
-        if (blockAccessHistory.contains(blockId)) {
-          // Cache miss in this executor
-          blockAccessHistory(blockId) += 1L
-        } else {
-          // First time generating this block *in this executor*
-          // (might have been generated and evicted in other executors)
-          blockAccessHistory(blockId) = 1L
-        }
-        logInfo(s"cache miss: $blockId ${TaskContext.get().stageId()}")
+        logInfo(s"cache miss $blockId stage ${TaskContext.get().stageId().toDouble}")
       // Need to compute the block.
     }
 
