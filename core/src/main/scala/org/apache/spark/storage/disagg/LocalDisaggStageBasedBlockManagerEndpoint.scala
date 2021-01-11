@@ -1369,7 +1369,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
       logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +
         s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
 
-    case CachingDone(blockId, size, executorId, onDisk) =>
+    case CachingDone(blockId, size, stageId, onDisk) =>
       val rddId = blockId.asRDDId.get.rddId
       rddDiscardMap.putIfAbsent(rddId, new ConcurrentHashMap[Int, Boolean]())
       val set = rddDiscardMap.get(rddId)
@@ -1380,7 +1380,7 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
           set.remove(blockIndex)
         }
       }
-      BlazeLogger.cachingDone(blockId, executorId, size, onDisk)
+      BlazeLogger.cachingDone(blockId, stageId, size, onDisk)
 
     case DiskCachingDone(blockId, size, executorId) =>
       BlazeLogger.cachingDone(blockId, executorId, size, true)
@@ -1393,8 +1393,8 @@ private[spark] class LocalDisaggStageBasedBlockManagerEndpoint(
         cachingFail(blockId, estimateSize, executorId, putDisagg, localFull, onDisk)
       }
 
-    case ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk, rtime) =>
-      BlazeLogger.readLocal(blockId, executorId, fromRemote, onDisk, rtime)
+    case ReadBlockFromLocal(blockId, stageId, fromRemote, onDisk, rtime) =>
+      BlazeLogger.readLocal(blockId, stageId, fromRemote, onDisk, rtime)
 
     case IsRddCache(rddId) =>
       context.reply(isRddCache(rddId))

@@ -100,9 +100,9 @@ class DisaggBlockManager(
     driverEndpoint.ask(WriteDisaggBlock(blockId, size, cost))
   }
 
-  def readLocalBlock(blockId: BlockId, executorId: String, fromRemote: Boolean,
+  def readLocalBlock(blockId: BlockId, stageId: String, fromRemote: Boolean,
                      onDisk: Boolean, time: Long): Unit = {
-    driverEndpoint.ask(ReadBlockFromLocal(blockId, executorId, fromRemote, onDisk, time))
+    driverEndpoint.ask(ReadBlockFromLocal(blockId, stageId, fromRemote, onDisk, time))
   }
 
   def sendDeserMetric(blockId: BlockId, size: Long, time: Long): Unit = {
@@ -149,10 +149,10 @@ class DisaggBlockManager(
       DiskCachingDone(blockId, estimateSize, executorId))
   }
 
-  def cachingDone(blockId: BlockId, estimateSize: Long, executorId: String,
+  def cachingDone(blockId: BlockId, estimateSize: Long, stageId: String,
                   onDisk: Boolean): Unit = {
     driverEndpoint.ask(
-      CachingDone(blockId, estimateSize, executorId, onDisk))
+      CachingDone(blockId, estimateSize, stageId, onDisk))
   }
 
   def cachingDecision(blockId: BlockId, estimateSize: Long,

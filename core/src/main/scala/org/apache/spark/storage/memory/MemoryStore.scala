@@ -287,7 +287,7 @@ private[spark] class MemoryStore(
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)
       if (!IS_BLAZE) {
-        // It returns alwasy true if it is not blaze (if it is LRC or MRD)
+        // It returns always true if it is not blaze (if it is LRC or MRD)
         disaggManager.cachingDecision(blockId, estimateSize,
           executorId, false, !keepUnrolling, false, false)
       } else {
@@ -446,7 +446,8 @@ private[spark] class MemoryStore(
           Utils.bytesToString(entry.size), Utils.bytesToString(maxMemory - blocksMemoryUsed)))
 
         if (blockId.isRDD && decisionByMaster) {
-          disaggManager.cachingDone(blockId, size, executorId, false)
+          val stageId = "stage" + TaskContext.get().stageId()
+          disaggManager.cachingDone(blockId, size, stageId, false)
         }
 
         Right(entry.size)

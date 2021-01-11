@@ -42,11 +42,11 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"CMP\t$rddId\t$time")
   }
 
-  def cachingDone(blockId: BlockId, executorId: String, size: Long, onDisk: Boolean): Unit = {
+  def cachingDone(blockId: BlockId, stageId: String, size: Long, onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"CACHING_DONE_DISK\t$executorId\t$blockId\t$size")
+      logInfo(s"CACHING_DONE_DISK\t$stageId\t$blockId\t$size")
     } else {
-      logInfo(s"CACHING_DONE_MEM\t$executorId\t$blockId\t$size")
+      logInfo(s"CACHING_DONE_MEM\t$stageId\t$blockId\t$size")
     }
   }
 
@@ -140,19 +140,19 @@ private[spark] object BlazeLogger extends Logging {
   }
 
   // Read operations
-  def readLocal(blockId: BlockId, executorId: String, fromRemote: Boolean,
+  def readLocal(blockId: BlockId, stageId: String, fromRemote: Boolean,
                 onDisk: Boolean, readTime: Long): Unit = {
     if (onDisk) {
       if (fromRemote) {
-        logInfo(s"READ_DISK_R\t$executorId\t$blockId\t$fromRemote\t$readTime")
+        logInfo(s"READ_DISK_R\t$stageId\t$blockId\t$fromRemote\t$readTime")
       } else {
-        logInfo(s"READ_DISK_L\t$executorId\t$blockId\t$fromRemote\t$readTime")
+        logInfo(s"READ_DISK_L\t$stageId\t$blockId\t$fromRemote\t$readTime")
       }
     } else {
       if (fromRemote) {
-        logInfo(s"READ_L_R\t$executorId\t$blockId\t$fromRemote\t$readTime")
+        logInfo(s"READ_L_R\t$stageId\t$blockId\t$fromRemote\t$readTime")
       } else {
-        logInfo(s"READ_L_L\t$executorId\t$blockId\t$fromRemote\t$readTime")
+        logInfo(s"READ_L_L\t$stageId\t$blockId\t$fromRemote\t$readTime")
       }
     }
   }

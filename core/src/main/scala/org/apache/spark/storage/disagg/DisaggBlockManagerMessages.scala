@@ -47,7 +47,7 @@ private[spark] object DisaggBlockManagerMessages {
                              putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
     extends ToBlockManagerMaster
 
-  case class CachingDone(blockId: BlockId, estimateSize: Long, executorId: String, onDisk: Boolean)
+  case class CachingDone(blockId: BlockId, estimateSize: Long, stageId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class DiskCachingDone(blockId: BlockId, size: Long, executorId: String)
@@ -77,7 +77,7 @@ private[spark] object DisaggBlockManagerMessages {
   case class LocalEvictionDone(blockId: BlockId, executorId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 
-  case class ReadBlockFromLocal(blockId: BlockId, executorId: String,
+  case class ReadBlockFromLocal(blockId: BlockId, stageId: String,
                                 fromRemote: Boolean, onDisk: Boolean, readTime: Long)
   extends ToBlockManagerMaster
 

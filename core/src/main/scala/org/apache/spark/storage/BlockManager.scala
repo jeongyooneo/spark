@@ -687,7 +687,8 @@ private[spark] class BlockManager(
                 diskData.toInputStream())(info.classTag)
 
               val et = System.currentTimeMillis()
-              disaggManager.readLocalBlock(blockId, executorId, false, true, et - st)
+              val stageId = "stage" + TaskContext.get().stageId()
+              disaggManager.readLocalBlock(blockId, stageId, false, true, et - st)
 
               if (readAfterCache && IS_BLAZE && !CACHING_ALWAYS) {
                 diskValues
