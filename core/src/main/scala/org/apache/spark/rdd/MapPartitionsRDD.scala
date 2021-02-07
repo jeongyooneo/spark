@@ -45,8 +45,9 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext): Iterator[U] =
+  override def compute(split: Partition, context: TaskContext): Iterator[U] = {
     f(context, split.index, firstParent[T].iterator(split, context))
+  }
 
   override def clearDependencies() {
     super.clearDependencies()

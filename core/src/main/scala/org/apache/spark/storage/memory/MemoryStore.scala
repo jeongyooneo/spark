@@ -84,6 +84,8 @@ private[spark] class MemoryStore(
     blockEvictionHandler: BlockEvictionHandler)
   extends Logging {
 
+  @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
+
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 

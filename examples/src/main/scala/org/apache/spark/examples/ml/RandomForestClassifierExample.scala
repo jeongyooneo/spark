@@ -33,9 +33,27 @@ object RandomForestClassifierExample {
       .appName("RandomForestClassifierExample")
       .getOrCreate()
 
+    println("Arguments " + args)
+
+    val prefix = "data/mllib/"
+    var path = "sample_libsvm_data.txt"
+    var numCategories: Int = 4
+    var numTrees = 10
+    var isCacheSet = false
+
+    if (args.length >= 3) {
+      numCategories = args(0).toInt
+      numTrees = args(1).toInt
+      isCacheSet = args(2).toBoolean
+      path = args(3)
+    }
+
+    println("Num categories " + numCategories + ", numTrees: " + numTrees + ", cache"
+      + isCacheSet + ", path: " + path)
+
     // $example on$
     // Load and parse the data file, converting it to a DataFrame.
-    val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+    val data = spark.read.format("libsvm").load(prefix + path)
 
     // Index labels, adding metadata to the label column.
     // Fit on whole dataset to include all labels in index.
@@ -48,7 +66,7 @@ object RandomForestClassifierExample {
     val featureIndexer = new VectorIndexer()
       .setInputCol("features")
       .setOutputCol("indexedFeatures")
-      .setMaxCategories(4)
+      .setMaxCategories(numCategories)
       .fit(data)
 
     // Split the data into training and test sets (30% held out for testing).
@@ -58,7 +76,8 @@ object RandomForestClassifierExample {
     val rf = new RandomForestClassifier()
       .setLabelCol("indexedLabel")
       .setFeaturesCol("indexedFeatures")
-      .setNumTrees(10)
+      .setNumTrees(numTrees)
+      .setCacheNodeIds(isCacheSet)
 
     // Convert indexed labels back to original labels.
     val labelConverter = new IndexToString()

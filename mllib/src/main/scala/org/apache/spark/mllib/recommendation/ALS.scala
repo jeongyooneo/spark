@@ -86,8 +86,8 @@ class ALS private (
   private var nonnegative = false
 
   /** storage level for user/product in/out links */
-  private var intermediateRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK
-  private var finalRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK
+  private var intermediateRDDStorageLevel: StorageLevel = StorageLevel.DISAGG
+  private var finalRDDStorageLevel: StorageLevel = StorageLevel.DISAGG
 
   /** checkpoint interval */
   private var checkpointInterval: Int = 10
