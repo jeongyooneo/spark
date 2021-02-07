@@ -17,19 +17,22 @@
 
 package org.apache.spark.storage
 
+import java.util.concurrent.{Executors, TimeUnit}
+import java.util.function.BiConsumer
 import java.util.{HashMap => JHashMap}
 
-import scala.collection.mutable
-import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Random
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkConf
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
 import org.apache.spark.util.{ThreadUtils, Utils}
+
+import scala.collection.JavaConverters._
+import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Random
 
 /**
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
@@ -45,6 +48,9 @@ class BlockManagerMasterEndpoint(
 
   // Mapping from block manager id to the block manager's information.
   private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
+
+  // disagg block size info
+  private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]
 
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
@@ -69,14 +75,80 @@ class BlockManagerMasterEndpoint(
 
   logInfo("BlockManagerMasterEndpoint up")
 
+  def getBlockSize(blockId: BlockId): Long = {
+    val size = disaggBlockSizeInfo.get(blockId)
+
+    if (size.isDefined) {
+      logInfo(s"tg: Getting disagg block  $blockId size $size in master")
+      size.get
+    } else {
+      logInfo(s"tg: No disagg block  $blockId size in master")
+      0L
+    }
+  }
+
+  val scheduler = Executors.newSingleThreadScheduledExecutor()
+  val task = new Runnable {
+    def run(): Unit = {
+
+      // MB
+      var memSize = 0L
+      var diskSize = 0L
+      var disaggSize = 0L
+
+      // MB
+      val unit = 1000000
+
+      val builder: mutable.StringBuilder = new mutable.StringBuilder()
+      builder.append("------- stat logging start ------\n")
+
+      blockManagerInfo.foreach {
+        case (k: BlockManagerId, v: BlockManagerInfo) =>
+
+          var memSizeForManager = 0L
+          var diskSizeForManager = 0L
+
+          v.blocks.forEach(new BiConsumer[BlockId, BlockStatus] {
+            def accept(b: BlockId, stat: BlockStatus): Unit = {
+              memSizeForManager += stat.memSize
+              diskSizeForManager += stat.diskSize
+
+              memSize += stat.memSize
+              diskSize += stat.diskSize
+              disaggSize += stat.disaggSize
+            }
+
+          })
+
+          builder.append(s"BlockManager ${k.host}: memory ${memSizeForManager/unit}, " +
+            s"disk ${diskSizeForManager/unit}\n")
+      }
+
+
+      builder.append(s"Total size memory: ${memSize/unit}, " +
+        s"disk: ${diskSize/unit}, disagg: ${disaggSize/unit}\n")
+
+      builder.append("------- stat logging end ------\n")
+
+      logInfo(builder.toString())
+    }
+  }
+  scheduler.scheduleAtFixedRate(task, 5, 5, TimeUnit.SECONDS)
+
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
       context.reply(register(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint))
 
     case _updateBlockInfo @
-        UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
-      context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size))
+        UpdateBlockInfo(blockManagerId, blockId, storageLevel,
+        deserializedSize, size, disaggSize) =>
+      context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel,
+        deserializedSize, size, disaggSize))
       listenerBus.post(SparkListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
+
+    case GetBlockSize(blockId) =>
+      context.reply(getBlockSize(blockId))
 
     case GetLocations(blockId) =>
       context.reply(getLocations(blockId))
@@ -377,7 +449,10 @@ class BlockManagerMasterEndpoint(
       blockId: BlockId,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long): Boolean = {
+      diskSize: Long,
+      disaggSize: Long): Boolean = {
+
+    logInfo(s"Update block info haha $blockId disaggSize $disaggSize")
 
     if (!blockManagerInfo.contains(blockManagerId)) {
       if (blockManagerId.isDriver && !isLocal) {
@@ -394,7 +469,14 @@ class BlockManagerMasterEndpoint(
       return true
     }
 
-    blockManagerInfo(blockManagerId).updateBlockInfo(blockId, storageLevel, memSize, diskSize)
+    // update disagg info
+    if (storageLevel.useDisagg && disaggSize > 0) {
+      logInfo(s"Update disagg block info $blockId size $disaggSize")
+      disaggBlockSizeInfo(blockId) = disaggSize
+    }
+
+    blockManagerInfo(blockManagerId).updateBlockInfo(
+      blockId, storageLevel, memSize, diskSize, disaggSize)
 
     var locations: mutable.HashSet[BlockManagerId] = null
     if (blockLocations.containsKey(blockId)) {
@@ -450,17 +532,22 @@ class BlockManagerMasterEndpoint(
 
   override def onStop(): Unit = {
     askThreadPool.shutdownNow()
+    scheduler.shutdownNow()
   }
 }
 
 @DeveloperApi
-case class BlockStatus(storageLevel: StorageLevel, memSize: Long, diskSize: Long) {
+case class BlockStatus(storageLevel: StorageLevel,
+                       memSize: Long,
+                       diskSize: Long,
+                       disaggSize: Long) {
   def isCached: Boolean = memSize + diskSize > 0
 }
 
 @DeveloperApi
 object BlockStatus {
-  def empty: BlockStatus = BlockStatus(StorageLevel.NONE, memSize = 0L, diskSize = 0L)
+  def empty: BlockStatus = BlockStatus(
+    StorageLevel.NONE, memSize = 0L, diskSize = 0L, disaggSize = 0L)
 }
 
 private[spark] class BlockManagerInfo(
@@ -492,7 +579,8 @@ private[spark] class BlockManagerInfo(
       blockId: BlockId,
       storageLevel: StorageLevel,
       memSize: Long,
-      diskSize: Long) {
+      diskSize: Long,
+      disaggSize: Long) {
 
     updateLastSeenMs()
 
@@ -522,7 +610,7 @@ private[spark] class BlockManagerInfo(
        * Therefore, a safe way to set BlockStatus is to set its info in accurate modes. */
       var blockStatus: BlockStatus = null
       if (storageLevel.useMemory) {
-        blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = 0)
+        blockStatus = BlockStatus(storageLevel, memSize = memSize, diskSize = 0, disaggSize = 0)
         _blocks.put(blockId, blockStatus)
         _remainingMem -= memSize
         if (blockExists) {
@@ -539,7 +627,7 @@ private[spark] class BlockManagerInfo(
         }
       }
       if (storageLevel.useDisk) {
-        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
+        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize, disaggSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
           logInfo(s"Updated $blockId on disk on ${blockManagerId.hostPort}" +
@@ -551,12 +639,12 @@ private[spark] class BlockManagerInfo(
         }
       }
       if (storageLevel.useDisagg) {
-        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = diskSize)
+        blockStatus = BlockStatus(storageLevel, memSize = 0, diskSize = 0, disaggSize)
         _blocks.put(blockId, blockStatus)
         if (blockExists) {
-          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}")
+          logInfo(s"Updated $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
         } else {
-          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}")
+          logInfo(s"Added $blockId over disagg on ${blockManagerId.hostPort}, size $disaggSize")
         }
       }
       if (!blockId.isBroadcast && blockStatus.isCached) {

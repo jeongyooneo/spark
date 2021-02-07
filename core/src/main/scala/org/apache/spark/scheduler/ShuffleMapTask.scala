@@ -97,7 +97,6 @@ private[spark] class ShuffleMapTask(
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-
       val ret = writer.stop(success = true).get
       val tct = System.nanoTime() - startTime
       mylogger.info("TCT Stage " + context.stageId() + " Task " + context.taskAttemptId()

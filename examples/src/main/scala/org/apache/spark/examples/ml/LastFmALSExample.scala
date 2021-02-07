@@ -19,7 +19,9 @@
 package org.apache.spark.examples.ml
 
 // $example on$
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.ml.recommendation.ALS
+import org.apache.spark.sql.{DataFrame, Dataset}
 // $example off$
 import org.apache.spark.sql.SparkSession
 
@@ -30,7 +32,7 @@ import org.apache.spark.sql.SparkSession
  * bin/run-example ml.ALSExample
  * }}}
  */
-object ALSExample {
+object LastFmALSExample {
 
   // $example on$
   case class Rating(userId: Int, movieId: Int, rating: Float, timestamp: Long)
@@ -41,60 +43,99 @@ object ALSExample {
   }
   // $example off$
 
+  def buildCount(rawUserArtistData: Dataset[String],
+                 bArtistAlias: Broadcast[Map[Int, Int]],
+                 spark: SparkSession): DataFrame = {
+    import spark.implicits._
+    rawUserArtistData.map { line =>
+      val Array(userID, artistID, count) = line.split(" ").map(_.toInt)
+      val finalArtistId = bArtistAlias.value.getOrElse(artistID, artistID)
+      (userID, finalArtistId, count)
+    }.toDF("user", "artist", "count")
+  }
+
   def main(args: Array[String]) {
     @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
     val startTime = System.nanoTime
 
     val spark = SparkSession
       .builder
-      .appName("ALSExample")
+      .appName("LastFmALSExample")
       .getOrCreate()
+
     import spark.implicits._
 
     // $example on$
-    val ratings = spark.read.textFile("data/mllib/als/output")
-      .map(parseRating)
-      .toDF()
-    val Array(training, test) = ratings.randomSplit(Array(0.8, 0.2))
+    val rawUserArtistData = spark.read.textFile("/dataset/lastfm/user_artist_data.txt")
+      .persist()
+
+    val userArtistDF = rawUserArtistData
+      .map({ line =>
+        val Array(user, artist, score) = line.split(' ')
+        (user.toInt, artist.toInt)
+      }).toDF("user", "artist")
+
+    val artistById = spark.read.textFile("/dataset/lastfm/artist_data.txt")
+      .flatMap({ line =>
+        val (id, name) = line.span(_ != "\t")
+        if (name.isEmpty) {
+          None
+        } else {
+          try {
+            Some((id.toInt, name.trim))
+          } catch {
+            case _: NumberFormatException => None
+          }
+        }
+      }).toDF("id", "name")
+
+    val artistAlias = spark.read.textFile("/dataset/lastfm/artist_alias.txt")
+      .flatMap({ line =>
+        val Array(artist, alias) = line.split("\t")
+        if (artist.isEmpty) {
+          None
+        } else {
+          Some((artist.toInt, alias.toInt))
+        }
+      }).collect().toMap
+
+    val bArtistAlias = spark.sparkContext.broadcast(artistAlias)
+    val trainData = buildCount(rawUserArtistData, bArtistAlias, spark)
+
+    rawUserArtistData.unpersist()
+
+    val Array(training, test) = trainData.randomSplit(Array(0.8, 0.2))
 
     training.cache()
 
-    // Build the recommendation model using ALS on the training data
-    for (i <- 0 to 2) {
-      val als = new ALS()
-        .setMaxIter(3)
-        .setRegParam(0.01)
-        .setRank(10)
-        .setUserCol("userId")
-        .setItemCol("movieId")
-        .setRatingCol("rating")
+    for (i <- 0 to 3) {
+      val model = new ALS()
         .setImplicitPrefs(true)
-      val model = als.fit(training)
+        .setRank(10)
+        .setRegParam(0.01)
+        .setAlpha(1.0)
+        .setMaxIter(5)
+        .setUserCol("user")
+        .setItemCol("artist")
+        .setRatingCol("count")
+        .setPredictionCol("prediction")
+        .fit(training)
 
       // Evaluate the model by computing the RMSE on the test data
       // Note we set cold start strategy to 'drop' to ensure we don't get NaN evaluation metrics
       model.setColdStartStrategy("drop")
-      val predictions = model.transform(test)
-
-      /*
-    val evaluator = new RegressionEvaluator()
-      .setMetricName("rmse")
-      .setLabelCol("rating")
-      .setPredictionCol("prediction")
-    val rmse = evaluator.evaluate(predictions)
-    println(s"Root-mean-square error = $rmse")
-    */
 
       // Generate top 10 movie recommendations for each user
-      val userRecs = model.recommendForAllUsers(5)
+      val userRecs = model.recommendForAllUsers(10)
       // Generate top 10 user recommendations for each movie
-      val movieRecs = model.recommendForAllItems(5)
+      val movieRecs = model.recommendForAllItems(10)
       // $example off$
       // userRecs.show()
       // movieRecs.show()
 
       // Thread.sleep(1000000)
       val jct = (System.nanoTime() - startTime) / 1000000
+
       mylogger.info(s"Iteration ${i + 1} finished  $jct ms")
     }
 

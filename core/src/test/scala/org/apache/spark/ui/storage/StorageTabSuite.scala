@@ -123,9 +123,9 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
 
     // Some blocks updated
     val blockUpdateInfos = Seq(
-      BlockUpdatedInfo(bm1, RDDBlockId(0, 100), memAndDisk, 400L, 0L),
-      BlockUpdatedInfo(bm1, RDDBlockId(0, 101), memAndDisk, 0L, 400L),
-      BlockUpdatedInfo(bm1, RDDBlockId(1, 20), memAndDisk, 0L, 240L)
+      BlockUpdatedInfo(bm1, RDDBlockId(0, 100), memAndDisk, 400L, 0L, 0L),
+      BlockUpdatedInfo(bm1, RDDBlockId(0, 101), memAndDisk, 0L, 400L, 0L),
+      BlockUpdatedInfo(bm1, RDDBlockId(1, 20), memAndDisk, 0L, 240L, 0L)
     )
     postUpdateBlocks(bus, blockUpdateInfos)
     assert(storageListener._rddInfoMap(0).memSize === 400L)
@@ -141,10 +141,10 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
 
     // Drop some blocks
     val blockUpdateInfos2 = Seq(
-      BlockUpdatedInfo(bm1, RDDBlockId(0, 100), none, 0L, 0L),
-      BlockUpdatedInfo(bm1, RDDBlockId(1, 20), none, 0L, 0L),
-      BlockUpdatedInfo(bm1, RDDBlockId(2, 40), none, 0L, 0L), // doesn't actually exist
-      BlockUpdatedInfo(bm1, RDDBlockId(4, 80), none, 0L, 0L) // doesn't actually exist
+      BlockUpdatedInfo(bm1, RDDBlockId(0, 100), none, 0L, 0L, 0L),
+      BlockUpdatedInfo(bm1, RDDBlockId(1, 20), none, 0L, 0L, 0L),
+      BlockUpdatedInfo(bm1, RDDBlockId(2, 40), none, 0L, 0L, 0L), // doesn't actually exist
+      BlockUpdatedInfo(bm1, RDDBlockId(4, 80), none, 0L, 0L, 0L) // doesn't actually exist
     )
     postUpdateBlocks(bus, blockUpdateInfos2)
     assert(storageListener._rddInfoMap(0).memSize === 0L)
@@ -163,8 +163,8 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     val rddInfo1 = new RDDInfo(1, "rdd1", 1, memOnly, Seq(4))
     val stageInfo0 = new StageInfo(0, 0, "stage0", 1, Seq(rddInfo0), Seq.empty, "details")
     val stageInfo1 = new StageInfo(1, 0, "stage1", 1, Seq(rddInfo1), Seq.empty, "details")
-    val blockUpdateInfos1 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(0, 1), memOnly, 100L, 0L))
-    val blockUpdateInfos2 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(1, 1), memOnly, 200L, 0L))
+    val blockUpdateInfos1 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(0, 1), memOnly, 100L, 0L, 0L))
+    val blockUpdateInfos2 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(1, 1), memOnly, 200L, 0L, 0L))
     bus.postToAll(SparkListenerBlockManagerAdded(1L, bm1, 1000L))
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0))
     assert(storageListener.rddInfoList.size === 0)
@@ -185,7 +185,7 @@ class StorageTabSuite extends SparkFunSuite with LocalSparkContext with BeforeAn
     val stageInfo0 = new StageInfo(0, 0, "stage0", 1, Seq(rddInfo), Seq.empty, "details")
     bus.postToAll(SparkListenerBlockManagerAdded(1L, bm1, 1000L))
     bus.postToAll(SparkListenerStageSubmitted(stageInfo0))
-    val blockUpdateInfos1 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(0, 1), memOnly, 100L, 0L))
+    val blockUpdateInfos1 = Seq(BlockUpdatedInfo(bm1, RDDBlockId(0, 1), memOnly, 100L, 0L, 0L))
     postUpdateBlocks(bus, blockUpdateInfos1)
     assert(storageListener.rddInfoList.size == 1)
 

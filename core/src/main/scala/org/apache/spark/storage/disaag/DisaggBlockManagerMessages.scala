@@ -15,33 +15,31 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage
+package org.apache.spark.storage.disaag
 
-import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.storage.BlockManagerMessages.UpdateBlockInfo
+import org.apache.spark.storage.BlockId
 
-/**
- * :: DeveloperApi ::
- * Stores information about a block status in a block manager.
- */
-@DeveloperApi
-case class BlockUpdatedInfo(
-    blockManagerId: BlockManagerId,
-    blockId: BlockId,
-    storageLevel: StorageLevel,
-    memSize: Long,
-    diskSize: Long,
-    disaggSize: Long)
+private[spark] object DisaggBlockManagerMessages {
 
-private[spark] object BlockUpdatedInfo {
+  //////////////////////////////////////////////////////////////////////////////////
+  // Messages from slaves to the master.
+  //////////////////////////////////////////////////////////////////////////////////
+  sealed trait ToBlockManagerMaster
 
-  private[spark] def apply(updateBlockInfo: UpdateBlockInfo): BlockUpdatedInfo = {
-    BlockUpdatedInfo(
-      updateBlockInfo.blockManagerId,
-      updateBlockInfo.blockId,
-      updateBlockInfo.storageLevel,
-      updateBlockInfo.memSize,
-      updateBlockInfo.diskSize,
-      updateBlockInfo.disaggSize)
-  }
+  case class FileCreated(
+      blockId: BlockId)
+    extends ToBlockManagerMaster
+
+  case class FileRemoved(blockId: BlockId)
+    extends ToBlockManagerMaster
+
+  case class FileWriteEnd(blockId: BlockId, size: Long)
+    extends ToBlockManagerMaster
+
+  case class Contains(blockId: BlockId)
+    extends ToBlockManagerMaster
+
+  case class GetSize(blockId: BlockId)
+    extends ToBlockManagerMaster
+
 }

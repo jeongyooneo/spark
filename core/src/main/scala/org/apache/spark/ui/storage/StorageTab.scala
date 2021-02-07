@@ -81,7 +81,8 @@ class StorageListener(storageStatusListener: StorageStatusListener) extends Bloc
     val storageLevel = blockUpdated.blockUpdatedInfo.storageLevel
     val memSize = blockUpdated.blockUpdatedInfo.memSize
     val diskSize = blockUpdated.blockUpdatedInfo.diskSize
-    val blockStatus = BlockStatus(storageLevel, memSize, diskSize)
+    val disaggSize = blockUpdated.blockUpdatedInfo.disaggSize
+    val blockStatus = BlockStatus(storageLevel, memSize, diskSize, disaggSize)
     updateRDDInfo(Seq((blockId, blockStatus)))
   }
 }

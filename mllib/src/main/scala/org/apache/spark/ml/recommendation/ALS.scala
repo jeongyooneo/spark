@@ -1099,7 +1099,6 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
      */
 
     val numPartitions = srcPart.numPartitions * dstPart.numPartitions
-    var printNum = 0
     ratings.mapPartitions { iter =>
       val builders = Array.fill(numPartitions)(new RatingBlockBuilder[ID])
       iter.flatMap { r =>
@@ -1122,12 +1121,6 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
         }
       }
     }.groupByKey().mapValues { blocks =>
-      /*
-      if (printNum < 5) {
-          logInfo(s"ALS mapValues $blocks")
-          printNum = printNum + 1
-      }
-      */
       val builder = new RatingBlockBuilder[ID]
       blocks.foreach(builder.merge)
       builder.build()
