@@ -227,6 +227,9 @@ private[spark] class MemoryStore(
     // Keep track of unroll memory used by this particular block / putIterator() operation
     var unrollMemoryUsedByThisBlock = 0L
 
+    var vHolder = valuesHolder
+    var newValues = values
+
     if (blockId.isRDD && decisionByMaster) {
       val estimateSize = getEstimateSize(blockId)
       if (!IS_BLAZE) {
@@ -393,10 +396,8 @@ private[spark] class MemoryStore(
       } else {
 
         if (blockId.isRDD && decisionByMaster) {
-          blazeManager.cachingFail(blockId, size, executorId, false, true, false)
+          blazeManager.cachingFail(blockId, size, executorId, false)
         }
-
-        // We delete the info
 
         // We ran out of space while unrolling the values for this block
         logUnrollFailureMessage(blockId, entryBuilder.preciseSize)
@@ -404,7 +405,7 @@ private[spark] class MemoryStore(
       }
     } else {
       if (blockId.isRDD && decisionByMaster) {
-        blazeManager.cachingFail(blockId, 0L, executorId, true, false)
+        blazeManager.cachingFail(blockId, 0L, executorId, false)
       }
 
       // We ran out of space while unrolling the values for this block

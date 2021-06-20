@@ -121,10 +121,10 @@ class BlazeManager(var driverEndpoint: RpcEndpointRef) extends Logging {
     driverEndpoint.ask(EvictionFail(blockId, executorId, onDisk))
   }
 
-  def cachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                  localFull: Boolean, onDisk: Boolean): Unit = {
+  def cachingFail(blockId: BlockId, estimateSize: Long,
+                  executorId: String, onDisk: Boolean): Unit = {
     driverEndpoint.ask(
-      CachingFail(blockId, estimateSize, executorId, localFull, onDisk))
+      CachingFail(blockId, estimateSize, executorId, onDisk))
   }
 
 
