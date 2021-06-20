@@ -33,8 +33,7 @@ private[spark] object BlazeBlockManagerMessages {
                              taskAttempt: Long)
     extends ToBlockManagerMaster
 
-  case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                             localFull: Boolean, onDisk: Boolean)
+  case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class CachingDone(blockId: BlockId, estimateSize: Long, stageId: String, onDisk: Boolean)

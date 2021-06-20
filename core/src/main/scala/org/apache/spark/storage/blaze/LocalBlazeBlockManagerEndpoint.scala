@@ -800,26 +800,15 @@ private[spark] class LocalBlazeBlockManagerEndpoint(override val rpcEnv: RpcEnv,
       BlazeLogger.rddCompTime(rddId, time)
 
     // FOR LOCAL
-    // FOR LOCAL
     case StoreBlockOrNot(blockId, estimateSize, executorId,
-    localFull, onDisk, promote, attemp) =>
+    localFull, onDisk, promote, attempt) =>
       val start = System.currentTimeMillis()
-      logInfo(s"Start cachingDecision ${blockId}, " +
-        s"executor ${executorId}, ${localFull}, ${onDisk}, ${promote}")
-      if (putDisagg) {
-        synchronized {
-          localExecutorLockMap.putIfAbsent(executorId, new Object)
-          context.reply(cachingDecision(blockId, estimateSize, executorId,
-            putDisagg, localFull, onDisk, promote, attemp))
-        }
-      } else {
-        localExecutorLockMap.putIfAbsent(executorId, new Object)
-        context.reply(cachingDecision(blockId, estimateSize, executorId,
-          putDisagg, localFull, onDisk, promote, attemp))
-      }
+      localExecutorLockMap.putIfAbsent(executorId, new Object)
+      context.reply(cachingDecision(blockId, estimateSize, executorId,
+        localFull, onDisk, promote, attempt))
       val end = System.currentTimeMillis()
-      logInfo(s"End cachingDecision ${blockId}, time ${end - start} ms," +
-        s"executor ${executorId}, ${putDisagg}, ${localFull}, ${onDisk}")
+      logInfo(s"cachingDecision for ${blockId} took time ${end - start} ms," +
+        s"executor ${executorId}, ${localFull}, ${onDisk}")
 
     case CachingDone(blockId, size, stageId, onDisk) =>
       val rddId = blockId.asRDDId.get.rddId
@@ -838,11 +827,11 @@ private[spark] class LocalBlazeBlockManagerEndpoint(override val rpcEnv: RpcEnv,
       BlazeLogger.cachingDone(blockId, executorId, size, true)
       metricTracker.localDiskStoredBlocksSizeMap.put(blockId, size)
 
-    case CachingFail(blockId, estimateSize, executorId, localFull, onDisk) =>
+    case CachingFail(blockId, estimateSize, executorId, onDisk) =>
       localExecutorLockMap.putIfAbsent(executorId, new Object)
       val lock = localExecutorLockMap(executorId)
       lock.synchronized {
-        cachingFail(blockId, estimateSize, executorId, localFull, onDisk)
+        cachingFail(blockId, estimateSize, executorId, onDisk)
       }
 
     case ReadBlockFromLocal(blockId, stageId, fromRemote, onDisk, rtime) =>
