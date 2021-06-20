@@ -579,7 +579,6 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
     testInMemoryLRUStorage(StorageLevel(
       useDisk = false,
       useMemory = true,
-      useDisagg = false,
       useOffHeap = true,
       deserialized = false, replication = 1))
   }
@@ -1228,8 +1227,8 @@ class BlockManagerSuite extends SparkFunSuite with Matchers with BeforeAndAfterE
 
   test("remove block if a read fails due to missing DiskStore files (SPARK-15736)") {
     val storageLevels = Seq(
-      StorageLevel(useDisk = true, useMemory = false, useDisagg = false, deserialized = false),
-      StorageLevel(useDisk = true, useMemory = false, useDisagg = false, deserialized = true))
+      StorageLevel(useDisk = true, useMemory = false, deserialized = false),
+      StorageLevel(useDisk = true, useMemory = false, deserialized = true))
     val readMethods = Map[String, BlockManager => Option[_]](
       "getLocalBytes" -> ((m: BlockManager) => m.getLocalBytes("blockId")),
       "getLocalValues" -> ((m: BlockManager) => m.getLocalValues("blockId"))

@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.disagg.RDDJobDag.StageDistance
+import org.apache.spark.storage.blaze.RDDJobDag.StageDistance
 import org.apache.spark.storage.{BlockId, RDDBlockId}
 import org.mortbay.util.ajax.JSON
 
@@ -519,8 +519,8 @@ class RDDJobDag(val dag: mutable.Map[RDDNode, mutable.Set[RDDNode]],
     val rddNode = vertices(rddId)
 
     try {
-      for (childnode <- dag(rddNode)) {
-        if (!metricTracker.completedStages.contains(childnode.rootStage)) {
+      for (childNode <- dag(rddNode)) {
+        if (!metricTracker.completedStages.contains(childNode.rootStage)) {
           cnt += 1
         }
       }

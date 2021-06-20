@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
@@ -52,20 +52,13 @@ private[spark] object BlazeLogger extends Logging {
 
   def logLocalCaching(blockId: BlockId, executor: String,
                       size: Long,
-                      comp: Double, disaggCost: Long, msg: String,
+                      comp: Double, diskCost: Long, msg: String,
                       onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$comp\t$size\t$msg")
+      logInfo(s"CACHING_DISK_L\t$executor\t$blockId\t$comp\t$diskCost\t$size\t$msg")
     } else {
-      logInfo(s"CACHING_L\t$executor\t$blockId\t$comp\t$size\t$msg")
+      logInfo(s"CACHING_L\t$executor\t$blockId\t$comp\t$diskCost\t$size\t$msg")
     }
-  }
-
-  def logDisaggCaching(blockId: BlockId,
-                       executorId: String,
-                       size: Long,
-                       comp: Double, disaggCost: Long): Unit = {
-    logInfo(s"CACHING_D\t$executorId\t$blockId\t$size\t$comp\t$disaggCost\t$size")
   }
 
   // local caching fail
@@ -85,25 +78,21 @@ private[spark] object BlazeLogger extends Logging {
     logInfo(s"REMOVE_L\t$executor\t$blockId\t$size")
   }
 
-  // Discard: this rdd is never cached in local/disagg
+  // Discard: this rdd is never cached
   def discardLocal(blockId: BlockId, executor: String,
                    reduction: Double,
-                   disaggCost: Long,
+                   diskCost: Long,
                    size: Long,
                    msg: String,
                    onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"DISCARD_DISK\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
+      logInfo(s"DISCARD_DISK\t$executor\t$blockId\t$reduction\t$diskCost\t$size\t$msg")
     } else {
-      logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$disaggCost\t$size\t$msg")
+      logInfo(s"DISCARD_L\t$executor\t$blockId\t$reduction\t$diskCost\t$size\t$msg")
     }
   }
-  def discardDisagg(blockId: BlockId, reduction: Double,
-                    disagg: Long, size: Long, msg: String): Unit = {
-    logInfo(s"DISCARD_D\t$blockId\t$reduction\t$disagg\t$size\t$msg")
-  }
 
-  def recacheDisaggToLocal(blockId: BlockId, executorId: String): Unit = {
+  def promote(blockId: BlockId, executorId: String): Unit = {
     logInfo(s"PROMOTE\t$executorId\t$blockId")
   }
 
@@ -116,27 +105,16 @@ private[spark] object BlazeLogger extends Logging {
     }
   }
 
-  // Evict: this rdd is cached in local/disagg
+  // Evict: this rdd is cached
   def evictLocal(blockId: BlockId, executor: String,
-                 comp: Double, disaggCost: Long,
+                 comp: Double, diskCost: Long,
                  size: Long,
                  onDisk: Boolean): Unit = {
     if (onDisk) {
-      logInfo(s"EVICT_DISK\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+      logInfo(s"EVICT_DISK\t$executor\t$blockId\t$comp\t$diskCost\t$size")
     } else {
-      logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$disaggCost\t$size")
+      logInfo(s"EVICT_L\t$executor\t$blockId\t$comp\t$diskCost\t$size")
     }
-  }
-
-  def evictDisagg(blockId: BlockId,
-                  comp: Double,
-                  disagg: Long,
-                  size: Long): Unit = {
-    logInfo(s"EVICT_D\t$blockId\t$comp\t$disagg\t$size")
-  }
-
-  def evictDisaggByLocal(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"EVICT_BY_LOCAL_D\t$blockId\t$executorId")
   }
 
   // Read operations
@@ -163,17 +141,5 @@ private[spark] object BlazeLogger extends Logging {
 
   def removeZeroBlocksDisk(blockId: BlockId, executorId: String): Unit = {
     logInfo(s"RM_ZERO_DISK_L\t$executorId\t$blockId")
-  }
-
-  def removeDuplicateBlocksInDisagg(blockId: BlockId): Unit = {
-    logInfo(s"RM_DUP_D\t$blockId")
-  }
-
-  def removeZeroBlocksInDisagg(blockId: BlockId): Unit = {
-    logInfo(s"RM_ZERO_D\t$blockId")
-  }
-
-  def readDisagg(blockId: BlockId, executorId: String): Unit = {
-    logInfo(s"READ_D\t$executorId\t$blockId")
   }
 }

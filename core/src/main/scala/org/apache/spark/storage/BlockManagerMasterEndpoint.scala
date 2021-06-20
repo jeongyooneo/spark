@@ -26,7 +26,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.BlockManagerMessages._
-import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManagerEndpoint, MetricTracker}
+import org.apache.spark.storage.blaze.{BlazeParameters, BlazeBlockManagerEndpoint, MetricTracker}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 import scala.collection.JavaConverters._
@@ -52,9 +52,6 @@ class BlockManagerMasterEndpoint(
   val blockManagerInfo = new ConcurrentHashMap[BlockManagerId, BlockManagerInfo]().asScala
   val executorBlockManagerMap = new ConcurrentHashMap[String, BlockManagerId]().asScala
 
-  // disagg block size info
-  private val disaggBlockSizeInfo = new mutable.HashMap[BlockId, Long]
-
   // Mapping from executor ID to block manager ID.
   private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
 
@@ -76,26 +73,14 @@ class BlockManagerMasterEndpoint(
     mapper
   }
 
-  var disaggBlockManager: DisaggBlockManagerEndpoint = null
-  def setDisaggBlockManager(bm: DisaggBlockManagerEndpoint): Unit = {
-    disaggBlockManager = bm
+  var blazeBlockManager: BlazeBlockManagerEndpoint = null
+  def setBlazeBlockManager(bm: BlazeBlockManagerEndpoint): Unit = {
+    blazeBlockManager = bm
   }
 
   val proactivelyReplicate = conf.get("spark.storage.replication.proactive", "false").toBoolean
 
   logInfo("BlockManagerMasterEndpoint up")
-
-  def getBlockSize(blockId: BlockId): Long = {
-    val size = disaggBlockSizeInfo.get(blockId)
-
-    if (size.isDefined) {
-      // logInfo(s"tg: Getting disagg block  $blockId size $size in master")
-      size.get
-    } else {
-       // logInfo(s"tg: No disagg block  $blockId size in master")
-      0L
-    }
-  }
 
   val scheduler = Executors.newSingleThreadScheduledExecutor()
 
@@ -135,10 +120,7 @@ class BlockManagerMasterEndpoint(
             s"disk ${diskSizeForManager/unit}\n")
       }
 
-      // val disaggSize = metricTracker.disaggTotalSize.get()
-
-      builder.append(s"Total size memory: ${memSize/unit}, " +
-        s"disk: ${diskSize/unit}, disagg: ${metricTracker.disaggTotalSize.get()/unit}\n")
+      builder.append(s"Total size memory: ${memSize/unit}, disk: ${diskSize/unit}}\n")
 
       builder.append("------- stat logging end ------\n")
 
@@ -240,7 +222,7 @@ class BlockManagerMasterEndpoint(
         blockLocations.remove(blockId)
       }
     }
-    disaggBlockManager.removeRddsFromLocal(Set.apply(rddId))
+    blazeBlockManager.removeRddsFromLocal(Set.apply(rddId))
 
     // Ask the slaves to remove the RDD, and put the result in a sequence of Futures.
     // The dispatcher is used as an implicit argument into the Future sequence construction.
@@ -300,7 +282,7 @@ class BlockManagerMasterEndpoint(
     blockManagerInfo.remove(blockManagerId)
     executorBlockManagerMap.remove(blockManagerId.executorId)
 
-    disaggBlockManager.removeExecutor(blockManagerId.executorId)
+    blazeBlockManager.removeExecutor(blockManagerId.executorId)
 
     val iterator = info.blocks.keySet.iterator
     while (iterator.hasNext) {
@@ -526,11 +508,11 @@ class BlockManagerMasterEndpoint(
   }
 
   val diskLocalityUnaware = conf.get(BlazeParameters.DISK_LOCALITY_UNAWARE)
-  val useDisk = conf.get(BlazeParameters.USE_DISK)
+  val diskStoreEnabled = conf.get(BlazeParameters.ENABLE_DISKSTORE)
 
   def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
     if (blockLocations.containsKey(blockId)) {
-      if (useDisk && diskLocalityUnaware) {
+      if (diskStoreEnabled && diskLocalityUnaware) {
         val locations = blockLocations.get(blockId).toSeq
         // Disk locality unaware
         locations.filter { bmId => {
@@ -718,9 +700,6 @@ private[spark] class BlockManagerInfo(
       if (originalLevel.useDisk) {
         logInfo(s"Removed $blockId on ${blockManagerId.hostPort} on disk" +
           s" (size: ${Utils.bytesToString(originalDiskSize)})")
-      }
-      if (originalLevel.useDisagg) {
-        logInfo(s"Removed $blockId on ${blockManagerId.hostPort} from disagg")
       }
     }
   }

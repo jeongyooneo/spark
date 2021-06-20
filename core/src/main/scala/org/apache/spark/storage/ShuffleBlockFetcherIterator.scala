@@ -378,7 +378,7 @@ final class ShuffleBlockFetcherIterator(
   override def hasNext: Boolean = {
     val result = numBlocksProcessed < numBlocksToFetch
     if (blockId.isDefined && !result) {
-      blockManager.disaggManager.sendRDDElapsedTime("fetch",
+      blockManager.blazeManager.sendRDDElapsedTime("fetch",
         blockId.get.name, "ShuffleFetch", fetchTime)
     }
     result

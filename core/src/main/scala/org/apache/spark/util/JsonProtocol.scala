@@ -1005,7 +1005,6 @@ private[spark] object JsonProtocol {
     val storageLevel = storageLevelFromJson(json \ "Storage Level")
     val memorySize = (json \ "Memory Size").extract[Long]
     val diskSize = (json \ "Disk Size").extract[Long]
-    // TODO: add disaggSize
     BlockStatus(storageLevel, memorySize, diskSize)
   }
 

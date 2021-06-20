@@ -61,10 +61,10 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     val index = split.index
     val elapsed = System.currentTimeMillis() - blockCompStartTime
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
       .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
       .sendRDDElapsedTime(s"rdd_${rddId}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)
 

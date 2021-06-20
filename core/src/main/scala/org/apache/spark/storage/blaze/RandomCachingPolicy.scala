@@ -15,24 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
-import org.apache.spark.internal.Logging
-import org.apache.spark.storage.BlockId
+import scala.util.Random
 
-private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
-                                      metricTracker: MetricTracker)
-  extends CostAnalyzer(metricTracker) with Logging {
+private[spark] class RandomCachingPolicy(val percentage: Double) extends CachingPolicy {
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
-    // val refStages = rddJobDag.getReferenceStages(blockId)
-    val mrdStage = rddJobDag.getMRDStage(blockId)
+  val random = new Random
 
-    if (mrdStage == 0) {
-      new CompDisaggCost(blockId, 0, 0)
-    } else {
-      new CompDisaggCost(blockId, 1/Math.max(1.0, mrdStage.toDouble))
-    }
+  def isRDDNodeCached(rddId: Int): Option[Boolean] = {
+    Some(random.nextDouble() <= percentage)
   }
-
 }
+
+

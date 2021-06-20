@@ -15,17 +15,15 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
-import scala.util.Random
+import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
-private[spark] class RandomCachingPolicy(val percentage: Double) extends CachingPolicy {
+private[spark] class NoCostAnalyzer(metricTracker: MetricTracker)
+  extends CostAnalyzer(metricTracker) with Logging {
 
-  val random = new Random
-
-  def isRDDNodeCached(rddId: Int): Option[Boolean] = {
-    Some(random.nextDouble() <= percentage)
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
+    new CompCost(blockId, 0, 0)
   }
 }
-
-

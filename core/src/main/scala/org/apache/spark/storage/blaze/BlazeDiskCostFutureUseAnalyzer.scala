@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
@@ -30,7 +30,7 @@ private[spark] class BlazeDiskCostFutureUseAnalyzer(val rddJobDag: RDDJobDag,
   val writeThp = 15000.0 / (600 * 1024 * 1024)
   val readThp = 10000.0 / (600 * 1024 * 1024)
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
 
@@ -53,14 +53,13 @@ private[spark] class BlazeDiskCostFutureUseAnalyzer(val rddJobDag: RDDJobDag,
        }
      }
 
-    val c = new CompDisaggCost(blockId,
+    val c = new CompCost(blockId,
       writeTime * containDisk + readTime * futureUse,
       (writeTime * containDisk + readTime * futureUse).toLong,
       Long.MaxValue,
       futureUse)
 
-      // realStages.size * recompTime)
-    // logInfo(s"CompDisaggCost $blockId, " +
+    // logInfo(s"CompCost $blockId, " +
     //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
     c.setStageInfo(realStages, 0)
     c

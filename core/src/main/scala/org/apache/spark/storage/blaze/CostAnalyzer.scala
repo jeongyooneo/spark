@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import java.util.concurrent.atomic.AtomicReference
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
-import org.apache.spark.storage.disagg.RDDJobDag.StageDistance
+import org.apache.spark.storage.blaze.RDDJobDag.StageDistance
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -31,35 +31,27 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
   @volatile
   var sortedBlockByCompCostInLocal: AtomicReference[Map[String,
-    mutable.ListBuffer[CompDisaggCost]]] =
-    new AtomicReference[Map[String, mutable.ListBuffer[CompDisaggCost]]](null)
+    mutable.ListBuffer[CompCost]]] =
+    new AtomicReference[Map[String, mutable.ListBuffer[CompCost]]](null)
 
   @volatile
   var sortedBlockByCompCostInDiskLocal: AtomicReference[Map[String,
-    mutable.ListBuffer[CompDisaggCost]]] =
-    new AtomicReference[Map[String, mutable.ListBuffer[CompDisaggCost]]](null)
-
-  @volatile
-  var sortedBlockByCompCostInDisagg: Option[List[CompDisaggCost]] = None
+    mutable.ListBuffer[CompCost]]] =
+    new AtomicReference[Map[String, mutable.ListBuffer[CompCost]]](null)
 
   // For cost analysis
-  def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost
-  def compDisaggCostWithTaskAttemp(executorId: String, blockId: BlockId,
-                                   taskAttemp: Long): CompDisaggCost
-  = compDisaggCost(executorId, blockId)
+  def compCost(executorId: String, blockId: BlockId): CompCost
+  def compCostWithTaskAttempt(executorId: String, blockId: BlockId,
+                              taskAttempt: Long): CompCost
+  = compCost(executorId, blockId)
 
   def update: Unit = {
-
-    var totalSize: Long = 0L
-
-    val updateStart = System.currentTimeMillis()
-
     val localLMap = metricTracker.getExecutorLocalMemoryBlocksMap
       .map(entry => {
         val executorId = entry._1
         val blocks = entry._2
         val l = blocks.map(blockId => {
-          compDisaggCost(executorId, blockId)
+          compCost(executorId, blockId)
         }).toList
         (executorId, l)
       })
@@ -69,30 +61,18 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         val executorId = entry._1
         val blocks = entry._2
         val l = blocks.map(blockId => {
-          compDisaggCost(executorId, blockId)
+          compCost(executorId, blockId)
         }).toList
         (executorId, l)
       })
 
-
-    var elapsed = System.currentTimeMillis() - updateStart
-
-    totalSize = Math.max(1, totalSize)
-
     var start = System.currentTimeMillis()
-
-    elapsed = System.currentTimeMillis() - start
-    // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDisagg took $elapsed ms")
-
-
-    start = System.currentTimeMillis()
     sortedBlockByCompCostInLocal.set(
       localLMap.map(entry => {
         val l = entry._2
         (entry._1, l.sortWith(_.cost < _.cost).to[ListBuffer])
       }))
-
-    elapsed = System.currentTimeMillis() - start
+    var elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInLocal took $elapsed ms")
 
     start = System.currentTimeMillis()
@@ -101,12 +81,8 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
         val l = entry._2
         (entry._1, l.sortWith(_.cost < _.cost).to[ListBuffer])
       }))
-
     elapsed = System.currentTimeMillis() - start
     // logInfo(s"costAnalyzer.update: sortedBlockByCompCostInDiskLocal took $elapsed ms")
-
-    elapsed = System.currentTimeMillis() - start
-    // logInfo(s"costAnalyzer.update: sortedBlockByCompSizeRatioInLocal took $elapsed ms")
 
     /*
     val sb = new StringBuilder
@@ -127,28 +103,6 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     val zeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
     val nonzeros: mutable.HashSet[Int] = new mutable.HashSet[Int]()
-
-    logInfo(s"Find zero cost RDD")
-
-    sortedBlockByCompCostInDisagg match {
-      case None =>
-      case Some(l) =>
-        logInfo(s"Find zero disagg len: ${l.size}")
-        l.foreach {
-          cost =>
-            if (cost.futureUse <= 0) {
-              if (!zeros.contains(cost.blockId.asRDDId.get.rddId)) {
-                zeros.add(cost.blockId.asRDDId.get.rddId)
-                logInfo(s"Zero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
-              }
-            } else {
-              if (!nonzeros.contains(cost.blockId.asRDDId.get.rddId)) {
-                nonzeros.add(cost.blockId.asRDDId.get.rddId)
-                logInfo(s"Nonzero RDD in Disagg: ${cost.blockId.asRDDId.get.rddId}")
-              }
-            }
-        }
-    }
 
     if (sortedBlockByCompCostInLocal.get() != null) {
       val map = sortedBlockByCompCostInLocal.get()
@@ -231,7 +185,7 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
           logDebug(s"No repeatedNode for ${node.rddId}, " +
             s"check conseuctive job reference, " +
-            s"currjob ${metricTracker.currJob.get()}, " +
+            s"current Job ${metricTracker.currJob.get()}, " +
             s"refJob ${rddJobDag.getReferencedJobs(node)}, " +
             s"consecutive: ${result}, " +
             s"crossReference: ${node.crossReferenced} " +
@@ -245,27 +199,19 @@ private[spark] abstract class CostAnalyzer(val metricTracker: MetricTracker) ext
 
     futureUse
   }
-
-  class DisaggOverhead(val blockId: BlockId,
-                       val cost: Long)
-
-  class CompReduction(val blockId: BlockId,
-                  val reduction: Long) {
-  }
-
 }
 
-class CompDisaggCost(val blockId: BlockId,
-                     var cost: Double,
-                     var disaggCost: Long = 0,
-                     var compCost: Long = 0,
-                     var futureUse: Double = 0,
-                     val numShuffle: Int = 0,
-                     var recompTime: Long = 0L,
-                     var writeTime: Long = 0L,
-                     val readTime: Long = 0L,
-                     val onDisk: Boolean = false,
-                     var updated: Boolean = false) extends Logging {
+class CompCost(val blockId: BlockId,
+               var cost: Double,
+               var diskCost: Long = 0,
+               var compCost: Long = 0,
+               var futureUse: Double = 0,
+               val numShuffle: Int = 0,
+               var recompTime: Long = 0L,
+               var writeTime: Long = 0L,
+               val readTime: Long = 0L,
+               val onDisk: Boolean = false,
+               var updated: Boolean = false) extends Logging {
 
   var stages: Option[List[StageDistance]] = None
   var updatedBlocks: Option[mutable.HashSet[BlockId]] = None
@@ -274,7 +220,7 @@ class CompDisaggCost(val blockId: BlockId,
     logInfo(s"Updating ${blockId} recomp with ${t}")
     recompTime += t
     compCost = (recompTime * futureUse).toLong
-    cost = Math.min(compCost, disaggCost)
+    cost = Math.min(compCost, diskCost)
     updated = true
   }
 
@@ -282,16 +228,14 @@ class CompDisaggCost(val blockId: BlockId,
     logInfo(s"Updating ${blockId} future use with ${u}")
     futureUse += u
     compCost = (recompTime * futureUse).toLong
-    disaggCost = (writeTime + readTime * futureUse).toLong
-    cost = Math.min(compCost, disaggCost)
+    diskCost = (writeTime + readTime * futureUse).toLong
+    cost = Math.min(compCost, diskCost)
     updated = true
   }
 
   def setStageInfo(s: List[StageDistance], time: Long): Unit = {
     stages = Some(s)
   }
-
-
 }
 
 
@@ -301,17 +245,17 @@ object CostAnalyzer {
             metricTracker: MetricTracker): CostAnalyzer = {
     val costType = sparkConf.get(BlazeParameters.COST_FUNCTION)
 
-      if (costType.equals("Blaze-Disk-Recomp")) {
-        new BlazeRecompAndDiskCostAnalyzer(rDDJobDag.get, metricTracker)
+      if (costType.equals("Blaze-Memory-Disk")) {
+        new BlazeMemoryDiskCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Disk-Only")) {
         new BlazeDiskCostAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("Blaze-Disk-Future-Use")) {
         new BlazeDiskCostFutureUseAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("Blaze-Recomp-Only")) {
-        new BlazeRecompCostOnlyAnalyzer(rDDJobDag.get, metricTracker)
+      } else if (costType.equals("Blaze-Memory-Only")) {
+        new BlazeMemoryOnlyAnalyzer(rDDJobDag.get, metricTracker)
       } else if (costType.equals("MRD")) {
         new MRDBasedAnalyzer(rDDJobDag.get, metricTracker)
-      } else if (costType.equals("No")) {
+      } else if (costType.equals("None")) {
         new NoCostAnalyzer(metricTracker)
       } else if (costType.equals("Spark-Autocaching")) {
         new SparkAutocachingAnalyzer(rDDJobDag.get, metricTracker)

@@ -15,13 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.crail._
 import org.apache.crail.conf.CrailConfiguration
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
+/**
+ * Deprecated.
+ * @param isDriver Whether this is driver node
+ * @param crailEnable Whether to enable this CrailManager
+ */
 private[spark] abstract class CrailManager(isDriver: Boolean,
                                            crailEnable: Boolean) extends Logging {
 
@@ -33,7 +38,7 @@ private[spark] abstract class CrailManager(isDriver: Boolean,
   val metaDir = rootDir + "/meta"
   val hostsDir = metaDir + "/hosts"
 
-  // For disaggregated memory store
+  // Apache Crail as a disaggregated memory store
   var crailConf: CrailConfiguration = _
   var fs: CrailStore = _
 

@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 

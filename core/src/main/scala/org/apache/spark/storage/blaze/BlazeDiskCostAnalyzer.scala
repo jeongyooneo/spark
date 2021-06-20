@@ -15,36 +15,55 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
-                                              metricTracker: MetricTracker)
+private[spark] class BlazeDiskCostAnalyzer(val rddJobDag: RDDJobDag,
+                                           metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
   // 10Gib per sec to byte per sec
   private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
+  val writeThp = 15000.0 / (600 * 1024 * 1024)
+  val readThp = 10000.0 / (600 * 1024 * 1024)
+
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
     val node = rddJobDag.getRDDNode(blockId)
+    val stages = rddJobDag.getReferenceStages(blockId)
+
+    val realStages = stages // .filter(p => node.getStages.contains(p.stageId))
 
     // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
-    var futureUse = rddJobDag.getLRCRefCnt(blockId)
+    var futureUse = realStages.size
+    val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
+    val readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
+
+     val containDisk = if (metricTracker
+      .localDiskStoredBlocksMap.containsKey(executorId)
+       && metricTracker.localDiskStoredBlocksMap.get(executorId).contains(blockId)) {
+       0
+     } else {
+       1
+     }
 
     futureUse = utilCost(futureUse, rddJobDag, node)
 
-    val c = new CompDisaggCost(blockId,
+    val c = new CompCost(blockId,
+      writeTime * containDisk + readTime * futureUse,
+      (writeTime * containDisk + readTime * futureUse).toLong,
+      Long.MaxValue,
       futureUse,
       0,
-      futureUse,
-      futureUse,
-      0)
+      0L,
+      writeTime)
 
       // realStages.size * recompTime)
-    // logInfo(s"CompDisaggCost $blockId, " +
+    // logInfo(s"CompCost $blockId, " +
     //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
+    c.setStageInfo(realStages, 0)
     c
   }
 

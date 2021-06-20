@@ -15,18 +15,38 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] class LRCCostAnalyzer(val rddJobDag: RDDJobDag,
-                                     metricTracker: MetricTracker)
+private[spark] class SparkAutocachingAnalyzerCC(val rddJobDag: RDDJobDag,
+                                                metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
-    val refCnt = rddJobDag.getLRCRefCnt(blockId)
-    // we do not consider disagg overhead here
-    new CompDisaggCost(blockId, refCnt)
+  // 10Gib per sec to byte per sec
+  private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
+
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
+    val node = rddJobDag.getRDDNode(blockId)
+
+    // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
+    var futureUse = rddJobDag.getReferenceStages(blockId).size
+
+    futureUse = utilCost(futureUse, rddJobDag, node)
+
+    val c = new CompCost(blockId,
+      futureUse,
+      0,
+      futureUse,
+      futureUse,
+      0)
+
+      // realStages.size * recompTime)
+    // logInfo(s"CompCost $blockId, " +
+    //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
+    c
   }
+
 }
+

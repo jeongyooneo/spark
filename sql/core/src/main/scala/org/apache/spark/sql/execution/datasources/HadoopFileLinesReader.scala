@@ -28,7 +28,7 @@ import org.apache.hadoop.mapreduce.lib.input.{FileSplit, LineRecordReader}
 import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
-import org.apache.spark.storage.disagg.BlazeParameters
+import org.apache.spark.storage.blaze.BlazeParameters
 
 /**
  * An adaptor from a [[PartitionedFile]] to an [[Iterator]] of [[Text]], which are all of the lines

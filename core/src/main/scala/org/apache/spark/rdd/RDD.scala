@@ -39,7 +39,7 @@ import org.apache.spark.partial.BoundedDouble
 import org.apache.spark.partial.CountEvaluator
 import org.apache.spark.partial.GroupedCountEvaluator
 import org.apache.spark.partial.PartialResult
-import org.apache.spark.storage.disagg.{BlazeParameters, RDDJobDag, RDDNode}
+import org.apache.spark.storage.blaze.{BlazeParameters, RDDJobDag, RDDNode}
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
@@ -288,8 +288,8 @@ abstract class RDD[T: ClassTag](
     val st = System.currentTimeMillis()
     context.partitionId()
     val result = if (autocaching) {
-      if (SparkEnv.get.blockManager.isRDDCache(this.id)) {
-        this.storageLevel = StorageLevel.DISAGG
+      if (SparkEnv.get.blockManager.isRDDToCache(this.id)) {
+        this.storageLevel = StorageLevel.MEMORY_ONLY
         getOrCompute(split, context)
       } else {
         this.storageLevel = StorageLevel.NONE
@@ -580,7 +580,7 @@ abstract class RDD[T: ClassTag](
       val st = System.currentTimeMillis()
       val v = compute(split, context)
       val et = System.currentTimeMillis()
-      SparkEnv.get.blockManager.disaggManager.sendRDDCompTime(this.id, et - st)
+      SparkEnv.get.blockManager.blazeManager.sendRDDCompTime(this.id, et - st)
       v
     }
   }
@@ -610,7 +610,7 @@ abstract class RDD[T: ClassTag](
           val existingMetrics = context.taskMetrics().inputMetrics
           existingMetrics.incBytesRead(blockResult.bytes)
           val et = System.currentTimeMillis()
-          SparkEnv.get.blockManager.disaggManager
+          SparkEnv.get.blockManager.blazeManager
             .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
           new InterruptibleIterator[T](context, blockResult.data.asInstanceOf[Iterator[T]]) {
             override def next(): T = {
@@ -627,13 +627,13 @@ abstract class RDD[T: ClassTag](
           }
         } else {
           val et = System.currentTimeMillis()
-          SparkEnv.get.blockManager.disaggManager
+          SparkEnv.get.blockManager.blazeManager
             .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
           new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
         }
       case Right(iter) =>
         val et = System.currentTimeMillis()
-        SparkEnv.get.blockManager.disaggManager
+        SparkEnv.get.blockManager.blazeManager
           .sendRDDElapsedTime("Elapsed", blockId.name, "GetOrElseUpdate", et - st)
         new InterruptibleIterator(context, iter.asInstanceOf[Iterator[T]])
     }

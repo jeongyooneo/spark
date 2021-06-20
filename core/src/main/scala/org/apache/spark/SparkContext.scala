@@ -48,7 +48,7 @@ import org.apache.spark.status.AppStatusStore
 import org.apache.spark.status.api.v1.ThreadStackTrace
 import org.apache.spark.storage.BlockManagerMessages.TriggerThreadDump
 import org.apache.spark.storage._
-import org.apache.spark.storage.disagg.BlazeParameters
+import org.apache.spark.storage.blaze.BlazeParameters
 import org.apache.spark.ui.{ConsoleProgressBar, SparkUI}
 import org.apache.spark.util._
 import org.apache.spark.util.collection.OpenHashMap
@@ -272,14 +272,6 @@ class SparkContext(config: SparkConf) extends Logging {
     val map: ConcurrentMap[Int, RDD[_]] = new MapMaker().weakValues().makeMap[Int, RDD[_]]()
     map.asScala
   }
-
-  private[spark] val perJobDisaggLineage: HashMap[Int, Seq[RDD[_]]] =
-    new mutable.HashMap[Int, Seq[RDD[_]]]()
-
-  private[spark] val perJobDisaggLineageWithSize: HashMap[Int, OpenHashMap[RDD[_], Int]] =
-    new mutable.HashMap[Int, OpenHashMap[RDD[_], Int]]()
-
-  def getDrddLineage: HashMap[Int, OpenHashMap[RDD[_], Int]] = perJobDisaggLineageWithSize
 
   def statusTracker: SparkStatusTracker = _statusTracker
 

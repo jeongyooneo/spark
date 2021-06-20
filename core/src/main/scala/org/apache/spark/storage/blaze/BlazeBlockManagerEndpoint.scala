@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -25,8 +25,7 @@ import org.apache.spark.storage.BlockId
 
 /**
  */
-private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolean)
-  extends CrailManager(true, crailEnable) with Logging with RpcEndpoint {
+private[spark] abstract class BlazeBlockManagerEndpoint extends Logging with RpcEndpoint {
 
   // Public methods
   def removeExecutor(executorId: String): Unit
@@ -42,15 +41,12 @@ private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolea
   def removeFromLocal(blockId: BlockId, executorId: String, onDisk: Boolean): Unit
   def removeRddsFromLocal(rdds: scala.collection.Set[Int]): Unit
 
-  class CrailBlockInfo(blockId: BlockId,
-                       path: String) {
+  class BlazeBlockMetadata(blockId: BlockId) {
     val bid = blockId
     private var size: Long = 0L
-    private var actualBlockSize: Long = 0L
     var read: Boolean = true
     var createdTime = System.currentTimeMillis()
     var refCnt: AtomicInteger = new AtomicInteger()
-    var nectarCost: Long = 0L
     var writeDone = false
 
     override def toString: String = {
@@ -61,13 +57,8 @@ private[spark] abstract class DisaggBlockManagerEndpoint(val crailEnable: Boolea
       size
     }
 
-    def getActualBlockSize: Long = {
-      actualBlockSize
-    }
-
     def setSize(s: Long): Unit = {
       size = s
-      actualBlockSize = DisaggUtils.calculateDisaggBlockSize(size)
     }
   }
 }

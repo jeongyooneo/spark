@@ -15,42 +15,40 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] class BlazeRecompCostOnlyAnalyzer(val rddJobDag: RDDJobDag,
-                                                 metricTracker: MetricTracker)
+private[spark] class LCSCostAnalyzer(val rddJobDag: RDDJobDag,
+                                     metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  // 10Gib per sec to byte per sec
-  private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
+  val writeThp = BlazeParameters.writeThp
+  private val readThp = BlazeParameters.readThp
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
+    // val refCnt = rddJobDag.getLRCRefCnt(blockId)
+
     val node = rddJobDag.getRDDNode(blockId)
-    val stages = rddJobDag.getReferenceStages(blockId)
+    val refCnt = rddJobDag.getReferenceStages(blockId)
+      .filter(p => node.getStages.contains(p.stageId)).size
+
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
-     metricTracker.blockCreatedTimeMap.get(blockId))
+      metricTracker.blockCreatedTimeMap.get(blockId))
 
-    val realStages = stages.filter(p => node.getStages.contains(p.stageId))
+    val writeTime = (metricTracker.getBlockSize(blockId) * writeThp).toLong
+    var readTime = (metricTracker.getBlockSize(blockId) * readThp).toLong
 
-    // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
-    val futureUse = realStages.size
-
-    val c = new CompDisaggCost(blockId,
-      recompTime * futureUse,
-      Long.MaxValue,
-      recompTime * futureUse,
-      futureUse,
-      numShuffle)
-
-      // realStages.size * recompTime)
-    // logInfo(s"CompDisaggCost $blockId, " +
-    //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
-    c.setStageInfo(realStages, recompTime)
-    c
+    new CompCost(blockId,
+      Math.min(recompTime * refCnt, writeTime + readTime * refCnt),
+      writeTime + readTime * refCnt,
+      recompTime * refCnt,
+      refCnt,
+      numShuffle,
+      recompTime,
+      writeTime,
+      readTime,
+      false)
   }
-
 }
-

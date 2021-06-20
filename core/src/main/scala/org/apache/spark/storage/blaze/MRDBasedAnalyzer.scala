@@ -15,15 +15,24 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
-private[spark] class NoCostAnalyzer(metricTracker: MetricTracker)
+private[spark] class MRDBasedAnalyzer(val rddJobDag: RDDJobDag,
+                                      metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
-  override def compDisaggCost(executorId: String, blockId: BlockId): CompDisaggCost = {
-    new CompDisaggCost(blockId, 0, 0)
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
+    // val refStages = rddJobDag.getReferenceStages(blockId)
+    val mrdStage = rddJobDag.getMRDStage(blockId)
+
+    if (mrdStage == 0) {
+      new CompCost(blockId, 0, 0)
+    } else {
+      new CompCost(blockId, 1/Math.max(1.0, mrdStage.toDouble))
+    }
   }
+
 }

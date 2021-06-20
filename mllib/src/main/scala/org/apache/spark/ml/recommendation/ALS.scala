@@ -238,7 +238,7 @@ private[recommendation] trait ALSParams extends ALSModelParams with HasMaxIter w
   setDefault(rank -> 10, maxIter -> 10, regParam -> 0.1, numUserBlocks -> 10, numItemBlocks -> 10,
     implicitPrefs -> false, alpha -> 1.0, userCol -> "user", itemCol -> "item",
     ratingCol -> "rating", nonnegative -> false, checkpointInterval -> 10,
-    intermediateStorageLevel -> "DISAGG", finalStorageLevel -> "DISAGG",
+    intermediateStorageLevel -> "MEMORY_AND_DISK", finalStorageLevel -> "MEMORY_AND_DISK",
     coldStartStrategy -> "nan")
 
   /**
@@ -910,8 +910,8 @@ object ALS extends DefaultParamsReadable[ALS] with Logging {
       implicitPrefs: Boolean = false,
       alpha: Double = 1.0,
       nonnegative: Boolean = false,
-      intermediateRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
-      finalRDDStorageLevel: StorageLevel = StorageLevel.DISAGG,
+      intermediateRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+      finalRDDStorageLevel: StorageLevel = StorageLevel.MEMORY_AND_DISK,
       checkpointInterval: Int = 10,
       seed: Long = 0L)(
       implicit ord: Ordering[ID]): (RDD[(ID, Array[Float])], RDD[(ID, Array[Float])]) = {

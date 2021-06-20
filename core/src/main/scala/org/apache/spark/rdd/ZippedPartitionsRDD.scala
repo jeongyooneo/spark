@@ -98,14 +98,14 @@ private[spark] class ZippedPartitionsRDD2[A: ClassTag, B: ClassTag, V: ClassTag]
 
     val elapsed = (et - st)
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
          .sendTaskAttempBlock(context.taskAttemptId(), RDDBlockId(id, index))
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
       .sendRDDElapsedTime(s"rdd_${rdd1.id}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
       .sendRDDElapsedTime(s"rdd_${rdd2.id}_$index", s"rdd_${id}_$index",
         this.getClass.getSimpleName, elapsed)
 

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.SparkConf
 import org.apache.spark.storage.BlockId
@@ -24,29 +24,19 @@ import scala.collection.mutable
 
 private[spark] abstract class EvictionPolicy(sparkConf: SparkConf) {
 
-  val promoteRatio = sparkConf.get(BlazeParameters.PROMOTE_RATIO)
+  val promotionRatio = sparkConf.get(BlazeParameters.PROMOTION_RATIO)
 
-  def decisionLocalEviction(storingCost: CompDisaggCost,
-                            executorId: String,
-                            blockId: BlockId,
-                            estimateSize: Long,
-                            onDisk: Boolean): Boolean
+  def promote(storingCost: CompCost,
+              executorId: String,
+              blockId: BlockId,
+              estimateSize: Long): Boolean
 
-
-  def decisionPromote(storingCost: CompDisaggCost,
-                            executorId: String,
-                            blockId: BlockId,
-                            estimateSize: Long): Boolean
-
-  def selectEvictFromLocal(storingCost: CompDisaggCost,
-                           executorId: String,
-                           evictSize: Long,
-                           onDisk: Boolean)
-                          (func: mutable.ListBuffer[CompDisaggCost] => List[BlockId]): List[BlockId]
-
-  def selectEvictFromDisagg(storingCost: CompDisaggCost,
-                            blockId: BlockId)
-                           (func: List[CompDisaggCost] => Unit): Unit
+  def selectLocalEvictionCandidate(storingCost: CompCost,
+                                   executorId: String,
+                                   evictSize: Long,
+                                   onDisk: Boolean)
+                                  (func: mutable.ListBuffer[CompCost]
+                                    => List[BlockId]): List[BlockId]
 }
 
 
@@ -59,9 +49,6 @@ private[spark] object EvictionPolicy {
 
     if (policy.equals("Default") || policy.equals("Cost-based")) {
       new OnlyCostBasedEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
-    } else if (policy.equals("RDD-Ordering")) {
-      // new RddOrderingEvictionPolicy(costAnalyzer, metricTracker, sparkConf)
-      throw new RuntimeException(s"Unsupported evictionPolicy $policy")
     } else if (policy.equals("Cost-size-ratio2")) {
       new CostSizeRatioBased2EvictionPolicy(costAnalyzer, metricTracker, sparkConf)
     }

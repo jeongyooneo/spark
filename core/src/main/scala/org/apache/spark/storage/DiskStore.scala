@@ -29,7 +29,7 @@ import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.util.{AbstractFileRegion, JavaUtils}
 import org.apache.spark.security.CryptoStreamUtils
-import org.apache.spark.storage.disagg.{DisaggBlockManager, DisaggStore}
+import org.apache.spark.storage.blaze.BlazeManager
 import org.apache.spark.storage.memory.MemoryStore
 import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.util.Utils
@@ -42,14 +42,12 @@ import scala.collection.mutable.ListBuffer
  * Stores BlockManager blocks on disk.
  */
 private[spark] class DiskStore(
-    conf: SparkConf,
-    diskManager: DiskBlockManager,
-    securityManager: SecurityManager,
-    blockManager: BlockManager,
-    disaggManager: DisaggBlockManager,
-    disaggStore: DisaggStore,
-    executorId: String,
-    memoryStore: MemoryStore) extends Logging {
+                                conf: SparkConf,
+                                diskManager: DiskBlockManager,
+                                securityManager: SecurityManager,
+                                blazeManager: BlazeManager,
+                                executorId: String,
+                                memoryStore: MemoryStore) extends Logging {
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
@@ -110,8 +108,8 @@ private[spark] class DiskStore(
     var total = 0L
     var requiredEvictionSize = 0L
 
-    if (!disaggManager.cachingDecision(blockId, size,
-      executorId, false, requiredEvictionSize > 0L, true, false)) {
+    if (!blazeManager.cachingDecision(blockId, size,
+      executorId, requiredEvictionSize > 0L, true, false)) {
       return
     }
 
@@ -141,8 +139,8 @@ private[spark] class DiskStore(
     }
     val finishTime = System.currentTimeMillis
 
-    disaggManager.diskCachingDone(blockId, out.getCount, executorId)
-    disaggManager.sendSerMetric(blockId, out.getCount, finishTime - startTime)
+    blazeManager.diskCachingDone(blockId, out.getCount, executorId)
+    blazeManager.sendSerMetric(blockId, out.getCount, finishTime - startTime)
 
     logInfo("Executor %s, Block %s stored as %s file on disk in %d ms".format(
       executorId,
@@ -172,14 +170,13 @@ private[spark] class DiskStore(
     }
   }
 
-  def remove(blockId: BlockId, toDisagg: Boolean = false): Boolean = {
-    val bsize = blockSizes.get(blockId)
+  def remove(blockId: BlockId): Boolean = {
     blockSizes.remove(blockId)
     val file = diskManager.getFile(blockId.name)
     if (file.exists()) {
       val ret = file.delete()
       if (!ret) {
-        logWarning(s"Error deleting ${file.getPath()}")
+        logWarning(s"Error deleting ${file.getPath()} from DiskStore")
       }
       ret
     } else {

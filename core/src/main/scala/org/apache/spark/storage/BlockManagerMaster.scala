@@ -257,6 +257,6 @@ private[spark] object BlockManagerMaster {
   val DRIVER_ENDPOINT_NAME = "BlockManagerMaster"
 }
 
-private[spark] object DisaggBlockManager {
-  val DRIVER_ENDPOINT_NAME = "DisaggBlockManager"
+private[spark] object BlazeManager {
+  val DRIVER_ENDPOINT_NAME = "BlazeManager"
 }

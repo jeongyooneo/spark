@@ -48,12 +48,11 @@ import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle._
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.network.util.TransportConf
-import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.scheduler.ExecutorCacheTaskLocation
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
-import org.apache.spark.storage.disagg.{BlazeParameters, DisaggBlockManager, DisaggStore}
+import org.apache.spark.storage.blaze.{BlazeParameters, BlazeManager}
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.util._
@@ -171,18 +170,18 @@ private[spark] class ByteBufferBlockData(
  * Note that [[initialize()]] must be called before the BlockManager is usable.
  */
 private[spark] class BlockManager(
-    executorId: String,
-    rpcEnv: RpcEnv,
-    val master: BlockManagerMaster,
-    val disaggManager: DisaggBlockManager,
-    val serializerManager: SerializerManager,
-    val conf: SparkConf,
-    memoryManager: MemoryManager,
-    mapOutputTracker: MapOutputTracker,
-    shuffleManager: ShuffleManager,
-    val blockTransferService: BlockTransferService,
-    securityManager: SecurityManager,
-    numUsableCores: Int)
+                                   executorId: String,
+                                   rpcEnv: RpcEnv,
+                                   val master: BlockManagerMaster,
+                                   val blazeManager: BlazeManager,
+                                   val serializerManager: SerializerManager,
+                                   val conf: SparkConf,
+                                   memoryManager: MemoryManager,
+                                   mapOutputTracker: MapOutputTracker,
+                                   shuffleManager: ShuffleManager,
+                                   val blockTransferService: BlockTransferService,
+                                   securityManager: SecurityManager,
+                                   numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
   @transient lazy val mylogger = org.apache.log4j.LogManager.getLogger("myLogger")
 
@@ -198,7 +197,7 @@ private[spark] class BlockManager(
     new DiskBlockManager(conf, deleteFilesOnStop)
   }
 
-  private val USE_DISK = conf.get(BlazeParameters.USE_DISK)
+  private val DISKSTORE_ENABLED = conf.get(BlazeParameters.ENABLE_DISKSTORE)
 
   // Visible for testing
   private[storage] val blockInfoManager = new BlockInfoManager
@@ -206,18 +205,14 @@ private[spark] class BlockManager(
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
 
-  // Disaggregation storage
-  private[spark] val disaggStore = new DisaggStore(conf, master, disaggManager, executorId)
-
   // Actual storage of where blocks are kept
   // This also implements eviction policy
   private[spark] val memoryStore =
-    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager, this,
-      disaggStore, executorId)
+    new MemoryStore(conf, blockInfoManager, serializerManager, memoryManager,
+      this, blazeManager, executorId)
 
   private[spark] val diskStore = new DiskStore(
-    conf, diskBlockManager, securityManager, this,
-    disaggManager, disaggStore, executorId, memoryStore)
+    conf, diskBlockManager, securityManager, blazeManager, executorId, memoryStore)
   memoryManager.setMemoryStore(memoryStore)
 
   // Note: depending on the memory manager, `maxMemory` may actually vary over time.
@@ -604,13 +599,12 @@ private[spark] class BlockManager(
           BlockStatus.empty
         case level =>
           val inMem = level.useMemory && memoryStore.contains(blockId)
-          val onDisk = USE_DISK && diskStore.contains(blockId)
+          val onDisk = DISKSTORE_ENABLED && diskStore.contains(blockId)
           val deserialized = if (inMem) level.deserialized else false
           val replication = if (inMem  || onDisk) level.replication else 1
           val storageLevel = StorageLevel(
             useDisk = onDisk,
             useMemory = inMem,
-            useDisagg = false,
             useOffHeap = level.useOffHeap,
             deserialized = deserialized,
             replication = replication)
@@ -643,7 +637,7 @@ private[spark] class BlockManager(
   }
 
   private val IS_BLAZE = conf.get(BlazeParameters.COST_FUNCTION).contains("Blaze")
-  private val CACHING_ALWAYS = conf.get(BlazeParameters.CACHING_UNCONDITONALLY)
+  private val ALWAYS_CACHE = conf.get(BlazeParameters.ALWAYS_CACHE)
   /**
    * Get block from local block manager as an iterator of Java objects.
    */
@@ -667,7 +661,7 @@ private[spark] class BlockManager(
               blockId, memoryStore.getBytes(blockId).get.toInputStream())(info.classTag)
           }
 
-          disaggManager.readLocalBlock(blockId, executorId, false, false, 0)
+          blazeManager.readLocalBlock(blockId, executorId, false, false, 0)
           // We need to capture the current taskId in case the iterator completion is triggered
           // from a different thread which does not have TaskContext set; see SPARK-18406 for
           // discussion.
@@ -676,7 +670,7 @@ private[spark] class BlockManager(
           })
 
           Some(new BlockResult(ci, DataReadMethod.Memory, info.size))
-        } else if (USE_DISK && diskStore.contains(blockId)) {
+        } else if (DISKSTORE_ENABLED && diskStore.contains(blockId)) {
           val st = System.currentTimeMillis()
 
           val diskData = diskStore.getBytes(blockId)
@@ -688,9 +682,9 @@ private[spark] class BlockManager(
 
               val et = System.currentTimeMillis()
               val stageId = "stage" + TaskContext.get().stageId()
-              disaggManager.readLocalBlock(blockId, stageId, false, true, et - st)
+              blazeManager.readLocalBlock(blockId, stageId, false, true, et - st)
 
-              if (readAfterCache && IS_BLAZE && !CACHING_ALWAYS) {
+              if (readAfterCache && IS_BLAZE && !ALWAYS_CACHE) {
                 diskValues
               } else {
                 maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
@@ -707,11 +701,8 @@ private[spark] class BlockManager(
             releaseLockAndDispose(blockId, diskData, taskAttemptId)
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
-        } else if (!level.useDisagg) {
-          handleLocalReadFailure(blockId)
         } else {
-          releaseLock(blockId)
-          None
+          handleLocalReadFailure(blockId)
         }
     }
   }
@@ -750,7 +741,7 @@ private[spark] class BlockManager(
       // serializing in-memory objects, and, finally, throw an exception
       // if the block does not exist.
       // Try to avoid expensive serialization by reading a pre-serialized copy from disk:
-      if (USE_DISK && diskStore.contains(blockId)) {
+      if (DISKSTORE_ENABLED && diskStore.contains(blockId)) {
         // Note: we purposely do not try to put the block back into memory here. Since this branch
         // handles deserialized blocks, this block may only be cached in memory as objects, not
         // serialized bytes. Because the caller only requested bytes, it doesn't make sense to
@@ -766,7 +757,7 @@ private[spark] class BlockManager(
     } else {  // storage level is serialized
       if (level.useMemory && memoryStore.contains(blockId)) {
         new ByteBufferBlockData(memoryStore.getBytes(blockId).get, false)
-      } else if (USE_DISK && diskStore.contains(blockId)) {
+      } else if (DISKSTORE_ENABLED && diskStore.contains(blockId)) {
         val diskData = diskStore.getBytes(blockId)
         maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
           .map(new ByteBufferBlockData(_, false))
@@ -915,24 +906,13 @@ private[spark] class BlockManager(
       return local
     }
 
-    logInfo(s"jy: getRemoteValues for remote fetch $blockId start")
-    // val disaggFetchStart = System.nanoTime
-    // val disagg = getDisaggValues[T](blockId)
-
-    // if (disagg.isDefined) {
-    //  logInfo(s"Found block $blockId in disagg memory")
-      // val disaggFetchTime = System.nanoTime - disaggFetchStart
-      // logInfo(s"jy: disagg fetch from $executorId $blockId succeeded, " + disaggFetchTime)
-    //  return disagg
-    // }
-
     val st = System.currentTimeMillis()
     val remote = getRemoteValues[T](blockId)
 
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
       val et = System.currentTimeMillis()
-      disaggManager.readLocalBlock(blockId, executorId, true, false, et - st)
+      blazeManager.readLocalBlock(blockId, executorId, true, false, et - st)
       return remote
     }
     None
@@ -971,8 +951,8 @@ private[spark] class BlockManager(
     blockInfoManager.releaseAllLocksForTask(taskAttemptId)
   }
 
-  def isRDDCache(rddId: Int): Boolean = {
-    disaggManager.isRDDCache(rddId)
+  def isRDDToCache(rddId: Int): Boolean = {
+    blazeManager.isRDDToCache(rddId)
   }
 
   /**
@@ -1019,7 +999,7 @@ private[spark] class BlockManager(
 
         val elapsed = et - st
         // logInfo(s"Recomp\t$blockId\t$et")
-        disaggManager.sendRecompTime(blockId, elapsed)
+        blazeManager.sendRecompTime(blockId, elapsed)
         // We already hold a read lock on the block from the doPut() call and getLocalValues()
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
@@ -1029,72 +1009,9 @@ private[spark] class BlockManager(
         val et = System.currentTimeMillis()
         val elapsed = et - st
         // logInfo(s"Recomp\t$blockId\t$et")
-        disaggManager.sendRecompTime(blockId, elapsed)
+        blazeManager.sendRecompTime(blockId, elapsed)
 
         Right(iter)
-        /*
-        if (level.useDisagg && blockId.isRDD) {
-          putIteratorToDisagg(blockId, iter, classTag, true)
-        } else {
-          Right(iter)
-        }
-        */
-    }
-  }
-
-  private def putIteratorToDisagg[T](
-                 blockId: BlockId,
-                 values: Iterator[T],
-                 classTag: ClassTag[T],
-                 returnValue: Boolean): Either[BlockResult, Iterator[T]] = {
-    logWarning(s"Persisting block $blockId to disagg instead.")
-
-    val estimateSize = memoryStore.getEstimateSize(blockId)
-
-    if (estimateSize < 0) {
-      throw new RuntimeException(s"EstimateSize is negative.. $blockId")
-    }
-
-    // ser metric is logged inside disaggStore#put
-    val disaggSuccess =
-      disaggStore.put(blockId, estimateSize, executorId) { channel =>
-        val out = Channels.newOutputStream(channel)
-        serializerManager.dataSerializeStream(blockId, out, values)(classTag)
-      }
-
-    if (!disaggSuccess) {
-      Right(values)
-    } else {
-      if (returnValue) {
-
-        logInfo(s"Putting iterator to disagg  and try to get readlock ... $blockId")
-
-        if (!disaggStore.readLock(blockId)) {
-          throw new RuntimeException(s"Block $blockId is immediatly removed after creating...")
-        }
-
-        val readTime = System.currentTimeMillis()
-
-        val disaggData = disaggStore.getStream(blockId)
-        val disaggDataSize = disaggData.blockSize
-        val disaggIter = serializerManager.dataDeserializeStream(
-          blockId,
-          disaggData.toInputStream())(classTag)
-
-        val blockEndTime = System.currentTimeMillis()
-
-        disaggManager.sendDeserMetric(blockId, disaggDataSize, blockEndTime - readTime)
-
-        val ci = CompletionIterator[Any, Iterator[Any]](disaggIter, {
-          logInfo(s"Release disagg readlock $blockId because reading is completed 11")
-          disaggStore.readUnlock(blockId)
-          disaggData.dispose()
-        })
-
-        Left(new BlockResult(ci, DataReadMethod.Network, disaggData.size))
-      } else {
-        Right(values)
-      }
     }
   }
 
@@ -1105,18 +1022,12 @@ private[spark] class BlockManager(
       blockId: BlockId,
       values: Iterator[T],
       level: StorageLevel,
-      tellMaster: Boolean = true,
-      useDisagg: Boolean = true): Boolean = {
+      tellMaster: Boolean = true): Boolean = {
     require(values != null, "Values is null")
     doPutIterator(blockId, () => values, level, implicitly[ClassTag[T]], tellMaster) match {
       case None =>
         true
       case Some(iter) =>
-        // TODO: 여기서 disagg에 store
-
-        if (level.useDisagg && blockId.isRDD) {
-          // putIteratorToDisagg(blockId, iter, implicitly[ClassTag[T]], false)
-        }
         // Caller doesn't care about the iterator values, so we can close the iterator here
         // to free resources earlier
         iter.close()
@@ -1194,7 +1105,6 @@ private[spark] class BlockManager(
       }
 
       val size = bytes.size
-      var disaggSuccess = false
 
       if (level.useMemory) {
         // Put it in memory first, even if it also has useDisk set to true;
@@ -1223,20 +1133,13 @@ private[spark] class BlockManager(
           })
         }
 
-        if (!putSucceeded && USE_DISK) {
+        if (!putSucceeded && DISKSTORE_ENABLED) {
           logWarning(s"Persisting block $blockId to disk instead.")
           diskStore.putBytes(blockId, bytes)
         }
 
-        if (!putSucceeded && level.useDisagg) {
-          logWarning(s"Persisting block $blockId to disagg instead 11.")
-          disaggStore.putBytes(blockId, executorId, bytes)
-        }
-
-      } else if (USE_DISK) {
+      } else if (DISKSTORE_ENABLED) {
         diskStore.putBytes(blockId, bytes)
-      } else if (level.useDisagg) {
-        disaggStore.putBytes(blockId, executorId, bytes)
       }
 
       val putBlockStatus = getCurrentBlockStatus(blockId, info)
@@ -1398,14 +1301,10 @@ private[spark] class BlockManager(
 
            memoryStore.putIteratorAsValues(blockId, it, classTag) match {
             case Right(s) =>
-              // disaggManager.sendRecompTime(blockId, et - st)
               size = s
             case Left(iter) =>
-              // disaggManager.sendRecompTime(blockId, et - st)
-
-
               // Not enough space to unroll this block; drop to disk if applicable
-              if (USE_DISK) {
+              if (DISKSTORE_ENABLED) {
                 val estimateSize = memoryStore.sizeEstimationMap.get(blockId)
                 logWarning(s"Persisting block $blockId to disk instead.")
                 val st = System.currentTimeMillis()
@@ -1435,7 +1334,7 @@ private[spark] class BlockManager(
               size = s
             case Left(partiallySerializedValues) =>
               // Not enough space to unroll this block; drop to disk if applicable
-              if (USE_DISK) {
+              if (DISKSTORE_ENABLED) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
                   val out = Channels.newOutputStream(channel)
@@ -1447,7 +1346,7 @@ private[spark] class BlockManager(
               }
           }
         }
-      } else if (USE_DISK) {
+      } else if (DISKSTORE_ENABLED) {
         diskStore.put(blockId) { channel =>
           val out = Channels.newOutputStream(channel)
           serializerManager.dataSerializeStream(blockId, out, iterator())(classTag)
@@ -1563,7 +1462,7 @@ private[spark] class BlockManager(
         } else {
           val size = memoryStore.sizeEstimationMap.get(blockId)
           // val enoughSpace = memoryManager.canStoreBytesWithoutEviction(size, MemoryMode.ON_HEAP)
-          if (disaggManager.cacheDisaggDataInMemory(blockId, size, executorId, true, true)) {
+          if (blazeManager.promoteToMemory(blockId, size, executorId, true, true)) {
             memoryStore.putIteratorAsValues(blockId, diskIterator, classTag, true) match {
               case Left(iter) =>
                 // The memory store put() failed, so it returned the iterator back to us:
@@ -1623,7 +1522,6 @@ private[spark] class BlockManager(
       val storageLevel = StorageLevel(
         useDisk = info.level.useDisk,
         useMemory = info.level.useMemory,
-        useDisagg = false,
         useOffHeap = info.level.useOffHeap,
         deserialized = info.level.deserialized,
         replication = maxReplicas)
@@ -1654,7 +1552,6 @@ private[spark] class BlockManager(
     val tLevel = StorageLevel(
       useDisk = level.useDisk,
       useMemory = level.useMemory,
-      useDisagg = level.useDisagg,
       useOffHeap = level.useOffHeap,
       deserialized = level.deserialized,
       replication = 1)
@@ -1769,12 +1666,11 @@ private[spark] class BlockManager(
     val level = info.level
 
     // Drop to disk, if storage level requires
-    if (USE_DISK) {
+    if (DISKSTORE_ENABLED) {
       if (!diskStore.contains(blockId)) {
         logInfo(s"Writing block $blockId to disk")
         data() match {
           case Left(elements) =>
-            val diskSt = System.currentTimeMillis()
             diskStore.put(blockId) { channel =>
               val out = Channels.newOutputStream(channel)
               serializerManager.dataSerializeStream(
@@ -1782,8 +1678,6 @@ private[spark] class BlockManager(
                 out,
                 elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
             }
-            val diskEt = System.currentTimeMillis()
-            // disaggManager.sendSerMetric(blockId, info.size, diskEt - diskSt)
           case Right(bytes) =>
             diskStore.putBytes(blockId, bytes)
         }
@@ -1791,23 +1685,6 @@ private[spark] class BlockManager(
       } else {
         logWarning(s"Block already exists in disk $blockId, cannot drop")
       }
-    } else if (level.useDisagg && !disaggStore.contains(blockId)) {
-      logInfo(s"tg: Writing block $blockId to disagg")
-      data() match {
-        case Left(elements) =>
-          disaggStore.put(blockId,
-            memoryStore.sizeEstimationMap.get(blockId),
-            executorId) { channel =>
-            val out = Channels.newOutputStream(channel)
-            serializerManager.dataSerializeStream(
-              blockId,
-              out,
-              elements.toIterator)(info.classTag.asInstanceOf[ClassTag[T]])
-          }
-        case Right(bytes) =>
-          disaggStore.putBytes(blockId, executorId, bytes)
-      }
-      blockIsUpdated = true
     }
 
     // Actually drop from memory store
@@ -1862,19 +1739,10 @@ private[spark] class BlockManager(
     logDebug(s"Removing block $blockId")
     blockInfoManager.lockForWriting(blockId) match {
       case None =>
-        // The block has already been removed; do nothing.
-        // remove from disagg
-        // val removedFromDisagg = disaggStore.remove(blockId)
-
-        // if (removedFromDisagg) {
-
         if (tellMaster) {
           reportBlockStatus(blockId, BlockStatus.empty)
         }
         addUpdatedBlockStatusToTaskMetrics(blockId, BlockStatus.empty)
-        // } else {
-        //  logWarning(s"Asked to remove block $blockId, which does not exist")
-        // }
 
       case Some(info) =>
         removeBlockInternal(blockId, tellMaster = tellMaster && info.tellMaster, isLocal = false)
@@ -1892,7 +1760,7 @@ private[spark] class BlockManager(
         logWarning(s"Asked to remove block $blockId, which does not exist")
         false
       case Some(info) =>
-        val removedFromDisk = diskStore.remove(blockId, true)
+        val removedFromDisk = diskStore.remove(blockId)
         if (!removedFromDisk) {
           logWarning(s"Block $blockId could not be removed as it was not found on disk")
         } else {
@@ -1915,7 +1783,7 @@ private[spark] class BlockManager(
     val removedFromMemory = memoryStore.remove(blockId)
     val removedFromDisk = diskStore.remove(blockId)
 
-    if (!storageLevel.useDisagg && !removedFromMemory && !removedFromDisk) {
+    if (!removedFromMemory && !removedFromDisk) {
       logWarning(s"Block $blockId could not be removed as it was not found on disk or in memory")
     }
 

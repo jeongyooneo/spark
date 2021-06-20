@@ -110,7 +110,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
 
     val et = System.currentTimeMillis()
 
-    SparkEnv.get.blockManager.disaggManager
+    SparkEnv.get.blockManager.blazeManager
       .sendRDDElapsedTime(s"rdd_${id}_${split.index}",
         s"rdd_${id}_${split.index}", "ShuffleSideEffect", et - st)
 

@@ -26,7 +26,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.QueryExecutionException
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import org.apache.spark.storage.disagg.BlazeParameters
+import org.apache.spark.storage.blaze.BlazeParameters
 import org.apache.spark.util.NextIterator
 import org.apache.spark.{SparkEnv, TaskContext, Partition => RDDPartition}
 

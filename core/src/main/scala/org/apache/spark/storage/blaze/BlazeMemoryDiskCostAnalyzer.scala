@@ -15,43 +15,25 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.BlockId
 
 import scala.collection.mutable
 
-private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
-                                                    metricTracker: MetricTracker)
+private[spark] class BlazeMemoryDiskCostAnalyzer(val rddJobDag: RDDJobDag,
+                                                 metricTracker: MetricTracker)
   extends CostAnalyzer(metricTracker) with Logging {
 
   // 10Gib per sec to byte per sec
   private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
-
-  private def disaggCostCalc(blockId: BlockId, size: Long, refCnt: Int): Long = {
-    val serCost = if (metricTracker.blockSerCostMap.contains(blockId)) {
-      metricTracker.blockSerCostMap.get(blockId)
-    } else {
-      size  / BANDWIDTH
-    }
-
-    val deserCost = if (metricTracker.blockDeserCostMap.contains(blockId)) {
-      metricTracker.blockDeserCostMap.get(blockId)
-    } else {
-      size / BANDWIDTH
-    }
-
-    (serCost + deserCost * refCnt).toLong
-  }
-
-  // val writeThp = 5000.0 / (600 * 1024 * 1024)
   val writeThp = BlazeParameters.writeThp
   private val readThp = BlazeParameters.readThp
 
-  override def compDisaggCostWithTaskAttemp(executorId: String,
-                                            blockId: BlockId,
-                                            taskAttemp: Long): CompDisaggCost = {
+  override def compCostWithTaskAttempt(executorId: String,
+                                       blockId: BlockId,
+                                       taskAttemp: Long): CompCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
@@ -98,7 +80,7 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       recompTime * futureUse
     }
 
-    val c = new CompDisaggCost(blockId,
+    val c = new CompCost(blockId,
       Math.min(recomp, writeTime * containDisk + readTime * futureUse),
       (writeTime * containDisk + readTime * futureUse).toLong,
       (recomp).toLong,
@@ -109,15 +91,12 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       readTime,
       containDisk == 0)
 
-    // realStages.size * recompTime)
-    // logInfo(s"CompDisaggCost $blockId, " +
-    //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
     c.setStageInfo(realStages, recompTime)
     c
   }
 
-  override def compDisaggCost(executorId: String,
-                              blockId: BlockId): CompDisaggCost = {
+  override def compCost(executorId: String,
+                        blockId: BlockId): CompCost = {
     val node = rddJobDag.getRDDNode(blockId)
     val stages = rddJobDag.getReferenceStages(blockId)
     val (recompTime, numShuffle) = rddJobDag.blockCompTime(blockId,
@@ -198,10 +177,10 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       recompTime * futureUse
     }
 
-    val c = new CompDisaggCost(blockId,
+    val c = new CompCost(blockId,
       Math.min(recomp, writeTime * containDisk + readTime * futureUse),
-      (writeTime * containDisk + readTime * futureUse).toLong,
-      (recomp).toLong,
+      writeTime * containDisk + readTime * futureUse,
+      recomp,
       futureUse,
       numShuffle,
       recompTime,
@@ -209,9 +188,6 @@ private[spark] class BlazeRecompAndDiskCostAnalyzer(val rddJobDag: RDDJobDag,
       readTime,
       containDisk == 0)
 
-      // realStages.size * recompTime)
-    // logInfo(s"CompDisaggCost $blockId, " +
-    //  s"refStages: ${stages.map(f => f.stageId)}, time: $recompTime")
     c.setStageInfo(realStages, recompTime)
     c
   }

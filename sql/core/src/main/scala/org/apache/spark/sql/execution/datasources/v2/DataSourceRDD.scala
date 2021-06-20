@@ -21,7 +21,7 @@ import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.sources.v2.reader.InputPartition
-import org.apache.spark.storage.disagg.BlazeParameters
+import org.apache.spark.storage.blaze.BlazeParameters
 
 class DataSourceRDDPartition[T : ClassTag](val index: Int, val inputPartition: InputPartition[T])
   extends Partition with Serializable

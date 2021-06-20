@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
@@ -34,9 +34,7 @@ private[spark] class MetricTracker extends Logging {
 
   val localMemStoredBlocksMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
   val localStoredBlocksHistoryMap = new ConcurrentHashMap[String, mutable.Set[BlockId]]()
-  private val disaggStoredBlocks = new mutable.HashSet[BlockId]()
 
-  private val disaggBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   private val localMemBlockSizeMap = new ConcurrentHashMap[BlockId, Long]()
   val localBlockSizeHistoryMap = new ConcurrentHashMap[BlockId, Long]()
 
@@ -47,18 +45,11 @@ private[spark] class MetricTracker extends Logging {
   val currJob = new AtomicInteger(-1)
 
   // Public values
-  // disagg total size
-  val disaggTotalSize: AtomicLong = new AtomicLong(0)
   val blockSerCostMap = new ConcurrentHashMap[BlockId, Long]()
   val blockDeserCostMap = new ConcurrentHashMap[BlockId, Long]()
-  // TODO set
+  // TODO: miss ratio curve
   val hitInLocal = new AtomicInteger()
-  // TODO set
   val missInLocal = new AtomicInteger()
-  // TODO set
-  val hitInDisagg = new AtomicInteger()
-  // TODO set
-  val missInDisagg = new AtomicInteger()
 
   // cached block created time map
   val blockCreatedTimeMap = new ConcurrentHashMap[BlockId, Long]()
@@ -97,8 +88,6 @@ private[spark] class MetricTracker extends Logging {
   def getBlockSize(blockId: BlockId): Long = synchronized {
     if (localMemBlockSizeMap.containsKey(blockId)) {
       localMemBlockSizeMap.get(blockId)
-    } else if (disaggBlockSizeMap.containsKey(blockId)) {
-      disaggBlockSizeMap.get(blockId)
     } else if (localBlockSizeHistoryMap.containsKey(blockId)) {
       localBlockSizeHistoryMap.get(blockId)
     } else if (localDiskStoredBlocksSizeMap.containsKey(blockId)) {
@@ -161,47 +150,6 @@ private[spark] class MetricTracker extends Logging {
       localMemStoredBlocksMap.putIfAbsent(executorId, ConcurrentHashMap.newKeySet[BlockId].asScala)
       localMemStoredBlocksMap.get(executorId).add(blockId)
     }
-  }
-
-  def addBlockInDisagg(blockId: BlockId, size: Long): Unit = {
-    disaggBlockSizeMap.put(blockId, size)
-    disaggTotalSize.addAndGet(size)
-    disaggStoredBlocks.add(blockId)
-  }
-
-  def adjustDisaggBlockSize(blockId: BlockId, size: Long): Unit = {
-    val prevSize = disaggBlockSizeMap.get(blockId)
-    disaggBlockSizeMap.put(blockId, size)
-    disaggTotalSize.addAndGet(-prevSize + size)
-    logInfo(s"Adjust block size $blockId prev: $prevSize, size: $size")
-  }
-
-  def removeDisaggBlock(blockId: BlockId): Unit = {
-    if (disaggBlockSizeMap.containsKey(blockId)) {
-      val size = disaggBlockSizeMap.remove(blockId)
-      disaggTotalSize.addAndGet(-size)
-      disaggStoredBlocks.remove(blockId)
-    }
-  }
-
-  def getDisaggBlocks: mutable.Set[BlockId] = {
-    disaggStoredBlocks
-  }
-
-  def getTaskStartTimeFromBlockId(stageId: Int, blockId: BlockId): Option[Long] = {
-    val index = blockId.name.split("_")(2).toInt
-
-    for(i <- 0 to index) {
-      val taskId = s"$stageId-$i-0"
-      taskStartTime.get(taskId) match {
-        case None =>
-          //  do nothing
-        case Some(startTime) =>
-          return Some(startTime)
-      }
-    }
-
-    None
   }
 
   def taskStarted(taskId: String): Unit = {

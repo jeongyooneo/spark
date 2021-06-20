@@ -42,7 +42,7 @@ import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
-import org.apache.spark.storage.disagg._
+import org.apache.spark.storage.blaze._
 import org.apache.spark.util._
 
 /**
@@ -112,15 +112,15 @@ import org.apache.spark.util._
  *    include the new structure. This will help to catch memory leaks.
  */
 private[spark] class DAGScheduler(
-    private[scheduler] val sc: SparkContext,
-    private[scheduler] val taskScheduler: TaskScheduler,
-    listenerBus: LiveListenerBus,
-    mapOutputTracker: MapOutputTrackerMaster,
-    blockManagerMaster: BlockManagerMaster,
-    rddJobDag: Option[RDDJobDag],
-    disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
-    env: SparkEnv,
-    clock: Clock = new SystemClock())
+                                   private[scheduler] val sc: SparkContext,
+                                   private[scheduler] val taskScheduler: TaskScheduler,
+                                   listenerBus: LiveListenerBus,
+                                   mapOutputTracker: MapOutputTrackerMaster,
+                                   blockManagerMaster: BlockManagerMaster,
+                                   rddJobDag: Option[RDDJobDag],
+                                   blazeBlockManagerEndpoint: BlazeBlockManagerEndpoint,
+                                   env: SparkEnv,
+                                   clock: Clock = new SystemClock())
   extends Logging {
 
   def this(sc: SparkContext, taskScheduler: TaskScheduler) = {
@@ -131,7 +131,7 @@ private[spark] class DAGScheduler(
       sc.env.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster],
       sc.env.blockManager.master,
       sc.env.rddJobDag,
-      sc.env.disaggBlockManagerEndpoint,
+      sc.env.blazeBlockManagerEndpoint,
       sc.env)
   }
 
@@ -239,7 +239,7 @@ private[spark] class DAGScheduler(
     eventProcessLoop.post(BeginEvent(task, taskInfo))
     val taskId = s"${task.stageId}-" +
       s"${task.partitionId}-${taskInfo.attemptNumber}"
-    disaggBlockManagerEndpoint.taskStarted(taskId)
+    blazeBlockManagerEndpoint.taskStarted(taskId)
   }
 
   /**
@@ -263,7 +263,7 @@ private[spark] class DAGScheduler(
       CompletionEvent(task, reason, result, accumUpdates, taskInfo))
     val taskId = s"${task.stageId}-" +
       s"${task.partitionId}-${taskInfo.attemptNumber}"
-    disaggBlockManagerEndpoint.taskFinished(taskId)
+    blazeBlockManagerEndpoint.taskFinished(taskId)
   }
 
   /**
@@ -329,9 +329,9 @@ private[spark] class DAGScheduler(
     } else {
       if (!cacheLocs.contains(rdd.id)) {
         if (autocaching) {
-          // Note: if the storage level is NONE, we don't need to get locations from block manager.
+          // Note: if StorageLevel.NONE, then we don't need to get locations from block manager.
           val locs: IndexedSeq[Seq[TaskLocation]] =
-            if (disaggBlockManagerEndpoint.isRddCache(rdd.id)) {
+            if (blazeBlockManagerEndpoint.isRddCache(rdd.id)) {
               val blockIds =
                 rdd.partitions.indices.map(index => RDDBlockId(rdd.id, index)).toArray[BlockId]
               blockManagerMaster.getLocations(blockIds).map { bms =>
@@ -1051,7 +1051,7 @@ private[spark] class DAGScheduler(
     onlineUpdateStages(finalStage, stack)
 
     // update job id
-    disaggBlockManagerEndpoint.jobSubmitted(jobId)
+    blazeBlockManagerEndpoint.jobSubmitted(jobId)
 
     rddJobDag match {
       case None =>
@@ -1156,7 +1156,7 @@ private[spark] class DAGScheduler(
         if (missing.isEmpty) {
           // logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
-          disaggBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
+          blazeBlockManagerEndpoint.stageSubmitted(stage.id, stage.firstJobId,
             stage.rdd.partitions.length)
 
           submitMissingTasks(stage, jobId.get)
@@ -1951,8 +1951,7 @@ private[spark] class DAGScheduler(
 
     listenerBus.post(SparkListenerStageCompleted(stage.latestInfo))
 
-    // send it to disagg block manager endpoint
-    disaggBlockManagerEndpoint.stageCompleted(stage.latestInfo.stageId)
+    blazeBlockManagerEndpoint.stageCompleted(stage.latestInfo.stageId)
 
     runningStages -= stage
   }

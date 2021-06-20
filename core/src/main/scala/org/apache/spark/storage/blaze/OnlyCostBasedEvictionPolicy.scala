@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -28,43 +28,16 @@ private[spark] class OnlyCostBasedEvictionPolicy(
            val metricTracker: MetricTracker,
            conf: SparkConf) extends EvictionPolicy(conf) with Logging {
 
-  def decisionLocalEviction(storingCost: CompDisaggCost,
-                            executorId: String,
-                            blockId: BlockId,
-                            estimateSize: Long,
-                            onDisk: Boolean): Boolean = {
-    val sortedBlocks = if (onDisk) {
-      costAnalyzer.sortedBlockByCompCostInDiskLocal
-    } else {
-      costAnalyzer.sortedBlockByCompCostInLocal
-    }
-
-    if (sortedBlocks.get() != null) {
-      val l = sortedBlocks.get()(executorId)
-      if (l.isEmpty) {
-        false
-      } else {
-        if (l.head.cost > storingCost.cost) {
-          false
-        } else {
-          true
-        }
-      }
-    } else {
-      false
-    }
-  }
-
-  def decisionPromote(storingCost: CompDisaggCost,
-                      executorId: String,
-                      blockId: BlockId,
-                      estimateSize: Long): Boolean = {
+  def promote(storingCost: CompCost,
+              executorId: String,
+              blockId: BlockId,
+              estimateSize: Long): Boolean = {
     if (costAnalyzer.sortedBlockByCompCostInLocal.get() != null) {
       val l = costAnalyzer.sortedBlockByCompCostInLocal.get()(executorId)
       if (l.isEmpty) {
         false
       } else {
-        val index = ((l.size - 1) * promoteRatio).toInt
+        val index = ((l.size - 1) * promotionRatio).toInt
         if (l(index).cost > storingCost.cost) {
           false
         } else {
@@ -76,11 +49,11 @@ private[spark] class OnlyCostBasedEvictionPolicy(
     }
   }
 
-  def selectEvictFromLocal(storingCost: CompDisaggCost,
-                           executorId: String,
-                           blockSize: Long,
-                           onDisk: Boolean)
-                          (func: ListBuffer[CompDisaggCost]
+  def selectLocalEvictionCandidate(storingCost: CompCost,
+                                   executorId: String,
+                                   blockSize: Long,
+                                   onDisk: Boolean)
+                                  (func: ListBuffer[CompCost]
                             => List[BlockId]): List[BlockId] = {
 
     val blocks = if (onDisk) {
@@ -97,17 +70,7 @@ private[spark] class OnlyCostBasedEvictionPolicy(
         throw new RuntimeException(s"ExecutorId not fount ${executorId} in map ${map.keySet}")
       }
     } else {
-      func(List.empty.to[ListBuffer])
-    }
-  }
-
-  def selectEvictFromDisagg(storingCost: CompDisaggCost,
-                            blockId: BlockId)
-                           (func: List[CompDisaggCost] => Unit): Unit = {
-    costAnalyzer.sortedBlockByCompCostInDisagg match {
-      case None =>
-      case Some(l) =>
-        func(l)
+      func(new ListBuffer[CompCost])
     }
   }
 }

@@ -14,19 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.storage.disagg
 
-import org.apache.crail.conf.CrailConfiguration
+package org.apache.spark.storage.blaze
+
 import org.apache.spark.internal.Logging
+import org.apache.spark.storage.BlockId
 
-object DisaggUtils extends Logging {
+private[spark] class SparkAutocachingAnalyzer(val rddJobDag: RDDJobDag,
+                                              metricTracker: MetricTracker)
+  extends CostAnalyzer(metricTracker) with Logging {
 
-  val conf = new CrailConfiguration()
-  val crailBlockSize = conf.get("crail.blocksize").toLong
-  logInfo(s"Crail block size: $crailBlockSize")
+  // 10Gib per sec to byte per sec
+  private val BANDWIDTH = (10 / 8.0) * 1024 * 1024 * 1024.toDouble
 
-  def calculateDisaggBlockSize(size: Long): Long = {
-    val remain = size % crailBlockSize
-    size - remain + crailBlockSize
+  override def compCost(executorId: String, blockId: BlockId): CompCost = {
+    val node = rddJobDag.getRDDNode(blockId)
+
+    // val futureUse = realStages.size.map(x => Math.pow(0.5, x.prevCached)).sum
+    var futureUse = rddJobDag.getLRCRefCnt(blockId)
+
+    futureUse = utilCost(futureUse, rddJobDag, node)
+
+    new CompCost(blockId,
+      futureUse,
+      0,
+      futureUse,
+      futureUse,
+      0)
   }
+
 }
+

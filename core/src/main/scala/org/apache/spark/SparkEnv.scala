@@ -37,7 +37,7 @@ import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
-import org.apache.spark.storage.disagg.{DisaggBlockManager, _}
+import org.apache.spark.storage.blaze.{BlazeManager, _}
 import org.apache.spark.util.{RpcUtils, Utils}
 
 import scala.collection.mutable
@@ -64,7 +64,7 @@ class SparkEnv (
                  val shuffleManager: ShuffleManager,
                  val broadcastManager: BroadcastManager,
                  val blockManager: BlockManager,
-                 val disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint,
+                 val blazeBlockManagerEndpoint: BlazeBlockManagerEndpoint,
                  val rddJobDag: Option[RDDJobDag],
                  val metricTracker: MetricTracker,
                  val securityManager: SecurityManager,
@@ -328,79 +328,66 @@ object SparkEnv extends Logging {
 
     val memoryManager: MemoryManager = MemoryManager(conf, numUsableCores)
 
-    /*
-    val useLegacyMemoryManager = conf.getBoolean("spark.memory.useLegacyMode", false)
-      if (useLegacyMemoryManager) {
-        new StaticMemoryManager(conf, numUsableCores)
-      } else {
-        UnifiedMemoryManager(conf, numUsableCores)
-      }
-      */
-
     val blockManagerPort = if (isDriver) {
       conf.get(DRIVER_BLOCK_MANAGER_PORT)
     } else {
       conf.get(BLOCK_MANAGER_PORT)
     }
 
-    val thresholdMB = conf.get(BlazeParameters.DISAGG_THRESHOLD_MB)
+    val executorDiskCapacityMB = conf.get(BlazeParameters.EXECUTOR_DISK_CAPACITY_MB)
+
     val dagPath = conf.get(BlazeParameters.JOB_DAG_PATH)
 
     val blockTransferService =
       new NettyBlockTransferService(conf, securityManager, bindAddress, advertiseAddress,
         blockManagerPort, numUsableCores)
 
-    var blockManagerMaster: BlockManagerMaster = null
-    var disaggBlockManager: DisaggBlockManager = null
-
-    var disaggBlockManagerEndpoint: DisaggBlockManagerEndpoint = null
     val metricTracker: MetricTracker = new MetricTracker
+
+    val blockManagerMasterEndpoint =
+      new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)
 
     var rddJobDag: Option[RDDJobDag] = Option.empty
 
+    var blazeBlockManagerEndpoint: BlazeBlockManagerEndpoint = null
+
+    // Initialize blazeBlockManagerEndpoint,
+    // which is used for creating blazeManager
     if (isDriver) {
       rddJobDag = RDDJobDag(dagPath, conf, metricTracker)
       val costAnalyzer: CostAnalyzer = CostAnalyzer(conf, rddJobDag, metricTracker)
-
       val cachingPolicy: CachingPolicy = CachingPolicy(rddJobDag, conf, metricTracker)
-
-      val blockManagerMasterEndpoint =
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)
-
-      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
-        BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
-        conf, isDriver)
-
       val evictionPolicy = EvictionPolicy(costAnalyzer, metricTracker, conf)
 
-      disaggBlockManagerEndpoint =
-        new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          blockManagerMasterEndpoint, thresholdMB, costAnalyzer,
+      blazeBlockManagerEndpoint =
+        new LocalBlazeBlockManagerEndpoint(rpcEnv, isLocal, conf,
+          blockManagerMasterEndpoint, executorDiskCapacityMB, costAnalyzer,
           metricTracker, cachingPolicy, evictionPolicy, rddJobDag)
 
-
-      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
-        DisaggBlockManager.DRIVER_ENDPOINT_NAME, disaggBlockManagerEndpoint), conf)
-
     } else {
-      blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
-       BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-        new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus, metricTracker, dagPath)),
-       conf, isDriver)
+      // Executors aren't involved in cost analysis and caching/eviction policy,
+      // (those are for the Spark master)
+      // so we init them with NoCostAnalyzer, RandomCachingPolicy and null.
+      val costAnalyzer: CostAnalyzer = new NoCostAnalyzer(metricTracker)
+      val cachingPolicy: CachingPolicy = new RandomCachingPolicy(0.2)
+      val evictionPolicy = null
 
-      disaggBlockManager = new DisaggBlockManager(registerOrLookupEndpoint(
-        DisaggBlockManager.DRIVER_ENDPOINT_NAME,
-        new LocalDisaggStageBasedBlockManagerEndpoint(rpcEnv, isLocal, conf, listenerBus,
-          new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf,
-            listenerBus, metricTracker, dagPath),
-          thresholdMB, new NoCostAnalyzer(metricTracker),
-          metricTracker, new RandomCachingPolicy(0.2), null, None)
-      ), conf)
+      blazeBlockManagerEndpoint =
+        new LocalBlazeBlockManagerEndpoint(rpcEnv, isLocal, conf,
+          blockManagerMasterEndpoint, executorDiskCapacityMB, costAnalyzer,
+          metricTracker, cachingPolicy, evictionPolicy, None)
     }
+
+    val blazeManager = new BlazeManager(registerOrLookupEndpoint(
+      BlazeManager.DRIVER_ENDPOINT_NAME, blazeBlockManagerEndpoint))
+
+    val blockManagerMaster = new BlockManagerMaster(registerOrLookupEndpoint(
+      BlockManagerMaster.DRIVER_ENDPOINT_NAME, blockManagerMasterEndpoint),
+      conf, isDriver)
 
     // NB: blockManager is not valid until initialize() is called later.
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
-      disaggBlockManager, serializerManager, conf, memoryManager, mapOutputTracker,
+      blazeManager, serializerManager, conf, memoryManager, mapOutputTracker,
       shuffleManager, blockTransferService, securityManager, numUsableCores)
 
     val metricsSystem = if (isDriver) {
@@ -435,7 +422,7 @@ object SparkEnv extends Logging {
       shuffleManager,
       broadcastManager,
       blockManager,
-      disaggBlockManagerEndpoint,
+      blazeBlockManagerEndpoint,
       rddJobDag,
       metricTracker,
       securityManager,

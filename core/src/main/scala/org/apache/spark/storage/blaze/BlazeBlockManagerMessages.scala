@@ -15,36 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.spark.storage.disagg
+package org.apache.spark.storage.blaze
 
 import org.apache.spark.storage.BlockId
 
-private[spark] object DisaggBlockManagerMessages {
+private[spark] object BlazeBlockManagerMessages {
 
   //////////////////////////////////////////////////////////////////////////////////
   // Messages from slaves to the master.
   //////////////////////////////////////////////////////////////////////////////////
   sealed trait ToBlockManagerMaster
 
-  case class FileRemoved(blockId: BlockId, executorId: String, remove: Boolean)
-    extends ToBlockManagerMaster
-
-  case class FileRead(blockId: BlockId, executorId: String) extends ToBlockManagerMaster
-  case class FileReadUnlock(blockId: BlockId, executorId: String) extends ToBlockManagerMaster
-
-  case class DiscardBlocksIfNecessary(estimateSize: Long)
-    extends ToBlockManagerMaster
-
-  case class IsRddCache(rddId: Int) extends ToBlockManagerMaster
+  case class IsRddToCache(rddId: Int) extends ToBlockManagerMaster
 
   case class StoreBlockOrNot(blockId: BlockId, estimateSize: Long, executorId: String,
-                             putDisagg: Boolean, localFull: Boolean,
-                             onDisk: Boolean, promote: Boolean,
-                             taskAttemp: Long)
+                             localFull: Boolean, onDisk: Boolean, promote: Boolean,
+                             taskAttempt: Long)
     extends ToBlockManagerMaster
 
   case class CachingFail(blockId: BlockId, estimateSize: Long, executorId: String,
-                             putDisagg: Boolean, localFull: Boolean, onDisk: Boolean)
+                             localFull: Boolean, onDisk: Boolean)
     extends ToBlockManagerMaster
 
   case class CachingDone(blockId: BlockId, estimateSize: Long, stageId: String, onDisk: Boolean)
@@ -52,17 +42,6 @@ private[spark] object DisaggBlockManagerMessages {
 
   case class DiskCachingDone(blockId: BlockId, size: Long, executorId: String)
     extends ToBlockManagerMaster
-
-  case class FileWriteEnd(blockId: BlockId, executorId: String, size: Long)
-    extends ToBlockManagerMaster
-
-  case class Contains(blockId: BlockId, executorId: String)
-    extends ToBlockManagerMaster
-
-  case class GetSize(blockId: BlockId, executorId: String)
-    extends ToBlockManagerMaster
-
-  // for local decision
 
   case class LocalEviction(blockId: Option[BlockId], executorId: String,
                            size: Long, prevEvicted: Set[BlockId], onDisk: Boolean)
@@ -84,10 +63,9 @@ private[spark] object DisaggBlockManagerMessages {
   case class TaskAttempBlockId(taskAttemp: Long, blockId: BlockId) extends ToBlockManagerMaster
 
   // metric
-  case class ReadDisaggBlock(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster
-  case class WriteDisaggBlock(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster
+  case class SendSerTime(blockId: BlockId, size: Long, time: Long) extends ToBlockManagerMaster
   case class SendRecompTime(blockId: BlockId, time: Long) extends ToBlockManagerMaster
-  case class SendNoCachedRDDCompTime(rddId: Int, time: Long) extends ToBlockManagerMaster
+  case class SendCompTime(rddId: Int, time: Long) extends ToBlockManagerMaster
   case class SendRDDElapsedTime(srcBlock: String,
                                 dstBlock: String,
                                 clazz: String, time: Long) extends ToBlockManagerMaster
