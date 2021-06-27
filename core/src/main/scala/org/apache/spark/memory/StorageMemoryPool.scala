@@ -68,9 +68,9 @@ private[memory] class StorageMemoryPool(
    *
    * @return whether all N bytes were successfully granted.
    */
-  def acquireMemory(blockId: BlockId, numBytes: Long, slack: Long): Boolean = lock.synchronized {
+  def acquireMemory(blockId: BlockId, numBytes: Long): Boolean = lock.synchronized {
     val numBytesToFree = math.max(0, numBytes - memoryFree)
-    acquireMemory(blockId, numBytes, numBytesToFree, 0)
+    acquireMemory(blockId, numBytes, numBytesToFree)
   }
 
   /**
@@ -84,8 +84,7 @@ private[memory] class StorageMemoryPool(
   def acquireMemory(
       blockId: BlockId,
       numBytesToAcquire: Long,
-      numBytesToFree: Long,
-      slack: Long): Boolean = lock.synchronized {
+      numBytesToFree: Long): Boolean = lock.synchronized {
     assert(numBytesToAcquire >= 0)
     assert(numBytesToFree >= 0)
     assert(memoryUsed <= poolSize)
@@ -95,9 +94,9 @@ private[memory] class StorageMemoryPool(
     // NOTE: If the memory store evicts blocks, then those evictions will synchronously call
     // back into this StorageMemoryPool in order to free memory. Therefore, these variables
     // should have been updated.
-    val enoughMemory = numBytesToAcquire - slack <= memoryFree
+    val enoughMemory = numBytesToAcquire <= memoryFree
     if (enoughMemory) {
-      _memoryUsed += (numBytesToAcquire - slack)
+      _memoryUsed += numBytesToAcquire
     }
     enoughMemory
   }
@@ -108,7 +107,6 @@ private[memory] class StorageMemoryPool(
         s"memory when we only have ${_memoryUsed} bytes")
       _memoryUsed = 0
     } else {
-      // logInfo(s"Release memory $size")
       _memoryUsed -= size
     }
   }

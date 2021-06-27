@@ -38,8 +38,6 @@ private[spark] class StaticMemoryManager(
     maxOnHeapStorageMemory,
     maxOnHeapExecutionMemory) {
 
-  logInfo("tg: StaticMemoryManager started")
-
   def this(conf: SparkConf, numCores: Int) {
     this(
       conf,
@@ -71,7 +69,7 @@ private[spark] class StaticMemoryManager(
         s"memory limit ($maxOnHeapStorageMemory bytes)")
       false
     } else {
-      onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, 0)
+      onHeapStorageMemoryPool.acquireMemory(blockId, numBytes)
     }
   }
 
@@ -90,7 +88,7 @@ private[spark] class StaticMemoryManager(
     val maxNumBytesToFree = math.max(0, maxUnrollMemory - currentUnrollMemory - freeMemory)
     // Keep it within the range 0 <= X <= maxNumBytesToFree
     val numBytesToFree = math.max(0, math.min(maxNumBytesToFree, numBytes - freeMemory))
-    onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, numBytesToFree, 0)
+    onHeapStorageMemoryPool.acquireMemory(blockId, numBytes, numBytesToFree)
   }
 
   private[memory]

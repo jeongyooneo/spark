@@ -101,6 +101,8 @@ class HadoopRDD[K, V](
     minPartitions: Int)
   extends RDD[(K, V)](sc, Nil) with Logging {
 
+  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
+
   if (initLocalJobConfFuncOpt.isDefined) {
     sparkContext.clean(initLocalJobConfFuncOpt.get)
   }
@@ -228,11 +230,8 @@ class HadoopRDD[K, V](
     }
   }
 
-  private val sampledRun = SparkEnv.get.conf.get(BlazeParameters.SAMPLING)
-
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
-
 
       logInfo(s"Sampled run $sampledRun")
 

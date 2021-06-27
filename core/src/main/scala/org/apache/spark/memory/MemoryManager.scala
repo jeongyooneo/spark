@@ -243,15 +243,3 @@ private[spark] abstract class MemoryManager(
   }
 }
 
-object MemoryManager extends Logging {
-
-  def apply(conf: SparkConf, numCores: Int): MemoryManager = {
-    val memoryManagerType = conf.get("spark.memory.memoryManager", "Unified")
-    logInfo(s"MemoryManager $memoryManagerType")
-    memoryManagerType match {
-      case "Unified" => UnifiedMemoryManager(conf, numCores)
-      case "Static" => new StaticMemoryManager(conf, numCores)
-      case _ => throw new RuntimeException("Invalid  memoryManagerType " + memoryManagerType)
-    }
-  }
-}

@@ -55,8 +55,6 @@ private[spark] class UnifiedMemoryManager private[memory] (
     onHeapStorageRegionSize,
     maxHeapMemory - onHeapStorageRegionSize) {
 
-  logInfo("UnifiedMemoryManager is created")
-
   private def assertInvariants(): Unit = {
     assert(onHeapExecutionMemoryPool.poolSize + onHeapStorageMemoryPool.poolSize == maxHeapMemory)
     assert(
@@ -145,12 +143,8 @@ private[spark] class UnifiedMemoryManager private[memory] (
     }
 
     executionPool.acquireMemory(
-      numBytes + SLACK, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
+      numBytes, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
   }
-
-  // MB
-  // val SLACK = conf.get(BlazeParameters.MEMORY_SLACK) * 1024 * 1024
-  val SLACK = 0
 
   override def canStoreBytesWithoutEviction(numBytes: Long,
                                             memoryMode: MemoryMode): Boolean = synchronized {
@@ -165,11 +159,10 @@ private[spark] class UnifiedMemoryManager private[memory] (
         maxOffHeapStorageMemory)
     }
 
-    // logInfo(s"Storage Pool: ${storagePool.memoryFree}/ bytes: ${adjustBytes}")
     if (numBytes > storagePool.memoryFree) {
       // There is not enough free memory in the storage pool, so try to borrow free memory from
       // the execution pool.
-      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree - SLACK,
+      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree,
         numBytes - storagePool.memoryFree)
       if (memoryBorrowedFromExecution > 0) {
         val free = storagePool.memoryFree + memoryBorrowedFromExecution
@@ -210,14 +203,14 @@ private[spark] class UnifiedMemoryManager private[memory] (
     if (numBytes > storagePool.memoryFree) {
       // There is not enough free memory in the storage pool, so try to borrow free memory from
       // the execution pool.
-      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree - SLACK,
+      val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree,
         numBytes - storagePool.memoryFree)
       if (memoryBorrowedFromExecution > 0) {
         executionPool.decrementPoolSize(memoryBorrowedFromExecution)
         storagePool.incrementPoolSize(memoryBorrowedFromExecution)
       }
     }
-    storagePool.acquireMemory(blockId, numBytes, SLACK)
+    storagePool.acquireMemory(blockId, numBytes)
   }
 
   override def acquireUnrollMemory(

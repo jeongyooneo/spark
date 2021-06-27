@@ -174,7 +174,6 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    */
   @VisibleForTesting
   public void write(Iterator<Product2<K, V>> records) throws IOException {
-    logger.info("Entered UnsafeShuffleWriter.write()");
     write(JavaConverters.asScalaIteratorConverter(records).asScala());
   }
 
@@ -183,7 +182,6 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     // Keep track of success so we know if we encountered an exception
     // We do this rather than a standard try/catch/re-throw to handle
     // generic throwables.
-    final long st = System.currentTimeMillis();
     boolean success = false;
     try {
       while (records.hasNext()) {
@@ -207,8 +205,6 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
     }
-    final long et = System.currentTimeMillis();
-    logger.info("TGLOG ShuffleWrite None " + (et - st));
   }
 
   private void open() {

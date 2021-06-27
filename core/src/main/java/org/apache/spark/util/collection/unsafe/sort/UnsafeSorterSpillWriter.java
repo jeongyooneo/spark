@@ -20,13 +20,16 @@ package org.apache.spark.util.collection.unsafe.sort;
 import java.io.File;
 import java.io.IOException;
 
-import org.apache.spark.storage.*;
 import scala.Tuple2;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.serializer.SerializerManager;
 import org.apache.spark.executor.ShuffleWriteMetrics;
 import org.apache.spark.serializer.DummySerializerInstance;
+import org.apache.spark.storage.BlockId;
+import org.apache.spark.storage.BlockManager;
+import org.apache.spark.storage.DiskBlockObjectWriter;
+import org.apache.spark.storage.TempLocalBlockId;
 import org.apache.spark.unsafe.Platform;
 import org.apache.spark.internal.config.package$;
 
@@ -59,8 +62,8 @@ public final class UnsafeSorterSpillWriter {
       int fileBufferSize,
       ShuffleWriteMetrics writeMetrics,
       int numRecordsToWrite) throws IOException {
-    final Tuple2<TempShuffleBlockId, File> spilledFileInfo =
-      blockManager.diskBlockManager().createTempShuffleBlock();
+    final Tuple2<TempLocalBlockId, File> spilledFileInfo =
+            blockManager.diskBlockManager().createTempLocalBlock();
     this.file = spilledFileInfo._2();
     this.blockId = spilledFileInfo._1();
     this.numRecordsToWrite = numRecordsToWrite;
